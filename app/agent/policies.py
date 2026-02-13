@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from runtime.qa_orchestrator.models import QueryIntent, RetrievalPlan
+from app.agent.models import QueryIntent, RetrievalPlan
 
 
 LITERAL_LIST_HINTS = (

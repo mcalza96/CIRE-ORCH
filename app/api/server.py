@@ -5,8 +5,8 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.responses import JSONResponse
 
-from runtime.config import settings
-from runtime.orchestrator_api.v1.api_router import v1_router
+from app.api.v1.api_router import v1_router
+from app.core.config import settings
 
 logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO), format="%(message)s")
 structlog.configure(

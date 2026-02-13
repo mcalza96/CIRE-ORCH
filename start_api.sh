@@ -15,4 +15,4 @@ export PYTHONPATH="$BASE_DIR:${PYTHONPATH:-}"
 export RAG_ENGINE_URL="${RAG_ENGINE_URL:-http://localhost:8000}"
 
 echo "🚀 Starting Q/A Orchestrator API on :8001"
-"$VENV_DIR/bin/python" -m uvicorn runtime.orchestrator_main:app --host 0.0.0.0 --port 8001 --no-access-log
+"$VENV_DIR/bin/python" -m uvicorn app.api.server:app --host 0.0.0.0 --port 8001 --no-access-log

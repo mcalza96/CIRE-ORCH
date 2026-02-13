@@ -18,7 +18,7 @@ check_service_health() {
 }
 
 if ! check_service_health "Orchestrator API" "$ORCH_URL/health"; then
-  echo "💡 Ejecuta ./dev.sh o ./stack.sh up"
+  echo "💡 Ejecuta ./stack.sh up"
   exit 1
 fi
 

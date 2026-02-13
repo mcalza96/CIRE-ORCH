@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from runtime.qa_orchestrator.models import (
+from app.agent.models import (
     AnswerDraft,
     ClarificationRequest,
     EvidenceItem,
@@ -44,7 +44,7 @@ class AnswerGeneratorPort(Protocol):
 
 class ValidatorPort(Protocol):
     def validate(self, draft: AnswerDraft, plan: RetrievalPlan, query: str) -> ValidationResult: ...
-from runtime.qa_orchestrator.policies import (
+from app.agent.policies import (
     build_retrieval_plan,
     classify_intent,
     detect_conflict_objectives,

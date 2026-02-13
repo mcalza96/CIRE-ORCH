@@ -9,8 +9,8 @@
 ## Quality gates
 
 ```bash
-ruff check runtime tests chat_cli.py
-python -m compileall runtime tests chat_cli.py
+ruff check app tests chat_cli.py
+python -m compileall app tests chat_cli.py
 pytest tests/unit -q
 ```
 

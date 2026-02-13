@@ -5,9 +5,9 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from runtime.config import settings
-from runtime.qa_orchestrator.models import AnswerDraft, EvidenceItem, RetrievalPlan, ValidationResult
-from runtime.qa_orchestrator.policies import extract_requested_standards
+from app.agent.models import AnswerDraft, EvidenceItem, RetrievalPlan, ValidationResult
+from app.agent.policies import extract_requested_standards
+from app.core.config import settings
 
 
 def _extract_keywords(query: str) -> set[str]:

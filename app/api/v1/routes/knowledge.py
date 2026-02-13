@@ -4,12 +4,12 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from runtime.config import settings
-from runtime.qa_orchestrator.adapters import LiteralEvidenceValidator
-from runtime.qa_orchestrator.application import HandleQuestionCommand, HandleQuestionUseCase
-from runtime.qa_orchestrator.grounded_answer_service import GroundedAnswerService
-from runtime.qa_orchestrator.http_adapters import GroundedAnswerAdapter, RagEngineRetrieverAdapter
-from runtime.scope_metrics import scope_metrics_store
+from app.agent.adapters import LiteralEvidenceValidator
+from app.agent.application import HandleQuestionCommand, HandleQuestionUseCase
+from app.agent.grounded_answer_service import GroundedAnswerService
+from app.agent.http_adapters import GroundedAnswerAdapter, RagEngineRetrieverAdapter
+from app.core.config import settings
+from app.core.scope_metrics import scope_metrics_store
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(tags=["knowledge"])

@@ -5,8 +5,8 @@ from typing import Any
 
 import httpx
 
-from runtime.qa_orchestrator.grounded_answer_service import GroundedAnswerService
-from runtime.qa_orchestrator.models import AnswerDraft, EvidenceItem, RetrievalPlan
+from app.agent.grounded_answer_service import GroundedAnswerService
+from app.agent.models import AnswerDraft, EvidenceItem, RetrievalPlan
 
 
 @dataclass

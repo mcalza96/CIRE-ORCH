@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 import asyncio
 
-from runtime.qa_orchestrator.application import HandleQuestionCommand, HandleQuestionUseCase
-from runtime.qa_orchestrator.models import AnswerDraft, EvidenceItem, RetrievalPlan, ValidationResult
+from app.agent.application import HandleQuestionCommand, HandleQuestionUseCase
+from app.agent.models import AnswerDraft, EvidenceItem, RetrievalPlan, ValidationResult
 
 
 @dataclass

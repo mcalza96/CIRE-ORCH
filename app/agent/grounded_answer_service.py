@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from openai import AsyncOpenAI
 
-from runtime.config import settings
+from app.core.config import settings
 
 
 class GroundedAnswerService:

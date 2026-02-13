@@ -1,6 +1,6 @@
-from runtime.config import settings
-from runtime.qa_orchestrator.adapters import LiteralEvidenceValidator
-from runtime.qa_orchestrator.models import AnswerDraft, EvidenceItem, RetrievalPlan
+from app.agent.adapters import LiteralEvidenceValidator
+from app.agent.models import AnswerDraft, EvidenceItem, RetrievalPlan
+from app.core.config import settings
 
 
 def _build_plan() -> RetrievalPlan:
