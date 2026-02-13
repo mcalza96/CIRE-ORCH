@@ -8,7 +8,6 @@ from app.agent.adapters import LiteralEvidenceValidator
 from app.agent.application import HandleQuestionCommand, HandleQuestionUseCase
 from app.agent.grounded_answer_service import GroundedAnswerService
 from app.agent.http_adapters import GroundedAnswerAdapter, RagEngineRetrieverAdapter
-from app.core.config import settings
 from app.core.scope_metrics import scope_metrics_store
 
 logger = structlog.get_logger(__name__)
@@ -22,8 +21,7 @@ class OrchestratorQuestionRequest(BaseModel):
 
 
 def _build_use_case() -> HandleQuestionUseCase:
-    rag_base_url = str(settings.RAG_ENGINE_URL or "http://localhost:8000").strip()
-    retriever = RagEngineRetrieverAdapter(base_url=rag_base_url)
+    retriever = RagEngineRetrieverAdapter()
     answer_generator = GroundedAnswerAdapter(service=GroundedAnswerService())
     validator = LiteralEvidenceValidator()
     return HandleQuestionUseCase(

@@ -75,6 +75,7 @@ rag-ingestion/tests/evaluation/reports/
 rag-ingestion/*.prof
 .run/
 .rag_tenants.json
+**/.rag_tenants.json
 t.txt
 plan_batch_ingestion.txt
 plan_batch_ingestion_phase0.md

@@ -4,15 +4,33 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+import structlog
 
 from app.agent.grounded_answer_service import GroundedAnswerService
 from app.agent.models import AnswerDraft, EvidenceItem, RetrievalPlan
+from app.clients.backend_selector import RagBackendSelector
+from app.core.config import settings
+
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
 class RagEngineRetrieverAdapter:
-    base_url: str
+    base_url: str | None = None
     timeout_seconds: float = 8.0
+    backend_selector: RagBackendSelector | None = None
+
+    def __post_init__(self) -> None:
+        if self.backend_selector is None:
+            self.backend_selector = RagBackendSelector(
+                local_url=str(settings.RAG_ENGINE_LOCAL_URL or "http://localhost:8000"),
+                docker_url=str(settings.RAG_ENGINE_DOCKER_URL or "http://localhost:8000"),
+                health_path=str(settings.RAG_ENGINE_HEALTH_PATH or "/health"),
+                probe_timeout_ms=int(settings.RAG_ENGINE_PROBE_TIMEOUT_MS or 300),
+                ttl_seconds=int(settings.RAG_ENGINE_BACKEND_TTL_SECONDS or 20),
+                force_backend=settings.RAG_ENGINE_FORCE_BACKEND,
+            )
 
     async def retrieve_chunks(
         self,
@@ -50,7 +68,35 @@ class RagEngineRetrieverAdapter:
         return self._to_evidence(items)
 
     async def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-        url = self.base_url.rstrip("/") + path
+        selector = self.backend_selector
+        if selector is None:
+            base_url = str(self.base_url or "http://localhost:8000").rstrip("/")
+            return await self._post_once(base_url=base_url, path=path, payload=payload)
+
+        primary_backend = await selector.current_backend()
+        primary_base_url = await selector.resolve_base_url()
+
+        try:
+            return await self._post_once(base_url=primary_base_url, path=path, payload=payload)
+        except httpx.RequestError as primary_exc:
+            if selector.is_forced():
+                raise
+
+            alternate_backend = selector.alternate_backend(primary_backend)
+            alternate_base_url = selector.base_url_for(alternate_backend)
+            logger.warning(
+                "rag_backend_fallback_retry",
+                from_backend=primary_backend,
+                to_backend=alternate_backend,
+                path=path,
+                error=str(primary_exc),
+            )
+            response = await self._post_once(base_url=alternate_base_url, path=path, payload=payload)
+            selector.set_backend(alternate_backend)
+            return response
+
+    async def _post_once(self, *, base_url: str, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        url = base_url.rstrip("/") + path
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(url, json=payload)
             response.raise_for_status()

@@ -18,10 +18,15 @@ class Settings(BaseSettings):
 
     LOG_LEVEL: str = "INFO"
     ORCHESTRATOR_PORT: int = 8001
-    RAG_ENGINE_URL: str = Field(
+    RAG_ENGINE_LOCAL_URL: str = Field(
         default="http://localhost:8000",
-        validation_alias=AliasChoices("RAG_ENGINE_URL", "RAG_SERVICE_URL"),
+        validation_alias=AliasChoices("RAG_ENGINE_LOCAL_URL", "RAG_ENGINE_URL", "RAG_SERVICE_URL"),
     )
+    RAG_ENGINE_DOCKER_URL: str = "http://localhost:8000"
+    RAG_ENGINE_HEALTH_PATH: str = "/health"
+    RAG_ENGINE_PROBE_TIMEOUT_MS: int = 300
+    RAG_ENGINE_BACKEND_TTL_SECONDS: int = 20
+    RAG_ENGINE_FORCE_BACKEND: str | None = None
 
     QA_LITERAL_SEMANTIC_FALLBACK_ENABLED: bool = True
     QA_LITERAL_SEMANTIC_MIN_KEYWORD_OVERLAP: int = 2

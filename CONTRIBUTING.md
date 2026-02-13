@@ -17,8 +17,9 @@ cp .env.example .env.local
 
 ```bash
 ruff check app tests chat_cli.py
-python -m compileall app tests chat_cli.py
-pytest tests/unit -q
+python3 -m compileall app tests chat_cli.py
+venv/bin/python -m pytest tests/unit -q
+bash -n ing.sh tools/ingestion-client/ing.sh tools/ingestion-client/bin/ing.sh
 ```
 
 ## Checklist de PR

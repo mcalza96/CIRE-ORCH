@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cire-rag-sdk"
+version = "0.1.0"
+description = "Python SDK for CIRE-RAG API v1"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "CIRE-RAG Team" }
+]
+dependencies = [
+  "requests>=2.31.0",
+  "httpx>=0.27.0",
+]
+
+[project.urls]
+Repository = "https://example.com/cire-rag"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cire_rag_sdk"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "cire_rag_sdk",
+  "README.md",
+  "pyproject.toml",
+]

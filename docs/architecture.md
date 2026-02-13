@@ -8,7 +8,7 @@ Este repositorio contiene solo el **Q/A Orchestrator**.
 
 1. Cliente envía pregunta al endpoint del orquestador.
 2. El orquestador clasifica intención y aplica políticas de alcance/validación.
-3. El orquestador consulta un RAG engine externo vía HTTP (`RAG_ENGINE_URL`).
+3. El orquestador consulta un RAG engine externo vía HTTP (selector híbrido local/docker).
 4. El orquestador genera y valida respuesta final antes de responder.
 
 ## Componentes
@@ -18,6 +18,9 @@ Este repositorio contiene solo el **Q/A Orchestrator**.
 - Caso de uso: `app/agent/application.py`
 - Políticas: `app/agent/policies.py`
 - Adaptadores HTTP al engine: `app/agent/http_adapters.py`
+- Configuración: `app/core/config.py`
+- Métricas de alcance: `app/core/scope_metrics.py`
+- CLI runtime: `app/chat_cli_runtime.py`
 
 ## Límites explícitos
 
