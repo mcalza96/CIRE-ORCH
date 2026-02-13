@@ -10,6 +10,7 @@ from app.agent.grounded_answer_service import GroundedAnswerService
 from app.agent.models import AnswerDraft, EvidenceItem, RetrievalPlan
 from app.clients.backend_selector import RagBackendSelector
 from app.core.config import settings
+from app.core.retrieval_metrics import retrieval_metrics_store
 
 
 logger = structlog.get_logger(__name__)
@@ -39,6 +40,7 @@ class RagEngineRetrieverAdapter:
         collection_id: str | None,
         plan: RetrievalPlan,
     ) -> list[EvidenceItem]:
+        retrieval_metrics_store.record_request("chunks")
         payload = {
             "query": query,
             "tenant_id": tenant_id,
@@ -46,7 +48,12 @@ class RagEngineRetrieverAdapter:
             "chunk_k": int(plan.chunk_k),
             "fetch_k": int(plan.chunk_fetch_k),
         }
-        data = await self._post_json("/api/v1/retrieval/chunks", payload)
+        try:
+            data = await self._post_json("/api/v1/retrieval/chunks", payload, endpoint="chunks")
+        except (httpx.RequestError, httpx.HTTPStatusError):
+            retrieval_metrics_store.record_failure("chunks")
+            raise
+        retrieval_metrics_store.record_success("chunks")
         items = data.get("items") if isinstance(data, dict) else []
         return self._to_evidence(items)
 
@@ -57,17 +64,30 @@ class RagEngineRetrieverAdapter:
         collection_id: str | None,
         plan: RetrievalPlan,
     ) -> list[EvidenceItem]:
+        retrieval_metrics_store.record_request("summaries")
         payload = {
             "query": query,
             "tenant_id": tenant_id,
             "collection_id": collection_id,
             "summary_k": int(plan.summary_k),
         }
-        data = await self._post_json("/api/v1/retrieval/summaries", payload)
+        try:
+            data = await self._post_json("/api/v1/retrieval/summaries", payload, endpoint="summaries")
+            retrieval_metrics_store.record_success("summaries")
+        except (httpx.RequestError, httpx.HTTPStatusError) as exc:
+            retrieval_metrics_store.record_failure("summaries")
+            retrieval_metrics_store.record_degraded_response("summaries")
+            logger.warning(
+                "rag_retrieval_endpoint_degraded",
+                endpoint="summaries",
+                reason="returning_empty_summaries",
+                error=str(exc),
+            )
+            return []
         items = data.get("items") if isinstance(data, dict) else []
         return self._to_evidence(items)
 
-    async def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def _post_json(self, path: str, payload: dict[str, Any], *, endpoint: str) -> dict[str, Any]:
         selector = self.backend_selector
         if selector is None:
             base_url = str(self.base_url or "http://localhost:8000").rstrip("/")
@@ -78,12 +98,21 @@ class RagEngineRetrieverAdapter:
 
         try:
             return await self._post_once(base_url=primary_base_url, path=path, payload=payload)
-        except httpx.RequestError as primary_exc:
+        except (httpx.RequestError, httpx.HTTPStatusError) as primary_exc:
             if selector.is_forced():
+                raise
+
+            retryable_status = (
+                isinstance(primary_exc, httpx.HTTPStatusError)
+                and primary_exc.response is not None
+                and primary_exc.response.status_code >= 500
+            )
+            if isinstance(primary_exc, httpx.HTTPStatusError) and not retryable_status:
                 raise
 
             alternate_backend = selector.alternate_backend(primary_backend)
             alternate_base_url = selector.base_url_for(alternate_backend)
+            retrieval_metrics_store.record_fallback_retry(endpoint)
             logger.warning(
                 "rag_backend_fallback_retry",
                 from_backend=primary_backend,

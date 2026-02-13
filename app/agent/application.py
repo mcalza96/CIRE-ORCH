@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Protocol
+
+import structlog
 
 from app.agent.models import (
     AnswerDraft,
@@ -44,6 +47,8 @@ class AnswerGeneratorPort(Protocol):
 
 class ValidatorPort(Protocol):
     def validate(self, draft: AnswerDraft, plan: RetrievalPlan, query: str) -> ValidationResult: ...
+
+
 from app.agent.policies import (
     build_retrieval_plan,
     classify_intent,
@@ -51,6 +56,9 @@ from app.agent.policies import (
     detect_scope_candidates,
     suggest_scope_candidates,
 )
+
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -172,18 +180,52 @@ class HandleQuestionUseCase:
                 validation=validation,
             )
 
-        chunks = await self._retriever.retrieve_chunks(
-            query=cmd.query,
-            tenant_id=cmd.tenant_id,
-            collection_id=cmd.collection_id,
-            plan=plan,
+        chunks_task = asyncio.create_task(
+            self._retriever.retrieve_chunks(
+                query=cmd.query,
+                tenant_id=cmd.tenant_id,
+                collection_id=cmd.collection_id,
+                plan=plan,
+            )
         )
-        summaries = await self._retriever.retrieve_summaries(
-            query=cmd.query,
-            tenant_id=cmd.tenant_id,
-            collection_id=cmd.collection_id,
-            plan=plan,
+        summaries_task = asyncio.create_task(
+            self._retriever.retrieve_summaries(
+                query=cmd.query,
+                tenant_id=cmd.tenant_id,
+                collection_id=cmd.collection_id,
+                plan=plan,
+            )
         )
+
+        chunks_result, summaries_result = await asyncio.gather(chunks_task, summaries_task, return_exceptions=True)
+
+        chunks: list[EvidenceItem] = []
+        summaries: list[EvidenceItem] = []
+
+        chunks_error = chunks_result if isinstance(chunks_result, Exception) else None
+        summaries_error = summaries_result if isinstance(summaries_result, Exception) else None
+
+        if chunks_error is None:
+            chunks = chunks_result
+        if summaries_error is None:
+            summaries = summaries_result
+
+        if chunks_error and summaries_error:
+            logger.error(
+                "rag_retrieval_failed",
+                chunks_error=str(chunks_error),
+                summaries_error=str(summaries_error),
+            )
+            raise RuntimeError("RAG retrieval failed for both chunks and summaries") from chunks_error
+
+        if chunks_error or summaries_error:
+            logger.warning(
+                "rag_retrieval_degraded",
+                chunks_failed=chunks_error is not None,
+                summaries_failed=summaries_error is not None,
+                chunks_error=str(chunks_error) if chunks_error else None,
+                summaries_error=str(summaries_error) if summaries_error else None,
+            )
 
         answer = await self._answer_generator.generate(
             query=cmd.query,

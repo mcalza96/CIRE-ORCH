@@ -15,6 +15,44 @@ class _FakeRetriever:
 
 
 @dataclass
+class _ConcurrentProbeRetriever:
+    active_calls: int = 0
+    max_active_calls: int = 0
+
+    async def retrieve_chunks(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan):
+        self.active_calls += 1
+        self.max_active_calls = max(self.max_active_calls, self.active_calls)
+        await asyncio.sleep(0.05)
+        self.active_calls -= 1
+        return [EvidenceItem(source="C1", content="chunk")]
+
+    async def retrieve_summaries(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan):
+        self.active_calls += 1
+        self.max_active_calls = max(self.max_active_calls, self.active_calls)
+        await asyncio.sleep(0.05)
+        self.active_calls -= 1
+        return [EvidenceItem(source="R1", content="summary")]
+
+
+@dataclass
+class _ChunksOnlyRetriever:
+    async def retrieve_chunks(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan):
+        return [EvidenceItem(source="C1", content="chunk-ok")]
+
+    async def retrieve_summaries(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan):
+        raise RuntimeError("summaries-down")
+
+
+@dataclass
+class _FailingRetriever:
+    async def retrieve_chunks(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan):
+        raise RuntimeError("chunks-down")
+
+    async def retrieve_summaries(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan):
+        raise RuntimeError("summaries-down")
+
+
+@dataclass
 class _FakeAnswerGenerator:
     async def generate(self, query: str, scope_label: str, plan: RetrievalPlan, chunks, summaries):
         text = "6.1.3 d) | 'Declaracion de aplicabilidad' | Fuente(C1)"
@@ -149,3 +187,74 @@ def test_use_case_requests_clarification_for_conflict_mode():
 
     assert result.clarification is not None
     assert "conflicto" in result.clarification.question.lower()
+
+
+def test_use_case_runs_chunk_and_summary_retrieval_concurrently():
+    retriever = _ConcurrentProbeRetriever()
+    use_case = HandleQuestionUseCase(
+        retriever=retriever,
+        answer_generator=_FakeAnswerGenerator(),
+        validator=_FakeValidator(),
+    )
+
+    asyncio.run(
+        use_case.execute(
+            HandleQuestionCommand(
+                query="Que exige ISO 9001 en 7.5.3?",
+                tenant_id="tenant-1",
+                collection_id="collection-uuid",
+                scope_label="tenant=tenant-1 / coleccion=iso",
+            )
+        )
+    )
+
+    assert retriever.max_active_calls == 2
+
+
+def test_use_case_degrades_when_summary_retrieval_fails():
+    use_case = HandleQuestionUseCase(
+        retriever=_ChunksOnlyRetriever(),
+        answer_generator=_FakeAnswerGenerator(),
+        validator=_FakeValidator(),
+    )
+
+    result = asyncio.run(
+        use_case.execute(
+            HandleQuestionCommand(
+                query="Que exige ISO 9001 en 7.5.3?",
+                tenant_id="tenant-1",
+                collection_id="collection-uuid",
+                scope_label="tenant=tenant-1 / coleccion=iso",
+            )
+        )
+    )
+
+    assert result.validation.accepted is True
+    assert len(result.answer.evidence) == 1
+    assert result.answer.evidence[0].content == "chunk-ok"
+
+
+def test_use_case_raises_when_both_retrievals_fail():
+    use_case = HandleQuestionUseCase(
+        retriever=_FailingRetriever(),
+        answer_generator=_FakeAnswerGenerator(),
+        validator=_FakeValidator(),
+    )
+
+    try:
+        asyncio.run(
+            use_case.execute(
+                HandleQuestionCommand(
+                    query="Que exige ISO 9001 en 7.5.3?",
+                    tenant_id="tenant-1",
+                    collection_id="collection-uuid",
+                    scope_label="tenant=tenant-1 / coleccion=iso",
+                )
+            )
+        )
+        raised = False
+    except RuntimeError as exc:
+        raised = True
+        assert "RAG retrieval failed" in str(exc)
+
+    assert raised is True

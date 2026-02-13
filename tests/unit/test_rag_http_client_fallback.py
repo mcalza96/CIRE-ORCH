@@ -1,10 +1,12 @@
 import asyncio
+from typing import cast
 
 import httpx
 
 from app.agent import http_adapters as adapters_module
 from app.agent.http_adapters import RagEngineRetrieverAdapter
 from app.agent.models import RetrievalPlan
+from app.clients.backend_selector import RagBackendSelector
 
 
 class _FakeSelector:
@@ -76,8 +78,8 @@ def test_retriever_retries_with_alternate_backend_on_connection_error(monkeypatc
 
     monkeypatch.setattr(adapters_module.httpx, "AsyncClient", _Client)
 
-    selector = _FakeSelector()
-    retriever = RagEngineRetrieverAdapter(backend_selector=selector)
+    fake_selector = _FakeSelector()
+    retriever = RagEngineRetrieverAdapter(backend_selector=cast(RagBackendSelector, fake_selector))
     plan = RetrievalPlan(mode="explicativa", chunk_k=5, chunk_fetch_k=20, summary_k=2)
 
     items = asyncio.run(
@@ -92,4 +94,72 @@ def test_retriever_retries_with_alternate_backend_on_connection_error(monkeypatc
     assert len(items) == 1
     assert calls[0].startswith("http://local:8000")
     assert calls[1].startswith("http://docker:8000")
-    assert selector.updated_to == "docker"
+    assert fake_selector.updated_to == "docker"
+
+
+def test_summaries_degrade_to_empty_when_both_backends_fail(monkeypatch):
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, json):
+            req = httpx.Request("POST", url)
+            raise httpx.ConnectError("backend unavailable", request=req)
+
+    monkeypatch.setattr(adapters_module.httpx, "AsyncClient", _Client)
+
+    retriever = RagEngineRetrieverAdapter(backend_selector=cast(RagBackendSelector, _FakeSelector()))
+    plan = RetrievalPlan(mode="explicativa", chunk_k=5, chunk_fetch_k=20, summary_k=2)
+
+    items = asyncio.run(
+        retriever.retrieve_summaries(
+            query="prueba",
+            tenant_id="tenant-1",
+            collection_id=None,
+            plan=plan,
+        )
+    )
+
+    assert items == []
+
+
+def test_chunks_raise_when_both_backends_fail(monkeypatch):
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, json):
+            req = httpx.Request("POST", url)
+            raise httpx.ConnectError("backend unavailable", request=req)
+
+    monkeypatch.setattr(adapters_module.httpx, "AsyncClient", _Client)
+
+    retriever = RagEngineRetrieverAdapter(backend_selector=cast(RagBackendSelector, _FakeSelector()))
+    plan = RetrievalPlan(mode="explicativa", chunk_k=5, chunk_fetch_k=20, summary_k=2)
+
+    raised = False
+    try:
+        asyncio.run(
+            retriever.retrieve_chunks(
+                query="prueba",
+                tenant_id="tenant-1",
+                collection_id=None,
+                plan=plan,
+            )
+        )
+    except httpx.RequestError:
+        raised = True
+
+    assert raised is True
