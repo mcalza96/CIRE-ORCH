@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from runtime.qa_orchestrator.adapters import LiteralEvidenceValidator
 from runtime.qa_orchestrator.models import (
     AnswerDraft,
     ClarificationRequest,
@@ -41,6 +40,10 @@ class AnswerGeneratorPort(Protocol):
         chunks: list[EvidenceItem],
         summaries: list[EvidenceItem],
     ) -> AnswerDraft: ...
+
+
+class ValidatorPort(Protocol):
+    def validate(self, draft: AnswerDraft, plan: RetrievalPlan, query: str) -> ValidationResult: ...
 from runtime.qa_orchestrator.policies import (
     build_retrieval_plan,
     classify_intent,
@@ -74,7 +77,7 @@ class HandleQuestionUseCase:
         self,
         retriever: RetrieverPort,
         answer_generator: AnswerGeneratorPort,
-        validator: LiteralEvidenceValidator,
+        validator: ValidatorPort,
     ):
         self._retriever = retriever
         self._answer_generator = answer_generator

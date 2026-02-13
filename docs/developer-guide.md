@@ -9,8 +9,8 @@
 ## Quality gates
 
 ```bash
-ruff check orchestrator tests
-python -m compileall orchestrator tests
+ruff check runtime tests chat_cli.py
+python -m compileall runtime tests chat_cli.py
 pytest tests/unit -q
 ```
 

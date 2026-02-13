@@ -13,11 +13,11 @@ Este repositorio contiene solo el **Q/A Orchestrator**.
 
 ## Componentes
 
-- API: `orchestrator/runtime/orchestrator_main.py`
-- Router: `orchestrator/runtime/orchestrator_api/v1/routers/knowledge.py`
-- Caso de uso: `orchestrator/runtime/qa_orchestrator/application.py`
-- Políticas: `orchestrator/runtime/qa_orchestrator/policies.py`
-- Adaptadores HTTP al engine: `orchestrator/runtime/qa_orchestrator/http_adapters.py`
+- API: `runtime/orchestrator_main.py`
+- Router: `runtime/orchestrator_api/v1/routers/knowledge.py`
+- Caso de uso: `runtime/qa_orchestrator/application.py`
+- Políticas: `runtime/qa_orchestrator/policies.py`
+- Adaptadores HTTP al engine: `runtime/qa_orchestrator/http_adapters.py`
 
 ## Límites explícitos
 

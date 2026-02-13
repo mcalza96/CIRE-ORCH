@@ -34,9 +34,10 @@ Chat CLI:
 
 ## Estructura
 
-- `orchestrator/runtime/orchestrator_main.py`: API FastAPI del orquestador
-- `orchestrator/runtime/orchestrator_api/v1/routers/knowledge.py`: endpoint principal `/api/v1/knowledge/answer`
-- `orchestrator/runtime/qa_orchestrator/*`: políticas, validación y caso de uso
+- `runtime/orchestrator_main.py`: API FastAPI del orquestador
+- `runtime/orchestrator_api/v1/routers/knowledge.py`: endpoint principal `/api/v1/knowledge/answer`
+- `runtime/qa_orchestrator/*`: políticas, validación y caso de uso
+- `chat_cli.py`: CLI HTTP para conversación manual
 - `tests/unit/*qa_orchestrator*`: pruebas unitarias del orquestador
 
 ## Comandos de desarrollo

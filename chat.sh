@@ -46,4 +46,4 @@ if [ -n "${CHAT_COLLECTION_ID:-}" ]; then
 fi
 
 export PYTHONPATH="$BASE_DIR:${PYTHONPATH:-}"
-"$VENV_PYTHON" "$BASE_DIR/orchestrator/chat_cli.py" "${CLI_ARGS[@]}" "$@"
+"$VENV_PYTHON" "$BASE_DIR/chat_cli.py" "${CLI_ARGS[@]}" "$@"
