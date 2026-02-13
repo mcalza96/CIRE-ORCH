@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+structlog
+pydantic
+pydantic-settings
+httpx
+openai
+python-dotenv
+pytest
+ruff

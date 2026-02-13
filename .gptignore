@@ -1,0 +1,52 @@
+# AI Context Optimization
+# Exclude large, generated, or irrelevant files from AI context.
+
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build Artifacts
+.next/
+dist/
+build/
+out/
+coverage/
+
+# Git
+.git/
+
+# Debug Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# Binary / Media Assets (unless specifically needed)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.svg
+*.woff
+*.woff2
+*.ttf
+*.eot
+*.mp4
+*.webm
+*.pdf
+*.zip
+*.tar.gz
+
+# IDE / System
+.DS_Store
+.vscode/
+.idea/
+
+# Large/Noisy Generated Files
+*.map
+*.tsbuildinfo
+
+# Optional: Large Documentation not currently in use
+# walkthrough.md 
