@@ -23,6 +23,7 @@ class RetrieverPort(Protocol):
         tenant_id: str,
         collection_id: str | None,
         plan: RetrievalPlan,
+        user_id: str | None = None,
     ) -> list[EvidenceItem]: ...
 
     async def retrieve_summaries(
@@ -31,6 +32,7 @@ class RetrieverPort(Protocol):
         tenant_id: str,
         collection_id: str | None,
         plan: RetrievalPlan,
+        user_id: str | None = None,
     ) -> list[EvidenceItem]: ...
 
 
@@ -67,6 +69,7 @@ class HandleQuestionCommand:
     tenant_id: str
     collection_id: str | None
     scope_label: str
+    user_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -186,6 +189,7 @@ class HandleQuestionUseCase:
                 tenant_id=cmd.tenant_id,
                 collection_id=cmd.collection_id,
                 plan=plan,
+                user_id=cmd.user_id,
             )
         )
         summaries_task = asyncio.create_task(
@@ -194,6 +198,7 @@ class HandleQuestionUseCase:
                 tenant_id=cmd.tenant_id,
                 collection_id=cmd.collection_id,
                 plan=plan,
+                user_id=cmd.user_id,
             )
         )
 

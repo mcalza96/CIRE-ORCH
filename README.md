@@ -37,15 +37,35 @@ Chat CLI:
 - `RAG_ENGINE_PROBE_TIMEOUT_MS` (default: `300`)
 - `RAG_ENGINE_BACKEND_TTL_SECONDS` (default: `20`)
 - `RAG_ENGINE_FORCE_BACKEND` (opcional: `local|docker`)
-- `OPENAI_API_KEY` (opcional para generacion de respuesta)
-- `OPENAI_MODEL` (default: `gpt-4o-mini`)
+- `SUPABASE_URL` (requerido para login interactivo en `chat.sh`)
+- `SUPABASE_ANON_KEY` (requerido para login interactivo en `chat.sh`)
+- `SUPABASE_SERVICE_ROLE_KEY` (requerido para resolver membresias tenant en ORCH)
+- `SUPABASE_MEMBERSHIPS_TABLE` (default: `tenant_memberships`, ej: `memberships`)
+- `GROQ_API_KEY` (opcional para generacion de respuesta)
+- `GROQ_MODEL_CHAT` (default: `openai/gpt-oss-20b`)
+- `GEMINI_API_KEY` (opcional, reservado para integraciones futuras)
+
+`chat.sh` e `ing.sh` son wrappers livianos. La orquestación CLI vive en Python:
+
+- entrypoint técnico unificado: `orch_cli.py` (`chat` / `ingest`)
+- runtime: `app/orch_cli_runtime.py`
+
+- sesión en `~/.cire/orch/session.json`
+- refresh automático
+- login interactivo como fallback
+
+Flags nuevos del chat:
+
+- `--doctor`: ejecuta diagnóstico de auth/tenant/collection/retrieval y sale
+- `--non-interactive`: falla si necesita prompts interactivos
 
 ### Estructura
 
 - `app/api/server.py`: API FastAPI del orquestador
 - `app/api/v1/routes/knowledge.py`: endpoint principal `/api/v1/knowledge/answer`
 - `app/agent/*`: politicas, validacion y caso de uso
-- `chat_cli.py`: CLI HTTP para conversacion manual
+- `orch_cli.py`: dispatcher CLI unificado (`chat` / `ingest`)
+- `app/chat_cli_runtime.py`: runtime del subcomando `chat`
 - `tests/unit/*qa_orchestrator*`: pruebas unitarias del orquestador
 
 ### Comandos de desarrollo
@@ -62,7 +82,9 @@ venv/bin/python -m pytest tests/unit -q
 
 - Entrada recomendada para equipo: `./ing.sh`
 - Ubicacion canonica: `tools/ingestion-client/`
-- Si `RAG_URL` no está definido, `./ing.sh` resuelve backend con la misma política híbrida (`RAG_ENGINE_LOCAL_URL` -> fallback `RAG_ENGINE_DOCKER_URL`, con `RAG_ENGINE_FORCE_BACKEND`).
+- Si `RAG_URL` no está definido, el subcomando `ingest` resuelve backend con la política híbrida (`RAG_ENGINE_LOCAL_URL` -> fallback `RAG_ENGINE_DOCKER_URL`, con `RAG_ENGINE_FORCE_BACKEND`).
+- `./ing.sh` y `./chat.sh` delegan al mismo dispatcher Python (`orch_cli.py`).
+- Si no se provee `TENANT_ID`, `ingest` intenta descubrir tenants autorizados en ORCH y preseleccionar uno antes de entrar al flujo interactivo de ingesta.
 
 Ejemplos:
 
@@ -170,15 +192,35 @@ Chat CLI:
 - `RAG_ENGINE_PROBE_TIMEOUT_MS` (default: `300`)
 - `RAG_ENGINE_BACKEND_TTL_SECONDS` (default: `20`)
 - `RAG_ENGINE_FORCE_BACKEND` (optional: `local|docker`)
-- `OPENAI_API_KEY` (optional, for answer generation)
-- `OPENAI_MODEL` (default: `gpt-4o-mini`)
+- `SUPABASE_URL` (required for interactive login in `chat.sh`)
+- `SUPABASE_ANON_KEY` (required for interactive login in `chat.sh`)
+- `SUPABASE_SERVICE_ROLE_KEY` (required for tenant membership lookup in ORCH)
+- `SUPABASE_MEMBERSHIPS_TABLE` (default: `tenant_memberships`, e.g. `memberships`)
+- `GROQ_API_KEY` (optional, for answer generation)
+- `GROQ_MODEL_CHAT` (default: `openai/gpt-oss-20b`)
+- `GEMINI_API_KEY` (optional, reserved for future integrations)
+
+`chat.sh` and `ing.sh` are thin wrappers. CLI orchestration is handled in Python:
+
+- unified technical entrypoint: `orch_cli.py` (`chat` / `ingest`)
+- runtime: `app/orch_cli_runtime.py`
+
+- session file at `~/.cire/orch/session.json`
+- automatic refresh
+- interactive login fallback
+
+New chat flags:
+
+- `--doctor`: runs auth/tenant/collection/retrieval diagnostics and exits
+- `--non-interactive`: fails if user prompts are required
 
 ### Project layout
 
 - `app/api/server.py`: FastAPI server
 - `app/api/v1/routes/knowledge.py`: main endpoint `/api/v1/knowledge/answer`
 - `app/agent/*`: policies, validation, and use case logic
-- `chat_cli.py`: HTTP chat CLI entrypoint
+- `orch_cli.py`: unified CLI dispatcher (`chat` / `ingest`)
+- `app/chat_cli_runtime.py`: `chat` subcommand runtime
 - `tests/unit/*qa_orchestrator*`: orchestrator unit tests
 
 ### Development commands
@@ -195,7 +237,9 @@ venv/bin/python -m pytest tests/unit -q
 
 - Team entrypoint: `./ing.sh`
 - Canonical location: `tools/ingestion-client/`
-- If `RAG_URL` is not defined, `./ing.sh` resolves backend with the same hybrid policy (`RAG_ENGINE_LOCAL_URL` -> fallback `RAG_ENGINE_DOCKER_URL`, with `RAG_ENGINE_FORCE_BACKEND`).
+- If `RAG_URL` is not defined, the `ingest` subcommand resolves backend using the same hybrid policy (`RAG_ENGINE_LOCAL_URL` -> fallback `RAG_ENGINE_DOCKER_URL`, with `RAG_ENGINE_FORCE_BACKEND`).
+- `./ing.sh` and `./chat.sh` delegate to the same Python dispatcher (`orch_cli.py`).
+- If `TENANT_ID` is not provided, `ingest` tries to discover authorized tenants from ORCH and preselect one before entering interactive ingestion setup.
 
 Examples:
 

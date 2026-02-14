@@ -5,7 +5,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_DIR="${INGEST_CLIENT_STATE_DIR:-$SCRIPT_DIR}"
 RAG_URL="${RAG_URL:-${RAG_SERVICE_URL:-http://localhost:8000}}"
+ORCH_URL="${ORCH_URL:-${ORCHESTRATOR_URL:-http://localhost:8001}}"
 REGISTRY_FILE="$STATE_DIR/.rag_tenants.json"
+RAG_API_KEY="${RAG_API_KEY:-${API_KEY:-${RAG_SERVICE_SECRET:-}}}"
+RAG_SERVICE_SECRET="${RAG_SERVICE_SECRET:-}"
+ORCH_ACCESS_TOKEN="${ORCH_ACCESS_TOKEN:-${SUPABASE_ACCESS_TOKEN:-${AUTH_BEARER_TOKEN:-}}}"
 
 TENANT_ID="${TENANT_ID:-}"
 TENANT_NAME="${TENANT_NAME:-}"
@@ -23,6 +27,7 @@ GEMINI_COST_PER_VISUAL_PAGE_USD="${GEMINI_COST_PER_VISUAL_PAGE_USD:-0.00003}"
 
 declare -a FILE_QUEUE=()
 declare -a GLOB_PATTERNS=()
+declare -a AUTH_CURL_ARGS=()
 
 STEP_HEALTH="pendiente"
 STEP_TENANT="pendiente"
@@ -88,6 +93,116 @@ Ejemplos:
 EOF
 }
 
+build_auth_curl_args() {
+  AUTH_CURL_ARGS=()
+  if [[ -n "${RAG_API_KEY:-}" ]]; then
+    AUTH_CURL_ARGS+=(-H "Authorization: Bearer $RAG_API_KEY")
+  fi
+  if [[ -n "${RAG_SERVICE_SECRET:-}" ]]; then
+    AUTH_CURL_ARGS+=(-H "X-Service-Secret: $RAG_SERVICE_SECRET")
+  fi
+}
+
+fetch_api_tenants() {
+  local status
+  status=$(curl -sS -o /tmp/rag_tenants.json -w "%{http_code}" --max-time 4 \
+    ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
+    "$RAG_URL/api/v1/management/tenants?limit=200" || true)
+
+  if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
+    return 0
+  fi
+
+  python3 - <<'PY'
+import json
+from pathlib import Path
+
+try:
+    payload = json.loads(Path("/tmp/rag_tenants.json").read_text(encoding="utf-8"))
+except Exception:
+    payload = {}
+
+items = payload if isinstance(payload, list) else payload.get("items", [])
+for item in items:
+    if not isinstance(item, dict):
+        continue
+    tid = str(item.get("id") or item.get("tenant_id") or "").strip()
+    name = str(item.get("name") or item.get("tenant_name") or tid).strip()
+    if tid:
+        print(f"{tid}|{name or tid}")
+PY
+}
+
+fetch_orch_tenants() {
+  if [[ -z "${ORCH_ACCESS_TOKEN:-}" ]]; then
+    return 0
+  fi
+
+  local status
+  status=$(curl -sS -o /tmp/orch_tenants.json -w "%{http_code}" --max-time 4 \
+    -H "Authorization: Bearer $ORCH_ACCESS_TOKEN" \
+    "$ORCH_URL/api/v1/knowledge/tenants" || true)
+
+  if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
+    return 0
+  fi
+
+  python3 - <<'PY'
+import json
+from pathlib import Path
+
+try:
+    payload = json.loads(Path("/tmp/orch_tenants.json").read_text(encoding="utf-8"))
+except Exception:
+    payload = {}
+
+items = payload if isinstance(payload, list) else payload.get("items", [])
+for item in items:
+    if not isinstance(item, dict):
+        continue
+    tid = str(item.get("id") or "").strip()
+    name = str(item.get("name") or tid).strip()
+    if tid:
+        print(f"{tid}|{name or tid}")
+PY
+}
+
+fetch_orch_collections() {
+  local tenant_id="$1"
+  if [[ -z "${ORCH_ACCESS_TOKEN:-}" ]]; then
+    return 0
+  fi
+
+  local status
+  status=$(curl -sS -o /tmp/orch_collections.json -w "%{http_code}" --max-time 4 \
+    -H "Authorization: Bearer $ORCH_ACCESS_TOKEN" \
+    "$ORCH_URL/api/v1/knowledge/collections?tenant_id=$tenant_id" || true)
+
+  if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
+    return 0
+  fi
+
+  python3 - <<'PY'
+import json
+from pathlib import Path
+
+try:
+    payload = json.loads(Path("/tmp/orch_collections.json").read_text(encoding="utf-8"))
+except Exception:
+    payload = {}
+
+items = payload if isinstance(payload, list) else payload.get("items", [])
+for item in items:
+    if not isinstance(item, dict):
+        continue
+    cid = str(item.get("id") or "").strip()
+    key = str(item.get("collection_key") or "").strip()
+    name = str(item.get("name") or key or cid).strip()
+    if cid:
+        print(f"{cid}|{key}|{name}|open")
+PY
+}
+
 uuid_v4() {
   python3 - <<'PY'
 import uuid
@@ -147,6 +262,8 @@ PY
 }
 
 select_or_create_tenant() {
+  build_auth_curl_args
+
   if [[ -n "$TENANT_ID" ]]; then
     [[ -n "$TENANT_NAME" ]] && register_tenant "$TENANT_ID" "$TENANT_NAME"
     return 0
@@ -154,8 +271,8 @@ select_or_create_tenant() {
 
   ensure_registry
 
-  local tenants
-  tenants=$(python3 - "$REGISTRY_FILE" <<'PY'
+  local registry_tenants
+  registry_tenants=$(python3 - "$REGISTRY_FILE" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -170,18 +287,56 @@ for t in data.get("tenants", []):
     print(f"{t.get('id','')}|{t.get('name','')}")
 PY
 )
+  local api_tenants
+  api_tenants="$(fetch_api_tenants || true)"
+  local orch_tenants
+  orch_tenants="$(fetch_orch_tenants || true)"
 
   echo ""
   echo "🏢 Tenant setup"
 
   local tenant_ids=()
   local tenant_names=()
+  local seen="|"
   local line
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
-    tenant_ids+=("${line%%|*}")
-    tenant_names+=("${line#*|}")
-  done <<< "$tenants"
+    local tid="${line%%|*}"
+    local tname="${line#*|}"
+    [[ -z "$tid" ]] && continue
+    if [[ "$seen" == *"|$tid|"* ]]; then
+      continue
+    fi
+    seen+="$tid|"
+    tenant_ids+=("$tid")
+    tenant_names+=("${tname:-$tid}")
+  done <<< "$orch_tenants"
+
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    local tid="${line%%|*}"
+    local tname="${line#*|}"
+    [[ -z "$tid" ]] && continue
+    if [[ "$seen" == *"|$tid|"* ]]; then
+      continue
+    fi
+    seen+="$tid|"
+    tenant_ids+=("$tid")
+    tenant_names+=("${tname:-$tid}")
+  done <<< "$api_tenants"
+
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    local tid="${line%%|*}"
+    local tname="${line#*|}"
+    [[ -z "$tid" ]] && continue
+    if [[ "$seen" == *"|$tid|"* ]]; then
+      continue
+    fi
+    seen+="$tid|"
+    tenant_ids+=("$tid")
+    tenant_names+=("${tname:-$tid}")
+  done <<< "$registry_tenants"
 
   echo "[1] Crear tenant nuevo"
   local i
@@ -215,15 +370,40 @@ PY
 resolve_collection() {
   COLLECTION_CLEANUP_REQUIRED="false"
   local collections_json="[]"
-  local collections_status
-  collections_status=$(curl -sS -o /tmp/rag_collections.json -w "%{http_code}" --max-time 4 "$RAG_URL/api/v1/ingestion/collections?tenant_id=$TENANT_ID" || true)
-  if [[ "$collections_status" -ge 200 && "$collections_status" -lt 300 ]]; then
-    collections_json=$(cat /tmp/rag_collections.json 2>/dev/null || printf '[]')
+  local orch_rows
+  orch_rows="$(fetch_orch_collections "$TENANT_ID" || true)"
+  if [[ -n "$orch_rows" ]]; then
+    collections_json="$(python3 - "$orch_rows" <<'PY'
+import json
+import sys
+
+rows = []
+raw = sys.argv[1]
+for line in raw.splitlines():
+    if not line.strip():
+        continue
+    parts = line.split("|")
+    if len(parts) < 4:
+        continue
+    cid, key, name, status = parts[:4]
+    rows.append({"id": cid, "collection_key": key, "name": name, "status": status})
+print(json.dumps(rows, ensure_ascii=True))
+PY
+)"
   else
-    collections_json='[]'
-    if [[ "$collections_status" == "404" ]]; then
-      echo "⚠️  Endpoint /api/v1/ingestion/collections no disponible (HTTP 404)."
-      echo "💡 Probablemente la API está desactualizada; reinicia el servicio RAG."
+    local collections_status
+    collections_status=$(curl -sS -o /tmp/rag_collections.json -w "%{http_code}" --max-time 4 \
+      ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
+      -H "X-Tenant-ID: $TENANT_ID" \
+      "$RAG_URL/api/v1/ingestion/collections?tenant_id=$TENANT_ID" || true)
+    if [[ "$collections_status" -ge 200 && "$collections_status" -lt 300 ]]; then
+      collections_json=$(cat /tmp/rag_collections.json 2>/dev/null || printf '[]')
+    else
+      collections_json='[]'
+      if [[ "$collections_status" == "404" ]]; then
+        echo "⚠️  Endpoint /api/v1/ingestion/collections no disponible (HTTP 404)."
+        echo "💡 Probablemente la API está desactualizada; reinicia el servicio RAG."
+      fi
     fi
   fi
 
@@ -481,6 +661,8 @@ PY
   local status
   status=$(curl -sS -o /tmp/rag_collection_cleanup.json -w "%{http_code}" \
     -X POST "$RAG_URL/api/v1/ingestion/collections/cleanup" \
+    ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
+    -H "X-Tenant-ID: $TENANT_ID" \
     -H "Content-Type: application/json" \
     -d "$payload")
 
@@ -523,6 +705,8 @@ PY
   local status
   status=$(curl -sS -o /tmp/rag_batch_create.json -w "%{http_code}" \
     -X POST "$RAG_URL/api/v1/ingestion/batches" \
+    ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
+    -H "X-Tenant-ID: $TENANT_ID" \
     -H "Content-Type: application/json" \
     -d "$payload")
 
@@ -571,6 +755,8 @@ PY
   local status
   status=$(curl -sS -o /tmp/rag_batch_file.json -w "%{http_code}" \
     -X POST "$RAG_URL/api/v1/ingestion/batches/$BATCH_ID/files" \
+    ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
+    -H "X-Tenant-ID: $TENANT_ID" \
     -F "file=@$file_path" \
     -F "metadata=$metadata")
 
@@ -586,6 +772,8 @@ PY
 show_batch_status() {
   local status
   status=$(curl -sS -o /tmp/rag_batch_status.json -w "%{http_code}" \
+    ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
+    -H "X-Tenant-ID: $TENANT_ID" \
     "$RAG_URL/api/v1/ingestion/batches/$BATCH_ID/status")
   if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
     echo "⚠️  No pude leer estado del batch (HTTP $status)"
@@ -846,6 +1034,8 @@ wait_for_batch_completion() {
   while (( n < BATCH_POLL_MAX )); do
     local http_code
     http_code=$(curl -sS -o /tmp/rag_batch_status.json -w "%{http_code}" \
+      ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
+      -H "X-Tenant-ID: $TENANT_ID" \
       "$RAG_URL/api/v1/ingestion/batches/$BATCH_ID/status" || true)
 
     if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then

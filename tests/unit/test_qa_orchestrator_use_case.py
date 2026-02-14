@@ -7,10 +7,10 @@ from app.agent.models import AnswerDraft, EvidenceItem, RetrievalPlan, Validatio
 
 @dataclass
 class _FakeRetriever:
-    async def retrieve_chunks(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan):
+    async def retrieve_chunks(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan, user_id: str | None = None):
         return [EvidenceItem(source="C1", content="[6.1.3 d)] Declaracion de aplicabilidad...")]
 
-    async def retrieve_summaries(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan):
+    async def retrieve_summaries(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan, user_id: str | None = None):
         return [EvidenceItem(source="R1", content="Resumen regulatorio")]
 
 
@@ -19,14 +19,14 @@ class _ConcurrentProbeRetriever:
     active_calls: int = 0
     max_active_calls: int = 0
 
-    async def retrieve_chunks(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan):
+    async def retrieve_chunks(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan, user_id: str | None = None):
         self.active_calls += 1
         self.max_active_calls = max(self.max_active_calls, self.active_calls)
         await asyncio.sleep(0.05)
         self.active_calls -= 1
         return [EvidenceItem(source="C1", content="chunk")]
 
-    async def retrieve_summaries(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan):
+    async def retrieve_summaries(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan, user_id: str | None = None):
         self.active_calls += 1
         self.max_active_calls = max(self.max_active_calls, self.active_calls)
         await asyncio.sleep(0.05)
@@ -36,19 +36,19 @@ class _ConcurrentProbeRetriever:
 
 @dataclass
 class _ChunksOnlyRetriever:
-    async def retrieve_chunks(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan):
+    async def retrieve_chunks(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan, user_id: str | None = None):
         return [EvidenceItem(source="C1", content="chunk-ok")]
 
-    async def retrieve_summaries(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan):
+    async def retrieve_summaries(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan, user_id: str | None = None):
         raise RuntimeError("summaries-down")
 
 
 @dataclass
 class _FailingRetriever:
-    async def retrieve_chunks(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan):
+    async def retrieve_chunks(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan, user_id: str | None = None):
         raise RuntimeError("chunks-down")
 
-    async def retrieve_summaries(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan):
+    async def retrieve_summaries(self, query: str, tenant_id: str, collection_id: str | None, plan: RetrievalPlan, user_id: str | None = None):
         raise RuntimeError("summaries-down")
 
 

@@ -8,3 +8,5 @@ openai==2.18.0
 python-dotenv==1.2.1
 pytest==9.0.2
 ruff==0.14.1
+PyJWT==2.10.1
+cryptography==46.0.3

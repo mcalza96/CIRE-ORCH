@@ -8,3 +8,5 @@ openai
 python-dotenv
 pytest
 ruff
+PyJWT
+cryptography

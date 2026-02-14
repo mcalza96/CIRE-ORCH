@@ -33,12 +33,17 @@ class RagEngineRetrieverAdapter:
                 force_backend=settings.RAG_ENGINE_FORCE_BACKEND,
             )
 
+        if not settings.RAG_SERVICE_SECRET:
+            logger.error("rag_service_secret_missing", status="error")
+            raise RuntimeError("RAG_SERVICE_SECRET must be configured for production security")
+
     async def retrieve_chunks(
         self,
         query: str,
         tenant_id: str,
         collection_id: str | None,
         plan: RetrievalPlan,
+        user_id: str | None = None,
     ) -> list[EvidenceItem]:
         retrieval_metrics_store.record_request("chunks")
         payload = {
@@ -48,8 +53,16 @@ class RagEngineRetrieverAdapter:
             "chunk_k": int(plan.chunk_k),
             "fetch_k": int(plan.chunk_fetch_k),
         }
+        context_headers = {"X-Tenant-ID": tenant_id}
+        if user_id:
+            context_headers["X-User-ID"] = user_id
         try:
-            data = await self._post_json("/api/v1/retrieval/chunks", payload, endpoint="chunks")
+            data = await self._post_json(
+                "/api/v1/retrieval/chunks",
+                payload,
+                endpoint="chunks",
+                extra_headers=context_headers,
+            )
         except (httpx.RequestError, httpx.HTTPStatusError):
             retrieval_metrics_store.record_failure("chunks")
             raise
@@ -63,6 +76,7 @@ class RagEngineRetrieverAdapter:
         tenant_id: str,
         collection_id: str | None,
         plan: RetrievalPlan,
+        user_id: str | None = None,
     ) -> list[EvidenceItem]:
         retrieval_metrics_store.record_request("summaries")
         payload = {
@@ -71,8 +85,16 @@ class RagEngineRetrieverAdapter:
             "collection_id": collection_id,
             "summary_k": int(plan.summary_k),
         }
+        context_headers = {"X-Tenant-ID": tenant_id}
+        if user_id:
+            context_headers["X-User-ID"] = user_id
         try:
-            data = await self._post_json("/api/v1/retrieval/summaries", payload, endpoint="summaries")
+            data = await self._post_json(
+                "/api/v1/retrieval/summaries",
+                payload,
+                endpoint="summaries",
+                extra_headers=context_headers,
+            )
             retrieval_metrics_store.record_success("summaries")
         except (httpx.RequestError, httpx.HTTPStatusError) as exc:
             retrieval_metrics_store.record_failure("summaries")
@@ -87,17 +109,29 @@ class RagEngineRetrieverAdapter:
         items = data.get("items") if isinstance(data, dict) else []
         return self._to_evidence(items)
 
-    async def _post_json(self, path: str, payload: dict[str, Any], *, endpoint: str) -> dict[str, Any]:
+    async def _post_json(
+        self,
+        path: str,
+        payload: dict[str, Any],
+        *,
+        endpoint: str,
+        extra_headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         selector = self.backend_selector
         if selector is None:
             base_url = str(self.base_url or "http://localhost:8000").rstrip("/")
-            return await self._post_once(base_url=base_url, path=path, payload=payload)
+            return await self._post_once(base_url=base_url, path=path, payload=payload, extra_headers=extra_headers)
 
         primary_backend = await selector.current_backend()
         primary_base_url = await selector.resolve_base_url()
 
         try:
-            return await self._post_once(base_url=primary_base_url, path=path, payload=payload)
+            return await self._post_once(
+                base_url=primary_base_url,
+                path=path,
+                payload=payload,
+                extra_headers=extra_headers,
+            )
         except (httpx.RequestError, httpx.HTTPStatusError) as primary_exc:
             if selector.is_forced():
                 raise
@@ -120,13 +154,31 @@ class RagEngineRetrieverAdapter:
                 path=path,
                 error=str(primary_exc),
             )
-            response = await self._post_once(base_url=alternate_base_url, path=path, payload=payload)
+            response = await self._post_once(
+                base_url=alternate_base_url,
+                path=path,
+                payload=payload,
+                extra_headers=extra_headers,
+            )
             selector.set_backend(alternate_backend)
             return response
 
-    async def _post_once(self, *, base_url: str, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def _post_once(
+        self,
+        *,
+        base_url: str,
+        path: str,
+        payload: dict[str, Any],
+        extra_headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         url = base_url.rstrip("/") + path
-        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+        headers = {
+            "X-Service-Secret": settings.RAG_SERVICE_SECRET or "",
+            "Content-Type": "application/json",
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+        async with httpx.AsyncClient(timeout=self.timeout_seconds, headers=headers) as client:
             response = await client.post(url, json=payload)
             response.raise_for_status()
             return dict(response.json())

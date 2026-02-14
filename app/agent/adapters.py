@@ -142,7 +142,9 @@ class RetrievalToolsAdapter:
         tenant_id: str,
         collection_id: str | None,
         plan: RetrievalPlan,
+        user_id: str | None = None,
     ) -> list[EvidenceItem]:
+        del user_id
         requested_standards = list(extract_requested_standards(query))
         strict_scope = plan.require_literal_evidence and bool(requested_standards)
 
@@ -203,7 +205,9 @@ class RetrievalToolsAdapter:
         tenant_id: str,
         collection_id: str | None,
         plan: RetrievalPlan,
+        user_id: str | None = None,
     ) -> list[EvidenceItem]:
+        del user_id
         requested_standards = list(extract_requested_standards(query))
         strict_scope = plan.require_literal_evidence and bool(requested_standards)
 

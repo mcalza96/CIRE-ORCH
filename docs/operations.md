@@ -11,8 +11,10 @@
 ## Ingestion client (tooling)
 
 - Entrada de equipo: `./ing.sh`
+- Dispatcher técnico unificado: `python orch_cli.py ingest ...`
 - Ruta canonica: `tools/ingestion-client/`
-- Config principal: `RAG_URL` (si no se define, wrapper usa `RAG_ENGINE_LOCAL_URL`/`RAG_ENGINE_URL`)
+- Config principal: `RAG_URL` (si no se define, `ingest` usa `RAG_ENGINE_LOCAL_URL`/`RAG_ENGINE_DOCKER_URL`)
+- Si `TENANT_ID` no está definido, `ingest` intenta resolver tenants autorizados desde ORCH y preseleccionar uno.
 
 Comandos utiles:
 

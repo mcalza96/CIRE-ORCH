@@ -20,7 +20,9 @@ Este repositorio contiene solo el **Q/A Orchestrator**.
 - Adaptadores HTTP al engine: `app/agent/http_adapters.py`
 - Configuración: `app/core/config.py`
 - Métricas de alcance: `app/core/scope_metrics.py`
-- CLI runtime: `app/chat_cli_runtime.py`
+- CLI dispatcher: `orch_cli.py`
+- CLI runtime: `app/orch_cli_runtime.py`
+- Chat runtime: `app/chat_cli_runtime.py`
 
 ## Límites explícitos
 
