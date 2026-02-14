@@ -125,8 +125,8 @@ RAG_ENGINE_DOCKER_URL=http://api:8000
 
 ### Contrato con RAG externo
 
-- Retrieval de chunks: `POST {resolved_backend}/api/v1/retrieval/chunks`
-- Retrieval de summaries: `POST {resolved_backend}/api/v1/retrieval/summaries`
+- Retrieval de chunks (debug): `POST {resolved_backend}/api/v1/debug/retrieval/chunks`
+- Retrieval de summaries (debug): `POST {resolved_backend}/api/v1/debug/retrieval/summaries`
 - Health recomendado del engine: `GET {resolved_backend}/health`
 
 ### Validacion rapida (real)
@@ -281,8 +281,8 @@ RAG_ENGINE_DOCKER_URL=http://api:8000
 
 ### External RAG contract
 
-- Chunk retrieval: `POST {resolved_backend}/api/v1/retrieval/chunks`
-- Summary retrieval: `POST {resolved_backend}/api/v1/retrieval/summaries`
+- Chunk retrieval (debug): `POST {resolved_backend}/api/v1/debug/retrieval/chunks`
+- Summary retrieval (debug): `POST {resolved_backend}/api/v1/debug/retrieval/summaries`
 - Recommended engine health check: `GET {resolved_backend}/health`
 
 ### Quick real-world verification

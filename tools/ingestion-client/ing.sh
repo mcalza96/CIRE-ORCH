@@ -21,6 +21,10 @@ WAIT_FOR_COMPLETION="true"
 BATCH_POLL_INTERVAL="${BATCH_POLL_INTERVAL:-15}"
 BATCH_POLL_MAX="${BATCH_POLL_MAX:-120}"
 BATCH_SKIP_ESTIMATE="false"
+WATCH_MODE="${WATCH_MODE:-stream}"
+RESUME_BATCH_ID=""
+PROGRESS_JSON="false"
+BATCH_ID="${BATCH_ID:-}"
 VISUAL_RATIO="${VISUAL_ROUTER_MAX_VISUAL_RATIO:-0.5}"
 VISUAL_MAX_PAGES="${VISUAL_ROUTER_MAX_VISUAL_PAGES:-100}"
 GEMINI_COST_PER_VISUAL_PAGE_USD="${GEMINI_COST_PER_VISUAL_PAGE_USD:-0.00003}"
@@ -28,6 +32,7 @@ GEMINI_COST_PER_VISUAL_PAGE_USD="${GEMINI_COST_PER_VISUAL_PAGE_USD:-0.00003}"
 declare -a FILE_QUEUE=()
 declare -a GLOB_PATTERNS=()
 declare -a AUTH_CURL_ARGS=()
+declare -a ORCH_AUTH_CURL_ARGS=()
 
 STEP_HEALTH="pendiente"
 STEP_TENANT="pendiente"
@@ -82,6 +87,9 @@ Opciones:
   --embedding-mode <modo>      LOCAL o CLOUD (si no, se pregunta)
   --no-wait                    No espera cierre del procesamiento del batch
   --skip-estimate              Omite estimación visual pre-ingesta
+  --watch-mode <stream|poll>   Observación worker (default: stream)
+  --resume-batch <batch_id>    Reanudar monitoreo de un batch existente
+  --progress-json              Imprime snapshots JSON de progreso
   --rag-url <url>              URL base API RAG (default: http://localhost:8000)
   -h, --help                   Mostrar ayuda
 
@@ -89,8 +97,19 @@ Ejemplos:
   ./ing.sh --tenant-id 11111111-1111-1111-1111-111111111111 --collection-name trinorma --file ./docs/iso9001.pdf --file ./docs/iso14001.pdf
   ./ing.sh --collection-name normas --glob "./docs/*.md"
   ./ing.sh --collection-name iso-v2 --no-wait
+  ./ing.sh --tenant-id <uuid> --resume-batch <batch_id> --watch-mode stream
   GEMINI_COST_PER_VISUAL_PAGE_USD=0.00003 ./ing.sh --collection-name iso-v2
 EOF
+}
+
+validate_watch_mode() {
+  case "$WATCH_MODE" in
+    stream|poll) ;;
+    *)
+      echo "❌ --watch-mode inválido: $WATCH_MODE (usa stream o poll)"
+      exit 1
+      ;;
+  esac
 }
 
 build_auth_curl_args() {
@@ -103,10 +122,17 @@ build_auth_curl_args() {
   fi
 }
 
+build_orch_auth_curl_args() {
+  ORCH_AUTH_CURL_ARGS=()
+  if [[ -n "${ORCH_ACCESS_TOKEN:-}" ]]; then
+    ORCH_AUTH_CURL_ARGS+=(-H "Authorization: Bearer $ORCH_ACCESS_TOKEN")
+  fi
+}
+
 fetch_api_tenants() {
   local status
   status=$(curl -sS -o /tmp/rag_tenants.json -w "%{http_code}" --max-time 4 \
-    ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
+    "${AUTH_CURL_ARGS[@]}" \
     "$RAG_URL/api/v1/management/tenants?limit=200" || true)
 
   if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
@@ -393,7 +419,7 @@ PY
   else
     local collections_status
     collections_status=$(curl -sS -o /tmp/rag_collections.json -w "%{http_code}" --max-time 4 \
-      ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
+      "${AUTH_CURL_ARGS[@]}" \
       -H "X-Tenant-ID: $TENANT_ID" \
       "$RAG_URL/api/v1/ingestion/collections?tenant_id=$TENANT_ID" || true)
     if [[ "$collections_status" -ge 200 && "$collections_status" -lt 300 ]]; then
@@ -661,7 +687,7 @@ PY
   local status
   status=$(curl -sS -o /tmp/rag_collection_cleanup.json -w "%{http_code}" \
     -X POST "$RAG_URL/api/v1/ingestion/collections/cleanup" \
-    ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
+    "${AUTH_CURL_ARGS[@]}" \
     -H "X-Tenant-ID: $TENANT_ID" \
     -H "Content-Type: application/json" \
     -d "$payload")
@@ -705,7 +731,7 @@ PY
   local status
   status=$(curl -sS -o /tmp/rag_batch_create.json -w "%{http_code}" \
     -X POST "$RAG_URL/api/v1/ingestion/batches" \
-    ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
+    "${AUTH_CURL_ARGS[@]}" \
     -H "X-Tenant-ID: $TENANT_ID" \
     -H "Content-Type: application/json" \
     -d "$payload")
@@ -755,7 +781,7 @@ PY
   local status
   status=$(curl -sS -o /tmp/rag_batch_file.json -w "%{http_code}" \
     -X POST "$RAG_URL/api/v1/ingestion/batches/$BATCH_ID/files" \
-    ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
+    "${AUTH_CURL_ARGS[@]}" \
     -H "X-Tenant-ID: $TENANT_ID" \
     -F "file=@$file_path" \
     -F "metadata=$metadata")
@@ -772,7 +798,7 @@ PY
 show_batch_status() {
   local status
   status=$(curl -sS -o /tmp/rag_batch_status.json -w "%{http_code}" \
-    ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
+    "${AUTH_CURL_ARGS[@]}" \
     -H "X-Tenant-ID: $TENANT_ID" \
     "$RAG_URL/api/v1/ingestion/batches/$BATCH_ID/status")
   if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
@@ -1015,7 +1041,7 @@ PY
   fi
 }
 
-wait_for_batch_completion() {
+wait_for_batch_completion_rag_poll() {
   local n=0
   local status=""
   local last_line=""
@@ -1034,7 +1060,7 @@ wait_for_batch_completion() {
   while (( n < BATCH_POLL_MAX )); do
     local http_code
     http_code=$(curl -sS -o /tmp/rag_batch_status.json -w "%{http_code}" \
-      ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
+      "${AUTH_CURL_ARGS[@]}" \
       -H "X-Tenant-ID: $TENANT_ID" \
       "$RAG_URL/api/v1/ingestion/batches/$BATCH_ID/status" || true)
 
@@ -1174,6 +1200,339 @@ PY
   return 0
 }
 
+emit_progress_json() {
+  local status="$1"
+  local percent="$2"
+  local terminal_count="$3"
+  local total="$4"
+  local processing_count="$5"
+  local queued_count="$6"
+  local docs_count="$7"
+  local failed="$8"
+  local loss_events="$9"
+  local worker_phase="${10}"
+  local eta_seconds="${11}"
+  local stalled="${12}"
+  if [[ "$PROGRESS_JSON" != "true" ]]; then
+    return 0
+  fi
+  python3 - "$status" "$percent" "$terminal_count" "$total" "$processing_count" "$queued_count" "$docs_count" "$failed" "$loss_events" "$worker_phase" "$eta_seconds" "$stalled" <<'PY'
+import json
+import sys
+status, percent, terminal_count, total, processing_count, queued_count, docs_count, failed, loss_events, phase, eta, stalled = sys.argv[1:]
+payload = {
+    "status": status,
+    "progress_percent": float(percent),
+    "terminal_docs": int(terminal_count),
+    "total_files": int(total),
+    "processing_docs": int(processing_count),
+    "queued_docs": int(queued_count),
+    "uploaded_docs": int(docs_count),
+    "failed_docs": int(failed),
+    "loss_events": int(loss_events),
+    "dominant_stage": phase,
+    "eta_seconds": int(eta),
+    "stalled": str(stalled).lower() in {"1", "true", "yes"},
+}
+print(json.dumps(payload, ensure_ascii=True))
+PY
+}
+
+apply_progress_snapshot() {
+  local status="$1"
+  local percent="$2"
+  local terminal_count="$3"
+  local total="$4"
+  local processing_count="$5"
+  local queued_count="$6"
+  local docs_count="$7"
+  local failed="$8"
+  local loss_events="$9"
+  local docs_with_loss="${10}"
+  local docs_with_visual="${11}"
+  local copyright_blocks="${12}"
+  local worker_phase="${13}"
+  local worker_refs="${14}"
+  local eta_seconds="${15}"
+  local stalled="${16}"
+  local progress_line
+  progress_line="📡 status=$status progress=${percent}% terminal=${terminal_count}/${total} processing=${processing_count} queued=${queued_count} uploaded=${docs_count} fase=${worker_phase} eta=${eta_seconds}s stalled=${stalled}"
+
+  STEP_WORKER_STATUS="$status (${percent}%)"
+  STEP_WORKER_DOCS="${terminal_count}/${total}"
+  STEP_WORKER_QUEUE="processing=${processing_count}, queued=${queued_count}, uploaded=${docs_count}, eta=${eta_seconds}s, stalled=${stalled}"
+  STEP_WORKER_ERRORS="$failed"
+  STEP_WORKER_LOSS="${loss_events} eventos (${docs_with_loss}/${docs_with_visual} docs, copyright=${copyright_blocks})"
+  STEP_WORKER_PHASE="$worker_phase"
+  STEP_WORKER_REFS="$worker_refs"
+
+  if [[ "${LAST_PROGRESS_LINE:-}" != "$progress_line" ]]; then
+    echo "$progress_line"
+    LAST_PROGRESS_LINE="$progress_line"
+    render_checklist
+  fi
+  emit_progress_json "$status" "$percent" "$terminal_count" "$total" "$processing_count" "$queued_count" "$docs_count" "$failed" "$loss_events" "$worker_phase" "$eta_seconds" "$stalled"
+}
+
+wait_for_batch_completion_orch_poll() {
+  build_orch_auth_curl_args
+  if [[ ${#ORCH_AUTH_CURL_ARGS[@]} -eq 0 ]]; then
+    return 1
+  fi
+  local n=0
+  echo ""
+  echo "⏳ Esperando procesamiento (ORCH observability poll)..."
+  STEP_WORKER_STATUS="processing (0%)"
+  STEP_WORKER_DOCS="0/0"
+  STEP_WORKER_QUEUE="processing=0, queued=0, uploaded=0"
+  STEP_WORKER_ERRORS="0"
+  STEP_WORKER_LOSS="0 eventos"
+  STEP_WORKER_PHASE="iniciando"
+  STEP_WORKER_REFS="n/a"
+  render_checklist
+
+  while (( n < BATCH_POLL_MAX )); do
+    local http_code
+    http_code=$(curl -sS -o /tmp/orch_batch_progress.json -w "%{http_code}" \
+      "${ORCH_AUTH_CURL_ARGS[@]}" \
+      -H "X-Tenant-ID: $TENANT_ID" \
+      "$ORCH_URL/api/v1/observability/batches/$BATCH_ID/progress?tenant_id=$TENANT_ID" || true)
+
+    if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
+      echo "⚠️  Poll ORCH #$((n+1)): no pude leer estado (HTTP $http_code)"
+      sleep "$BATCH_POLL_INTERVAL"
+      n=$((n+1))
+      continue
+    fi
+
+    local parsed
+    parsed=$(python3 - <<'PY'
+import json
+from pathlib import Path
+data = json.loads(Path('/tmp/orch_batch_progress.json').read_text(encoding='utf-8'))
+batch = data.get('batch', {})
+obs = data.get('observability', {}) if isinstance(data.get('observability'), dict) else {}
+visual = data.get('visual_accounting', {}) if isinstance(data.get('visual_accounting'), dict) else {}
+worker = data.get('worker_progress', {}) if isinstance(data.get('worker_progress'), dict) else {}
+status = str(batch.get('status') or 'unknown')
+total = int(obs.get('total_files') or batch.get('total_files') or 0)
+terminal = int(obs.get('terminal_docs') or 0)
+processing = int(obs.get('processing_docs') or 0)
+queued = int(obs.get('queued_docs') or 0)
+docs_count = int(data.get('documents_count') or 0)
+percent = float(obs.get('progress_percent') or 0.0)
+failed = int(batch.get('failed') or 0)
+loss_events = int(visual.get('loss_events') or 0)
+docs_with_loss = int(visual.get('docs_with_loss') or 0)
+docs_with_visual = int(visual.get('docs_with_visual') or 0)
+copyright_blocks = int(visual.get('parse_failed_copyright') or 0)
+phase = str(obs.get('dominant_stage') or 'OTHER')
+eta_seconds = int(obs.get('eta_seconds') or 0)
+stalled = bool(obs.get('stalled', False))
+refs = worker.get('sample_refs')
+ref_detail = "n/a"
+if isinstance(refs, list) and refs:
+    parts = []
+    for item in refs:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get('filename') or item.get('doc_id') or 'doc')
+        stage = str(item.get('stage') or 'OTHER')
+        parts.append(f"{name}:{stage}")
+        if len(parts) >= 4:
+            break
+    if parts:
+        ref_detail = ",".join(parts)
+ref_detail = ref_detail.replace('|','/').replace('\n',' ')
+print(f"{status}|{percent}|{terminal}|{total}|{processing}|{queued}|{docs_count}|{failed}|{loss_events}|{docs_with_loss}|{docs_with_visual}|{copyright_blocks}|{phase}|{ref_detail}|{eta_seconds}|{str(stalled).lower()}")
+PY
+)
+
+    IFS='|' read -r status percent terminal_count total processing_count queued_count docs_count failed loss_events docs_with_loss docs_with_visual copyright_blocks worker_phase worker_refs eta_seconds stalled <<< "$parsed"
+    apply_progress_snapshot "$status" "$percent" "$terminal_count" "$total" "$processing_count" "$queued_count" "$docs_count" "$failed" "$loss_events" "$docs_with_loss" "$docs_with_visual" "$copyright_blocks" "$worker_phase" "$worker_refs" "$eta_seconds" "$stalled"
+
+    case "$status" in
+      completed|partial|failed)
+        echo "✅ Estado terminal alcanzado: $status"
+        STEP_WORKER="completado/terminal"
+        return 0
+        ;;
+    esac
+
+    sleep "$BATCH_POLL_INTERVAL"
+    n=$((n+1))
+  done
+
+  echo "⚠️  Timeout de espera alcanzado (ORCH poll)."
+  return 1
+}
+
+wait_for_batch_completion_orch_stream() {
+  build_orch_auth_curl_args
+  if [[ ${#ORCH_AUTH_CURL_ARGS[@]} -eq 0 ]]; then
+    return 1
+  fi
+
+  echo ""
+  echo "⏳ Esperando procesamiento (ORCH observability stream)..."
+  STEP_WORKER_STATUS="processing (0%)"
+  STEP_WORKER_DOCS="0/0"
+  STEP_WORKER_QUEUE="processing=0, queued=0, uploaded=0"
+  STEP_WORKER_ERRORS="0"
+  STEP_WORKER_LOSS="0 eventos"
+  STEP_WORKER_PHASE="iniciando"
+  STEP_WORKER_REFS="n/a"
+  render_checklist
+
+  local stream_failed=0
+  local reached_terminal=0
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    if [[ "$line" == ERR\|* ]]; then
+      echo "⚠️  Stream ORCH falló: $line"
+      stream_failed=1
+      break
+    fi
+    if [[ "$line" == TERMINAL\|* ]]; then
+      local status="${line#TERMINAL|}"
+      if [[ "$status" == "timeout" ]]; then
+        echo "⚠️  Stream ORCH expiró por timeout de sesión; cambiando a poll."
+        stream_failed=1
+        break
+      fi
+      echo "✅ Estado terminal alcanzado: $status"
+      STEP_WORKER="completado/terminal"
+      reached_terminal=1
+      break
+    fi
+    if [[ "$line" == SNAP\|* ]]; then
+      local rest="${line#SNAP|}"
+      IFS='|' read -r status percent terminal_count total processing_count queued_count docs_count failed loss_events docs_with_loss docs_with_visual copyright_blocks worker_phase worker_refs eta_seconds stalled <<< "$rest"
+      apply_progress_snapshot "$status" "$percent" "$terminal_count" "$total" "$processing_count" "$queued_count" "$docs_count" "$failed" "$loss_events" "$docs_with_loss" "$docs_with_visual" "$copyright_blocks" "$worker_phase" "$worker_refs" "$eta_seconds" "$stalled"
+    fi
+  done < <(python3 - "$ORCH_URL" "$TENANT_ID" "$BATCH_ID" "$ORCH_ACCESS_TOKEN" "$BATCH_POLL_MAX" "$BATCH_POLL_INTERVAL" <<'PY'
+import json
+import socket
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+orch_url, tenant_id, batch_id, token, poll_max, poll_interval = sys.argv[1:]
+interval_ms = max(500, int(float(poll_interval) * 1000))
+params = urllib.parse.urlencode({"tenant_id": tenant_id, "interval_ms": interval_ms})
+url = f"{orch_url.rstrip('/')}/api/v1/observability/batches/{batch_id}/stream?{params}"
+headers = {"Accept": "text/event-stream", "X-Tenant-ID": tenant_id}
+if token:
+    headers["Authorization"] = f"Bearer {token}"
+request = urllib.request.Request(url, headers=headers)
+
+current_event = "message"
+timeout_seconds = max(60, int(poll_max) * int(float(poll_interval)) + 30)
+socket.setdefaulttimeout(timeout_seconds)
+
+try:
+    with urllib.request.urlopen(request, timeout=timeout_seconds) as resp:
+        for raw in resp:
+            line = raw.decode("utf-8", errors="ignore").strip()
+            if not line:
+                continue
+            if line.startswith("event:"):
+                current_event = line.split(":", 1)[1].strip() or "message"
+                continue
+            if not line.startswith("data:"):
+                continue
+            payload_raw = line.split(":", 1)[1].strip()
+            try:
+                payload = json.loads(payload_raw) if payload_raw else {}
+            except Exception:
+                continue
+            if current_event == "snapshot":
+                progress = payload.get("progress") if isinstance(payload, dict) else {}
+                batch = progress.get("batch") if isinstance(progress, dict) and isinstance(progress.get("batch"), dict) else {}
+                obs = progress.get("observability") if isinstance(progress, dict) and isinstance(progress.get("observability"), dict) else {}
+                visual = progress.get("visual_accounting") if isinstance(progress, dict) and isinstance(progress.get("visual_accounting"), dict) else {}
+                worker = progress.get("worker_progress") if isinstance(progress, dict) and isinstance(progress.get("worker_progress"), dict) else {}
+                refs = worker.get("sample_refs")
+                ref_detail = "n/a"
+                if isinstance(refs, list) and refs:
+                    parts = []
+                    for item in refs:
+                        if not isinstance(item, dict):
+                            continue
+                        name = str(item.get("filename") or item.get("doc_id") or "doc")
+                        stage = str(item.get("stage") or "OTHER")
+                        parts.append(f"{name}:{stage}")
+                        if len(parts) >= 4:
+                            break
+                    if parts:
+                        ref_detail = ",".join(parts)
+                ref_detail = ref_detail.replace("|", "/").replace("\n", " ")
+                print(
+                    "SNAP|"
+                    + "|".join(
+                        [
+                            str(batch.get("status") or "unknown"),
+                            str(float(obs.get("progress_percent") or 0.0)),
+                            str(int(obs.get("terminal_docs") or 0)),
+                            str(int(obs.get("total_files") or batch.get("total_files") or 0)),
+                            str(int(obs.get("processing_docs") or 0)),
+                            str(int(obs.get("queued_docs") or 0)),
+                            str(int(progress.get("documents_count") or 0)),
+                            str(int(batch.get("failed") or 0)),
+                            str(int(visual.get("loss_events") or 0)),
+                            str(int(visual.get("docs_with_loss") or 0)),
+                            str(int(visual.get("docs_with_visual") or 0)),
+                            str(int(visual.get("parse_failed_copyright") or 0)),
+                            str(obs.get("dominant_stage") or "OTHER"),
+                            ref_detail,
+                            str(int(obs.get("eta_seconds") or 0)),
+                            str(bool(obs.get("stalled", False))).lower(),
+                        ]
+                    )
+                )
+                sys.stdout.flush()
+            elif current_event == "terminal":
+                print(f"TERMINAL|{str(payload.get('status') or 'unknown')}")
+                sys.stdout.flush()
+                break
+except urllib.error.HTTPError as exc:
+    print(f"ERR|http|{exc.code}")
+except Exception as exc:
+    print(f"ERR|stream|{str(exc).replace('|','/')}")
+PY
+  )
+  if [[ "$stream_failed" == "1" || "$reached_terminal" == "0" ]]; then
+    return 1
+  fi
+  return 0
+}
+
+wait_for_batch_completion() {
+  local used_orch="false"
+  if [[ -n "${ORCH_URL:-}" && -n "${ORCH_ACCESS_TOKEN:-}" ]]; then
+    used_orch="true"
+    if [[ "$WATCH_MODE" == "stream" ]]; then
+      if wait_for_batch_completion_orch_stream; then
+        return 0
+      fi
+      echo "⚠️  Fallback a ORCH poll..."
+      if wait_for_batch_completion_orch_poll; then
+        return 0
+      fi
+    else
+      if wait_for_batch_completion_orch_poll; then
+        return 0
+      fi
+    fi
+    echo "⚠️  Fallback final a RAG poll..."
+  fi
+  if [[ "$used_orch" == "false" ]]; then
+    echo "ℹ️  ORCH observability no disponible, usando RAG poll."
+  fi
+  wait_for_batch_completion_rag_poll
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tenant-id)
@@ -1194,6 +1553,12 @@ while [[ $# -gt 0 ]]; do
       WAIT_FOR_COMPLETION="false"; shift ;;
     --skip-estimate)
       BATCH_SKIP_ESTIMATE="true"; shift ;;
+    --watch-mode)
+      WATCH_MODE="$2"; shift 2 ;;
+    --resume-batch)
+      RESUME_BATCH_ID="$2"; shift 2 ;;
+    --progress-json)
+      PROGRESS_JSON="true"; shift ;;
     --rag-url)
       RAG_URL="$2"; shift 2 ;;
     -h|--help)
@@ -1205,6 +1570,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+validate_watch_mode
+
 check_health
 STEP_HEALTH="completado"
 render_checklist
@@ -1213,90 +1580,109 @@ select_or_create_tenant
 STEP_TENANT="completado"
 render_checklist
 
-resolve_collection
-STEP_COLLECTION="completado"
-render_checklist
-
-choose_embedding_mode
-
-collect_files
-STEP_QUEUE="completado (${#FILE_QUEUE[@]} archivos)"
-render_checklist
-
-preflight_visual_estimate
-if [[ "$BATCH_SKIP_ESTIMATE" == "true" ]]; then
-  STEP_PREFLIGHT="omitido"
+if [[ -n "$RESUME_BATCH_ID" ]]; then
+  STEP_COLLECTION="omitido (resume-batch)"
 else
-  STEP_PREFLIGHT="completado"
+  resolve_collection
+  STEP_COLLECTION="completado"
 fi
 render_checklist
-
-echo ""
-echo "🧾 Cola de ingesta preparada"
-echo "   Tenant: ${TENANT_NAME:-$TENANT_ID} ($TENANT_ID)"
-echo "   Carpeta: $COLLECTION_NAME ($COLLECTION_ID)"
-echo "   Embeddings: $EMBEDDING_MODE"
-if [[ "$COLLECTION_CLEANUP_REQUIRED" == "true" ]]; then
-  echo "   Modo colección existente: se limpiará antes de iniciar"
-fi
-echo "   Archivos: ${#FILE_QUEUE[@]}"
-
-for i in "${!FILE_QUEUE[@]}"; do
-  printf "   [%d] %s\n" "$((i+1))" "${FILE_QUEUE[$i]}"
-done
-
-read -r -p "\n¿Enviar cola a ingestión? [Y/n]: " confirm
-if [[ "${confirm:-Y}" =~ ^[Nn]$ ]]; then
-  echo "❌ Operación cancelada."
-  exit 0
-fi
-
-if ! cleanup_collection_if_needed; then
-  exit 1
-fi
 
 ok=0
 failed=0
-if ! create_batch; then
-  STEP_BATCH_CREATE="fallido"
+
+if [[ -n "$RESUME_BATCH_ID" ]]; then
+  BATCH_ID="$RESUME_BATCH_ID"
+  STEP_QUEUE="omitido (resume-batch)"
+  STEP_PREFLIGHT="omitido (resume-batch)"
+  STEP_BATCH_CREATE="omitido (resume-batch=$BATCH_ID)"
+  STEP_BATCH_UPLOAD="omitido (resume-batch)"
+  STEP_BATCH_SEAL="omitido (resume-batch)"
   render_checklist
-  exit 1
-fi
-STEP_BATCH_CREATE="completado (batch_id=$BATCH_ID)"
-render_checklist
+  echo "♻️ Reanudando monitoreo del batch: $BATCH_ID"
+else
+  choose_embedding_mode
 
-echo "🚀 Batch creado: $BATCH_ID"
-for file_path in "${FILE_QUEUE[@]}"; do
-  echo "➡️  Subiendo al batch: $file_path"
-  if add_file_to_batch "$file_path"; then
-    ok=$((ok+1))
-    echo "✅ Agregado al batch"
+  collect_files
+  STEP_QUEUE="completado (${#FILE_QUEUE[@]} archivos)"
+  render_checklist
+
+  preflight_visual_estimate
+  if [[ "$BATCH_SKIP_ESTIMATE" == "true" ]]; then
+    STEP_PREFLIGHT="omitido"
   else
-    failed=$((failed+1))
+    STEP_PREFLIGHT="completado"
   fi
-done
+  render_checklist
 
-if (( failed == 0 )); then
-  STEP_BATCH_UPLOAD="completado (${ok}/${#FILE_QUEUE[@]} cargados)"
-else
-  STEP_BATCH_UPLOAD="parcial (${ok} ok / ${failed} fail)"
-fi
-render_checklist
+  echo ""
+  echo "🧾 Cola de ingesta preparada"
+  echo "   Tenant: ${TENANT_NAME:-$TENANT_ID} ($TENANT_ID)"
+  echo "   Carpeta: $COLLECTION_NAME ($COLLECTION_ID)"
+  echo "   Embeddings: $EMBEDDING_MODE"
+  if [[ "$COLLECTION_CLEANUP_REQUIRED" == "true" ]]; then
+    echo "   Modo colección existente: se limpiará antes de iniciar"
+  fi
+  echo "   Archivos: ${#FILE_QUEUE[@]}"
 
-if (( failed == 0 )); then
-  echo "🔓 Sellado automático omitido (colecciones reescribibles activadas)."
-  STEP_BATCH_SEAL="omitido (overwritable)"
-else
-  echo "⚠️  Batch no sellado por errores de carga."
-  echo "💡 Corrige los archivos fallidos y reintenta con el mismo batch o crea uno nuevo."
-  STEP_BATCH_SEAL="omitido por fallos"
+  for i in "${!FILE_QUEUE[@]}"; do
+    printf "   [%d] %s\n" "$((i+1))" "${FILE_QUEUE[$i]}"
+  done
+
+  read -r -p "\n¿Enviar cola a ingestión? [Y/n]: " confirm
+  if [[ "${confirm:-Y}" =~ ^[Nn]$ ]]; then
+    echo "❌ Operación cancelada."
+    exit 0
+  fi
+
+  if ! cleanup_collection_if_needed; then
+    exit 1
+  fi
+
+  if ! create_batch; then
+    STEP_BATCH_CREATE="fallido"
+    render_checklist
+    exit 1
+  fi
+  STEP_BATCH_CREATE="completado (batch_id=$BATCH_ID)"
+  render_checklist
+
+  echo "🚀 Batch creado: $BATCH_ID"
+  for file_path in "${FILE_QUEUE[@]}"; do
+    echo "➡️  Subiendo al batch: $file_path"
+    if add_file_to_batch "$file_path"; then
+      ok=$((ok+1))
+      echo "✅ Agregado al batch"
+    else
+      failed=$((failed+1))
+    fi
+  done
+
+  if (( failed == 0 )); then
+    STEP_BATCH_UPLOAD="completado (${ok}/${#FILE_QUEUE[@]} cargados)"
+  else
+    STEP_BATCH_UPLOAD="parcial (${ok} ok / ${failed} fail)"
+  fi
+  render_checklist
+
+  if (( failed == 0 )); then
+    echo "🔓 Sellado automático omitido (colecciones reescribibles activadas)."
+    STEP_BATCH_SEAL="omitido (overwritable)"
+  else
+    echo "⚠️  Batch no sellado por errores de carga."
+    echo "💡 Corrige los archivos fallidos y reintenta con el mismo batch o crea uno nuevo."
+    STEP_BATCH_SEAL="omitido por fallos"
+  fi
+  render_checklist
 fi
-render_checklist
 
 show_batch_status || true
 if [[ "$WAIT_FOR_COMPLETION" == "true" && "$failed" -eq 0 ]]; then
-  wait_for_batch_completion || true
-  STEP_WORKER="completado/terminal"
+  if wait_for_batch_completion; then
+    STEP_WORKER="completado/terminal"
+  else
+    STEP_WORKER="pendiente (timeout/fallback)"
+  fi
   show_batch_status || true
 elif [[ "$WAIT_FOR_COMPLETION" == "false" && "$failed" -eq 0 ]]; then
   STEP_WORKER="pendiente (no-wait)"
@@ -1321,7 +1707,11 @@ render_checklist
 
 echo ""
 echo "📊 Resumen"
-echo "   Total: ${#FILE_QUEUE[@]}"
+if [[ -n "$RESUME_BATCH_ID" ]]; then
+  echo "   Total: n/a (resume-batch)"
+else
+  echo "   Total: ${#FILE_QUEUE[@]}"
+fi
 echo "   OK:    $ok"
 echo "   Fail:  $failed"
 echo "   Pérdida visual potencial: $STEP_WORKER_LOSS"

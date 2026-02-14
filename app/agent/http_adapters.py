@@ -58,7 +58,7 @@ class RagEngineRetrieverAdapter:
             context_headers["X-User-ID"] = user_id
         try:
             data = await self._post_json(
-                "/api/v1/retrieval/chunks",
+                "/api/v1/debug/retrieval/chunks",
                 payload,
                 endpoint="chunks",
                 extra_headers=context_headers,
@@ -90,7 +90,7 @@ class RagEngineRetrieverAdapter:
             context_headers["X-User-ID"] = user_id
         try:
             data = await self._post_json(
-                "/api/v1/retrieval/summaries",
+                "/api/v1/debug/retrieval/summaries",
                 payload,
                 endpoint="summaries",
                 extra_headers=context_headers,
