@@ -196,15 +196,40 @@ async def list_authorized_collections(
     try:
         items = await _fetch_collections_from_rag(authorized_tenant)
     except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code if exc.response is not None else 502
         logger.warning(
             "orchestrator_collection_proxy_failed",
-            status=exc.response.status_code,
+            status=status,
             tenant_id=authorized_tenant,
         )
-        items = []
+        code = "RAG_UPSTREAM_AUTH_FAILED" if status in {401, 403} else "RAG_UPSTREAM_ERROR"
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": code,
+                "message": "Failed to load collections from RAG",
+                "upstream_status": status,
+            },
+        ) from exc
+    except httpx.RequestError as exc:
+        logger.warning(
+            "orchestrator_collection_proxy_unreachable",
+            tenant_id=authorized_tenant,
+            error=str(exc),
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "RAG_UPSTREAM_UNREACHABLE",
+                "message": "RAG endpoint unreachable when listing collections",
+            },
+        ) from exc
     except Exception as exc:
         logger.warning("orchestrator_collection_proxy_error", tenant_id=authorized_tenant, error=str(exc))
-        items = []
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "ORCH_COLLECTION_PROXY_ERROR", "message": "Unexpected collection proxy error"},
+        ) from exc
     return CollectionListResponse(items=items)
 
 

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
 from fastapi.testclient import TestClient
 
 from app.agent.application import HandleQuestionResult
@@ -154,3 +155,26 @@ def test_collections_endpoint_returns_items_for_authorized_tenant(monkeypatch):
         {"id": "c1", "name": "ISO", "collection_key": "iso"},
         {"id": "c2", "name": "45001", "collection_key": "iso45001"},
     ]
+
+
+def test_collections_endpoint_surfaces_upstream_auth_failure(monkeypatch):
+    monkeypatch.setattr(settings, "ORCH_AUTH_REQUIRED", True)
+    app.dependency_overrides[get_current_user] = lambda: UserContext(
+        user_id="user-1",
+        tenant_ids=["tenant-a"],
+    )
+
+    async def _fake_fetch_collections(_tenant_id):
+        request = httpx.Request("GET", "http://rag:8000/api/v1/ingestion/collections")
+        response = httpx.Response(401, request=request)
+        raise httpx.HTTPStatusError("unauthorized", request=request, response=response)
+
+    monkeypatch.setattr(knowledge_routes, "_fetch_collections_from_rag", _fake_fetch_collections)
+
+    client = TestClient(app)
+    response = client.get("/api/v1/knowledge/collections?tenant_id=tenant-a")
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 502
+    assert response.json()["detail"]["code"] == "RAG_UPSTREAM_AUTH_FAILED"
+    assert response.json()["detail"]["upstream_status"] == 401

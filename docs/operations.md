@@ -31,6 +31,7 @@ Comandos utiles:
 ## Checklist operativo
 
 - `RAG_ENGINE_LOCAL_URL` y `RAG_ENGINE_DOCKER_URL` configurados.
+- `RAG_SERVICE_SECRET` configurado y sincronizado con el servicio RAG.
 - API del orquestador activa en `http://localhost:8001/health`.
 - Logs sin errores de timeout/5xx contra el engine externo.
 
@@ -38,7 +39,7 @@ Comandos utiles:
 
 - `curl -f http://localhost:8000/health`
 - `curl -f http://localhost:8001/health`
-- `curl -X POST http://localhost:8001/api/v1/knowledge/answer -H "Content-Type: application/json" -d '{"query":"Que exige ISO 9001 en 7.5.3?","tenant_id":"<TENANT_ID>"}'`
+- `curl -X POST http://localhost:8001/api/v1/knowledge/answer -H "Content-Type: application/json" -H "Authorization: Bearer <ACCESS_TOKEN>" -d '{"query":"Que exige ISO 9001 en 7.5.3?","tenant_id":"<TENANT_ID>"}'`
 - `./ing.sh --help`
 
 ## Modo hibrido (local -> docker)
