@@ -121,6 +121,21 @@ def _prompt(message: str) -> str:
     return input(message).strip()
 
 
+def _require_orch_health(orchestrator_url: str) -> None:
+    base = orchestrator_url.rstrip("/")
+    health_url = f"{base}/health"
+    try:
+        response = httpx.get(health_url, timeout=3.0)
+    except Exception as exc:
+        raise RuntimeError(
+            f"❌ Orchestrator API no disponible en {health_url}\n💡 Ejecuta ./stack.sh up"
+        ) from exc
+    if response.status_code < 200 or response.status_code >= 300:
+        raise RuntimeError(
+            f"❌ Orchestrator API no disponible en {health_url}\n💡 Ejecuta ./stack.sh up"
+        )
+
+
 async def _post_answer(
     client: httpx.AsyncClient,
     orchestrator_url: str,
@@ -195,6 +210,86 @@ async def _post_answer(
     return data if isinstance(data, dict) else {}
 
 
+async def _post_explain(
+    client: httpx.AsyncClient,
+    orchestrator_url: str,
+    tenant_context: TenantContext,
+    query: str,
+    collection_id: str | None,
+    access_token: str | None = None,
+) -> dict[str, Any]:
+    resolved_tenant = tenant_context.get_tenant()
+    if not resolved_tenant:
+        raise TenantSelectionRequiredError()
+
+    payload: dict[str, Any] = {
+        "query": query,
+        "tenant_id": resolved_tenant,
+        "collection_id": collection_id,
+        "top_n": 10,
+        "k": 12,
+        "fetch_k": 60,
+        "filters": None,
+    }
+    headers = {"X-Tenant-ID": resolved_tenant}
+    token = str(access_token or "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    response = await client.post(
+        orchestrator_url.rstrip("/") + "/api/v1/knowledge/explain-retrieval",
+        json=payload,
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
+    return data if isinstance(data, dict) else {}
+
+
+def _print_trace(last_result: dict[str, Any]) -> None:
+    retrieval = last_result.get("retrieval") if isinstance(last_result.get("retrieval"), dict) else {}
+    scope_validation = last_result.get("scope_validation") if isinstance(last_result.get("scope_validation"), dict) else {}
+    print("🧾 Trace")
+    print(f"   contract={retrieval.get('contract')}")
+    print(f"   strategy={retrieval.get('strategy')}")
+    print(f"   partial={bool(retrieval.get('partial', False))}")
+    trace = retrieval.get("trace") if isinstance(retrieval.get("trace"), dict) else {}
+    if trace:
+        keys = ", ".join(sorted(trace.keys())[:12])
+        print(f"   trace_keys={keys}")
+    query_scope = scope_validation.get("query_scope") if isinstance(scope_validation.get("query_scope"), dict) else {}
+    if query_scope:
+        requested = query_scope.get("requested_standards") if isinstance(query_scope.get("requested_standards"), list) else []
+        if requested:
+            print("   requested_standards=" + ", ".join(str(x) for x in requested))
+        if bool(query_scope.get("requires_scope_clarification", False)):
+            print("   requires_scope_clarification=true")
+
+
+def _print_explain(payload: dict[str, Any]) -> None:
+    items = payload.get("items") if isinstance(payload.get("items"), list) else []
+    trace = payload.get("trace") if isinstance(payload.get("trace"), dict) else {}
+    print("🔎 Explain (top)")
+    if trace:
+        print(f"   engine_mode={trace.get('engine_mode')}")
+        print(f"   planner_multihop={trace.get('planner_multihop')}")
+        warnings = trace.get("warnings") if isinstance(trace.get("warnings"), list) else []
+        if warnings:
+            print("   warnings=" + " | ".join(str(w) for w in warnings[:4]))
+    for idx, item in enumerate(items[:10], start=1):
+        if not isinstance(item, dict):
+            continue
+        source = str(item.get("source") or "")
+        score = item.get("score")
+        explain = item.get("explain") if isinstance(item.get("explain"), dict) else {}
+        comps = explain.get("score_components") if isinstance(explain.get("score_components"), dict) else {}
+        final_score = comps.get("final_score")
+        base_sim = comps.get("base_similarity")
+        jina = comps.get("jina_relevance_score")
+        penalized = comps.get("scope_penalized")
+        print(f"   {idx}) {source} score={score} final={final_score} sim={base_sim} jina={jina} penalized={penalized}")
+
+
 def _print_answer(data: dict[str, Any]) -> None:
     answer = str(data.get("answer") or "").strip()
     mode = str(data.get("mode") or "").strip()
@@ -211,6 +306,8 @@ def _print_answer(data: dict[str, Any]) -> None:
         print("\n📚 Citas: " + ", ".join(str(item) for item in citations[:10]))
     if not accepted and issues:
         print("⚠️ Validacion: " + "; ".join(str(issue) for issue in issues))
+    if not citations and not (context_chunks := data.get("context_chunks")):
+        print("💡 Sin evidencia recuperada. Prueba con otra colección o con '0) Todas / Default'.")
     print("=" * 60 + "\n")
 
 
@@ -361,6 +458,8 @@ async def _resolve_tenant(
     try:
         tenants = await list_authorized_tenants(args.orchestrator_url, access_token)
     except OrchestratorDiscoveryError as exc:
+        if exc.status_code == 401:
+            raise
         if args.non_interactive:
             raise RuntimeError(f"Tenant discovery failed: {exc}") from exc
         print(f"⚠️ No se pudieron cargar tenants autorizados ({exc}).")
@@ -425,6 +524,8 @@ async def _resolve_collection(
     try:
         collections = await list_authorized_collections(args.orchestrator_url, access_token, tenant_id)
     except OrchestratorDiscoveryError as exc:
+        if exc.status_code == 401:
+            raise
         print(f"⚠️ No se pudieron cargar colecciones ({exc}).")
         return None, args.collection_name
 
@@ -437,7 +538,8 @@ async def _resolve_collection(
     print("📁 Colecciones:")
     print("  0) Todas / Default")
     for idx, item in enumerate(collections, start=1):
-        print(f"  {idx}) {item.name}")
+        suffix = f" | key={item.collection_key}" if item.collection_key else ""
+        print(f"  {idx}) {item.name}{suffix} | id={item.id}")
 
     option = _prompt(f"📝 Selecciona Colección [0-{len(collections)}]: ")
     if option.isdigit():
@@ -537,6 +639,12 @@ async def _run_doctor(
 async def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
 
+    try:
+        _require_orch_health(args.orchestrator_url)
+    except RuntimeError as exc:
+        print(str(exc))
+        raise SystemExit(1)
+
     access_token = str(args.access_token or "").strip()
     if not access_token:
         try:
@@ -565,6 +673,26 @@ async def main(argv: list[str] | None = None) -> None:
             tenant_id=tenant_id,
             access_token=access_token,
         )
+    except OrchestratorDiscoveryError as exc:
+        if exc.status_code != 401:
+            print(f"❌ {exc}")
+            raise SystemExit(1)
+        try:
+            refreshed = await ensure_access_token(interactive=not args.non_interactive)
+            access_token = refreshed
+            tenant_id = await _resolve_tenant(
+                args=args,
+                tenant_context=tenant_context,
+                access_token=access_token,
+            )
+            collection_id, collection_name = await _resolve_collection(
+                args=args,
+                tenant_id=tenant_id,
+                access_token=access_token,
+            )
+        except Exception as retry_exc:
+            print(f"❌ {retry_exc}")
+            raise SystemExit(1)
     except Exception as exc:
         print(f"❌ {exc}")
         raise SystemExit(1)
@@ -588,7 +716,10 @@ async def main(argv: list[str] | None = None) -> None:
         print(f"🌐 Orchestrator URL: {args.orchestrator_url}")
         print(f"🔐 Auth: {'Bearer token' if access_token else 'sin token'}")
         print("💡 Escribe tu pregunta (o 'salir')")
-        print("🔭 Comandos: /ingestion , /watch <batch_id>")
+        print("🔭 Comandos: /ingestion , /watch <batch_id> , /trace , /explain")
+
+        last_result: dict[str, Any] = {}
+        last_query: str = ""
 
         while True:
             query = input("❓ > ").strip()
@@ -618,6 +749,29 @@ async def main(argv: list[str] | None = None) -> None:
                     batch_id=batch_id,
                 )
                 continue
+            if query.lower() == "/trace":
+                if isinstance(last_result, dict) and last_result:
+                    _print_trace(last_result)
+                else:
+                    print("ℹ️ No hay un resultado previo para mostrar trace.")
+                continue
+            if query.lower() == "/explain":
+                if not last_query:
+                    print("ℹ️ No hay una consulta previa para explicar.")
+                    continue
+                try:
+                    payload = await _post_explain(
+                        client=client,
+                        orchestrator_url=args.orchestrator_url,
+                        tenant_context=tenant_context,
+                        query=last_query,
+                        collection_id=collection_id,
+                        access_token=access_token,
+                    )
+                    _print_explain(payload)
+                except Exception as exc:
+                    print(f"❌ explain failed: {exc}")
+                continue
 
             try:
                 t0 = time.perf_counter()
@@ -631,6 +785,8 @@ async def main(argv: list[str] | None = None) -> None:
                 )
                 latency_ms = (time.perf_counter() - t0) * 1000.0
                 _print_answer(result)
+                last_result = result if isinstance(result, dict) else {}
+                last_query = query
                 if args.obs:
                     _print_obs_answer(result, latency_ms)
 
@@ -656,6 +812,8 @@ async def main(argv: list[str] | None = None) -> None:
                         access_token=access_token,
                     )
                     _print_answer(result)
+                    last_result = result if isinstance(result, dict) else {}
+                    last_query = clarified_query
                     if args.obs:
                         _print_obs_answer(result, 0.0)
                     clarification = result.get("clarification") if isinstance(result.get("clarification"), dict) else None

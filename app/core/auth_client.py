@@ -169,11 +169,14 @@ async def refresh_session(
     payload = {"refresh_token": current.refresh_token}
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
-        response = await client.post(
-            url,
-            json=payload,
-            headers={"apikey": anon_key, "Content-Type": "application/json"},
-        )
+        try:
+            response = await client.post(
+                url,
+                json=payload,
+                headers={"apikey": anon_key, "Content-Type": "application/json"},
+            )
+        except httpx.RequestError:
+            return None
 
     if response.status_code < 200 or response.status_code >= 300:
         return None
@@ -204,11 +207,16 @@ async def login_with_password(
     anon_key = supabase_anon_key or _supabase_anon_key()
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
-        response = await client.post(
-            url,
-            json={"email": email_norm, "password": password_norm},
-            headers={"apikey": anon_key, "Content-Type": "application/json"},
-        )
+        try:
+            response = await client.post(
+                url,
+                json={"email": email_norm, "password": password_norm},
+                headers={"apikey": anon_key, "Content-Type": "application/json"},
+            )
+        except httpx.RequestError as exc:
+            raise AuthLoginFailed(
+                f"Could not reach Supabase Auth endpoint ({url}): {exc}"
+            ) from exc
 
     if response.status_code < 200 or response.status_code >= 300:
         details = response.text

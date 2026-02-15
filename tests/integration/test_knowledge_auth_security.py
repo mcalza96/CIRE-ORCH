@@ -5,7 +5,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from app.agent.application import HandleQuestionResult
-from app.agent.models import AnswerDraft, QueryIntent, RetrievalPlan, ValidationResult
+from app.agent.models import AnswerDraft, QueryIntent, RetrievalDiagnostics, RetrievalPlan, ValidationResult
 from app.api.deps import UserContext, get_current_user
 from app.api.server import app
 from app.api.v1.routes import knowledge as knowledge_routes
@@ -24,6 +24,7 @@ class _FakeUseCase:
             plan=RetrievalPlan(mode="explicativa", chunk_k=5, chunk_fetch_k=20, summary_k=2),
             answer=AnswerDraft(text="ok", mode="explicativa", evidence=[]),
             validation=ValidationResult(accepted=True, issues=[]),
+            retrieval=RetrievalDiagnostics(contract="legacy", strategy="test", partial=False, trace={}, scope_validation={}),
             clarification=None,
         )
 

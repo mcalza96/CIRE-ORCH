@@ -356,7 +356,8 @@ class LiteralEvidenceValidator:
             issues.append("No retrieval evidence available for literal answer mode.")
 
         if plan.require_literal_evidence:
-            has_citation_marker = "C" in draft.text or "R" in draft.text
+            # Require explicit markers like "C1" / "R2", not just any "C" character.
+            has_citation_marker = bool(re.search(r"\b[CR]\d+\b", draft.text or ""))
             if not has_citation_marker:
                 issues.append("Answer does not include explicit source markers (C#/R#).")
 

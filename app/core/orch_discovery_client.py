@@ -45,7 +45,13 @@ def _raise_for_status(response: httpx.Response) -> None:
 async def list_authorized_tenants(base_url: str, token: str, timeout_seconds: float = 4.0) -> list[Tenant]:
     url = f"{base_url.rstrip('/')}/api/v1/knowledge/tenants"
     async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=2.5)) as client:
-        response = await client.get(url, headers=_headers(token))
+        try:
+            response = await client.get(url, headers=_headers(token))
+        except httpx.RequestError as exc:
+            raise OrchestratorDiscoveryError(
+                f"Discovery request failed (network): {exc}",
+                status_code=None,
+            ) from exc
     _raise_for_status(response)
 
     payload: Any = response.json()
@@ -54,12 +60,16 @@ async def list_authorized_tenants(base_url: str, token: str, timeout_seconds: fl
         return []
 
     out: list[Tenant] = []
+    seen: set[str] = set()
     for item in items:
         if not isinstance(item, dict):
             continue
         tenant_id = str(item.get("id") or "").strip()
         if not tenant_id:
             continue
+        if tenant_id in seen:
+            continue
+        seen.add(tenant_id)
         name = str(item.get("name") or tenant_id).strip() or tenant_id
         out.append(Tenant(id=tenant_id, name=name))
     return out
@@ -78,7 +88,13 @@ async def list_authorized_collections(
     url = f"{base_url.rstrip('/')}/api/v1/knowledge/collections"
     params = {"tenant_id": tenant}
     async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=2.5)) as client:
-        response = await client.get(url, params=params, headers=_headers(token))
+        try:
+            response = await client.get(url, params=params, headers=_headers(token))
+        except httpx.RequestError as exc:
+            raise OrchestratorDiscoveryError(
+                f"Discovery request failed (network): {exc}",
+                status_code=None,
+            ) from exc
     _raise_for_status(response)
 
     payload: Any = response.json()
@@ -87,12 +103,16 @@ async def list_authorized_collections(
         return []
 
     out: list[Collection] = []
+    seen: set[str] = set()
     for item in items:
         if not isinstance(item, dict):
             continue
         collection_id = str(item.get("id") or "").strip()
         if not collection_id:
             continue
+        if collection_id in seen:
+            continue
+        seen.add(collection_id)
         collection_key = str(item.get("collection_key") or "").strip() or None
         name = str(item.get("name") or collection_key or collection_id).strip() or collection_id
         out.append(Collection(id=collection_id, name=name, collection_key=collection_key))

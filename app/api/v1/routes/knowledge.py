@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.agent.adapters import LiteralEvidenceValidator
 from app.agent.application import HandleQuestionCommand, HandleQuestionUseCase
+from app.agent.errors import ScopeValidationError
 from app.agent.grounded_answer_service import GroundedAnswerService
 from app.agent.http_adapters import GroundedAnswerAdapter, RagEngineRetrieverAdapter
 from app.api.deps import UserContext, get_current_user
@@ -23,6 +24,23 @@ class OrchestratorQuestionRequest(BaseModel):
     query: str
     tenant_id: Optional[str] = None
     collection_id: Optional[str] = None
+
+
+class OrchestratorValidateScopeRequest(BaseModel):
+    query: str
+    tenant_id: Optional[str] = None
+    collection_id: Optional[str] = None
+    filters: Optional[Dict[str, Any]] = None
+
+
+class OrchestratorExplainRequest(BaseModel):
+    query: str
+    tenant_id: Optional[str] = None
+    collection_id: Optional[str] = None
+    top_n: int = 10
+    k: int = 12
+    fetch_k: int = 60
+    filters: Optional[Dict[str, Any]] = None
 
 
 class TenantItem(BaseModel):
@@ -156,6 +174,13 @@ async def answer_with_orchestrator(
             "citations": citations,
             "context_chunks": context_chunks,
             "requested_scopes": list(result.plan.requested_standards),
+            "retrieval": {
+                "contract": result.retrieval.contract,
+                "strategy": result.retrieval.strategy,
+                "partial": bool(result.retrieval.partial),
+                "trace": dict(result.retrieval.trace or {}),
+            },
+            "scope_validation": dict(result.retrieval.scope_validation or {}),
             "clarification": (
                 {
                     "question": result.clarification.question,
@@ -169,6 +194,20 @@ async def answer_with_orchestrator(
                 "issues": list(result.validation.issues),
             },
         }
+    except ScopeValidationError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "SCOPE_VALIDATION_FAILED",
+                "message": exc.message,
+                "details": {
+                    "violations": exc.violations,
+                    "warnings": exc.warnings or [],
+                    "normalized_scope": exc.normalized_scope or {},
+                    "query_scope": exc.query_scope or {},
+                },
+            },
+        ) from exc
     except HTTPException:
         raise
     except Exception as exc:
@@ -231,6 +270,73 @@ async def list_authorized_collections(
             detail={"code": "ORCH_COLLECTION_PROXY_ERROR", "message": "Unexpected collection proxy error"},
         ) from exc
     return CollectionListResponse(items=items)
+
+
+@router.post("/validate-scope", response_model=Dict[str, Any])
+async def validate_scope_proxy(
+    http_request: Request,
+    request: OrchestratorValidateScopeRequest,
+    current_user: UserContext = Depends(get_current_user),
+) -> Dict[str, Any]:
+    authorized_tenant = await authorize_requested_tenant(http_request, current_user, request.tenant_id)
+    selector = RagBackendSelector(
+        local_url=str(settings.RAG_ENGINE_LOCAL_URL or "http://localhost:8000"),
+        docker_url=str(settings.RAG_ENGINE_DOCKER_URL or "http://localhost:8000"),
+        health_path=str(settings.RAG_ENGINE_HEALTH_PATH or "/health"),
+        probe_timeout_ms=int(settings.RAG_ENGINE_PROBE_TIMEOUT_MS or 300),
+        ttl_seconds=int(settings.RAG_ENGINE_BACKEND_TTL_SECONDS or 20),
+        force_backend=settings.RAG_ENGINE_FORCE_BACKEND,
+    )
+    base_url = await selector.resolve_base_url()
+    url = f"{base_url.rstrip('/')}/api/v1/retrieval/validate-scope"
+    payload: Dict[str, Any] = {
+        "query": request.query,
+        "tenant_id": authorized_tenant,
+        "collection_id": request.collection_id,
+        "filters": request.filters,
+    }
+    headers = _s2s_headers(authorized_tenant)
+    headers["X-User-ID"] = current_user.user_id
+    async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=3.0)) as client:
+        resp = await client.post(url, json=payload, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+    return data if isinstance(data, dict) else {"items": data}
+
+
+@router.post("/explain-retrieval", response_model=Dict[str, Any])
+async def explain_retrieval_proxy(
+    http_request: Request,
+    request: OrchestratorExplainRequest,
+    current_user: UserContext = Depends(get_current_user),
+) -> Dict[str, Any]:
+    authorized_tenant = await authorize_requested_tenant(http_request, current_user, request.tenant_id)
+    selector = RagBackendSelector(
+        local_url=str(settings.RAG_ENGINE_LOCAL_URL or "http://localhost:8000"),
+        docker_url=str(settings.RAG_ENGINE_DOCKER_URL or "http://localhost:8000"),
+        health_path=str(settings.RAG_ENGINE_HEALTH_PATH or "/health"),
+        probe_timeout_ms=int(settings.RAG_ENGINE_PROBE_TIMEOUT_MS or 300),
+        ttl_seconds=int(settings.RAG_ENGINE_BACKEND_TTL_SECONDS or 20),
+        force_backend=settings.RAG_ENGINE_FORCE_BACKEND,
+    )
+    base_url = await selector.resolve_base_url()
+    url = f"{base_url.rstrip('/')}/api/v1/retrieval/explain"
+    payload: Dict[str, Any] = {
+        "query": request.query,
+        "tenant_id": authorized_tenant,
+        "collection_id": request.collection_id,
+        "top_n": int(request.top_n),
+        "k": int(request.k),
+        "fetch_k": int(request.fetch_k),
+        "filters": request.filters,
+    }
+    headers = _s2s_headers(authorized_tenant)
+    headers["X-User-ID"] = current_user.user_id
+    async with httpx.AsyncClient(timeout=httpx.Timeout(12.0, connect=3.0)) as client:
+        resp = await client.post(url, json=payload, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+    return data if isinstance(data, dict) else {"items": data}
 
 
 @router.get("/scope-health", response_model=Dict[str, Any])

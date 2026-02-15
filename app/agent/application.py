@@ -11,9 +11,13 @@ from app.agent.models import (
     ClarificationRequest,
     EvidenceItem,
     QueryIntent,
+    RetrievalDiagnostics,
     RetrievalPlan,
     ValidationResult,
 )
+from app.agent.errors import ScopeValidationError
+from app.agent.retrieval_planner import build_initial_scope_filters
+from app.core.config import settings
 
 
 class RetrieverPort(Protocol):
@@ -78,6 +82,7 @@ class HandleQuestionResult:
     plan: RetrievalPlan
     answer: AnswerDraft
     validation: ValidationResult
+    retrieval: RetrievalDiagnostics
     clarification: ClarificationRequest | None = None
 
 
@@ -140,6 +145,7 @@ class HandleQuestionUseCase:
                 plan=plan,
                 answer=answer,
                 validation=validation,
+                retrieval=RetrievalDiagnostics(contract="legacy", strategy="clarification", partial=False, trace={}, scope_validation={}),
                 clarification=clarification,
             )
 
@@ -164,6 +170,7 @@ class HandleQuestionUseCase:
                 plan=plan,
                 answer=answer,
                 validation=validation,
+                retrieval=RetrievalDiagnostics(contract="legacy", strategy="clarification", partial=False, trace={}, scope_validation={}),
                 clarification=clarification,
             )
 
@@ -181,8 +188,70 @@ class HandleQuestionUseCase:
                 plan=plan,
                 answer=answer,
                 validation=validation,
+                retrieval=RetrievalDiagnostics(contract="legacy", strategy="clarification", partial=False, trace={}, scope_validation={}),
             )
 
+        # Advanced retrieval contract: validate scope first to avoid executing retrieval with invalid filters
+        # and to surface scope clarification hints early.
+        if str(settings.ORCH_RETRIEVAL_CONTRACT or "").lower() == "advanced" and hasattr(self._retriever, "validate_scope"):
+            initial_filters = build_initial_scope_filters(
+                plan_requested=plan.requested_standards,
+                mode=plan.mode,
+                query=cmd.query,
+            )
+            validated = await self._retriever.validate_scope(
+                query=cmd.query,
+                tenant_id=cmd.tenant_id,
+                collection_id=cmd.collection_id,
+                plan=plan,
+                user_id=cmd.user_id,
+                filters=initial_filters,
+            )
+            valid = bool(validated.get("valid", True)) if isinstance(validated, dict) else True
+            if not valid:
+                violations = validated.get("violations") if isinstance(validated, dict) else None
+                warnings = validated.get("warnings") if isinstance(validated, dict) else None
+                normalized = validated.get("normalized_scope") if isinstance(validated, dict) else None
+                query_scope = validated.get("query_scope") if isinstance(validated, dict) else None
+                raise ScopeValidationError(
+                    message="Scope validation failed",
+                    violations=list(violations) if isinstance(violations, list) else [],
+                    warnings=list(warnings) if isinstance(warnings, list) else None,
+                    normalized_scope=normalized if isinstance(normalized, dict) else None,
+                    query_scope=query_scope if isinstance(query_scope, dict) else None,
+                )
+
+            query_scope = validated.get("query_scope") if isinstance(validated, dict) else {}
+            requires_scope_clarification = bool(query_scope.get("requires_scope_clarification", False)) if isinstance(query_scope, dict) else False
+            suggested_scopes = query_scope.get("suggested_scopes") if isinstance(query_scope, dict) else []
+            if requires_scope_clarification and not has_user_clarification:
+                options = tuple(str(item) for item in (suggested_scopes if isinstance(suggested_scopes, list) else []) if str(item).strip())
+                clarification = ClarificationRequest(
+                    question=(
+                        "Detecté ambigüedad de alcance. ¿Quieres análisis integrado o restringirlo a una norma?"
+                    ),
+                    options=options,
+                )
+                answer = AnswerDraft(text=clarification.question, mode=plan.mode, evidence=[])
+                validation = ValidationResult(accepted=True, issues=[])
+                return HandleQuestionResult(
+                    intent=intent,
+                    plan=plan,
+                    answer=answer,
+                    validation=validation,
+                    retrieval=RetrievalDiagnostics(contract="advanced", strategy="validate_scope", partial=False, trace={}, scope_validation=validated if isinstance(validated, dict) else {}),
+                    clarification=clarification,
+                )
+
+            if hasattr(self._retriever, "apply_validated_scope") and isinstance(validated, dict):
+                try:
+                    self._retriever.apply_validated_scope(validated)
+                except Exception:
+                    pass
+
+        # Retrieval execution is delegated to the RetrieverPort implementation.
+        # Legacy retrievers may return chunks + summaries; advanced contract retrievers can
+        # return all evidence as "chunks" and keep "summaries" empty.
         chunks_task = asyncio.create_task(
             self._retriever.retrieve_chunks(
                 query=cmd.query,
@@ -206,6 +275,7 @@ class HandleQuestionUseCase:
 
         chunks: list[EvidenceItem] = []
         summaries: list[EvidenceItem] = []
+        retrieval = RetrievalDiagnostics(contract="legacy", strategy="legacy", partial=False, trace={}, scope_validation={})
 
         chunks_error = chunks_result if isinstance(chunks_result, Exception) else None
         summaries_error = summaries_result if isinstance(summaries_result, Exception) else None
@@ -214,6 +284,11 @@ class HandleQuestionUseCase:
             chunks = chunks_result
         if summaries_error is None:
             summaries = summaries_result
+
+        # Advanced contract retrievers can attach retrieval diagnostics to the instance.
+        diag = getattr(self._retriever, "last_retrieval_diagnostics", None)
+        if isinstance(diag, RetrievalDiagnostics):
+            retrieval = diag
 
         if chunks_error and summaries_error:
             logger.error(
@@ -257,6 +332,7 @@ class HandleQuestionUseCase:
                     plan=plan,
                     answer=answer,
                     validation=validation,
+                    retrieval=retrieval,
                     clarification=clarification,
                 )
 
@@ -274,4 +350,5 @@ class HandleQuestionUseCase:
             plan=plan,
             answer=answer,
             validation=validation,
+            retrieval=retrieval,
         )

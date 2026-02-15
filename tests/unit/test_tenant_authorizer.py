@@ -62,3 +62,23 @@ def test_authorize_requires_tenant_when_auth_bypass(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         asyncio.run(tenant_authorizer.authorize_requested_tenant(_request(), user, None))
     assert exc.value.status_code == 400
+
+
+def test_fetch_membership_tenants_fallbacks_to_institution_id(monkeypatch):
+    monkeypatch.setattr(settings, "SUPABASE_MEMBERSHIPS_TABLE", "memberships")
+    monkeypatch.setattr(settings, "SUPABASE_MEMBERSHIP_USER_COLUMN", "user_id")
+    monkeypatch.setattr(settings, "SUPABASE_MEMBERSHIP_TENANT_COLUMN", "tenant_id")
+
+    async def _query_membership_tenants(user_id: str, table: str, user_col: str, tenant_col: str) -> list[str]:
+        assert user_id == "u1"
+        assert table == "memberships"
+        assert user_col == "user_id"
+        if tenant_col == "tenant_id":
+            return []
+        if tenant_col == "institution_id":
+            return ["tenant-db"]
+        return []
+
+    monkeypatch.setattr(tenant_authorizer, "_query_membership_tenants", _query_membership_tenants)
+    rows = asyncio.run(tenant_authorizer._fetch_membership_tenants("u1"))
+    assert rows == ["tenant-db"]

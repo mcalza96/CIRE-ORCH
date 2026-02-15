@@ -5,6 +5,7 @@ set -euo pipefail
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$BASE_DIR/.run"
 LOG_DIR="$BASE_DIR/.logs"
+ORCH_API_PORT="${ORCH_API_PORT:-8001}"
 
 PID_FILE="$RUN_DIR/orchestrator-api.pid"
 LOG_FILE="$LOG_DIR/orchestrator-api.log"
@@ -14,6 +15,10 @@ mkdir -p "$RUN_DIR" "$LOG_DIR"
 is_pid_alive() {
   local pid="$1"
   kill -0 "$pid" 2>/dev/null
+}
+
+is_orch_healthy() {
+  curl -fsS --max-time 2 "http://127.0.0.1:${ORCH_API_PORT}/health" >/dev/null 2>&1
 }
 
 kill_port_if_busy() {
@@ -33,11 +38,11 @@ start_api() {
     old_pid=$(cat "$PID_FILE" 2>/dev/null || true)
     if [ -n "$old_pid" ] && is_pid_alive "$old_pid"; then
       echo "ℹ️  Orchestrator API ya está corriendo (PID $old_pid)"
-      return
+      return 0
     fi
   fi
 
-  kill_port_if_busy 8001
+  kill_port_if_busy "$ORCH_API_PORT"
   : > "$LOG_FILE"
 
   echo "▶️  Iniciando Orchestrator API..."
@@ -50,17 +55,22 @@ start_api() {
 
   local new_pid
   new_pid=$(cat "$PID_FILE" 2>/dev/null || true)
-  if [ -n "$new_pid" ] && is_pid_alive "$new_pid"; then
+  if [ -n "$new_pid" ] && is_pid_alive "$new_pid" && is_orch_healthy; then
     echo "✅ Orchestrator API iniciado (PID $new_pid)"
+    return 0
   else
     echo "❌ No se pudo iniciar Orchestrator API"
     echo "   Revisa logs: $LOG_FILE"
+    tail -n 40 "$LOG_FILE" || true
+    return 1
   fi
 }
 
 stop_api() {
   if [ ! -f "$PID_FILE" ]; then
     echo "ℹ️  Orchestrator API no tiene PID registrado"
+    # PID file can go stale (manual runs / crashes). Ensure the port is freed.
+    kill_port_if_busy "$ORCH_API_PORT"
     return
   fi
 
@@ -101,7 +111,10 @@ show_logs() {
 
 case "${1:-}" in
   up|start)
-    start_api
+    if ! start_api; then
+      show_status
+      exit 1
+    fi
     show_status
     ;;
   down|stop)
@@ -110,7 +123,10 @@ case "${1:-}" in
     ;;
   restart)
     stop_api
-    start_api
+    if ! start_api; then
+      show_status
+      exit 1
+    fi
     show_status
     ;;
   status)

@@ -7,9 +7,15 @@ import httpx
 import structlog
 
 from app.agent.grounded_answer_service import GroundedAnswerService
-from app.agent.models import AnswerDraft, EvidenceItem, RetrievalPlan
+from app.agent.models import AnswerDraft, EvidenceItem, RetrievalDiagnostics, RetrievalPlan
+from app.agent.retrieval_planner import (
+    build_deterministic_subqueries,
+    decide_multihop_fallback,
+    extract_clause_refs,
+)
 from app.clients.backend_selector import RagBackendSelector
 from app.core.config import settings
+from app.core.rag_retrieval_contract_client import RagContractNotSupportedError, RagRetrievalContractClient
 from app.core.retrieval_metrics import retrieval_metrics_store
 
 
@@ -21,6 +27,12 @@ class RagEngineRetrieverAdapter:
     base_url: str | None = None
     timeout_seconds: float = 8.0
     backend_selector: RagBackendSelector | None = None
+    contract_client: RagRetrievalContractClient | None = None
+
+    # last diagnostics are read by the use case (duck typing).
+    last_retrieval_diagnostics: RetrievalDiagnostics | None = None
+    _validated_filters: dict[str, Any] | None = None
+    _validated_scope_payload: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if self.backend_selector is None:
@@ -37,6 +49,46 @@ class RagEngineRetrieverAdapter:
             logger.error("rag_service_secret_missing", status="error")
             raise RuntimeError("RAG_SERVICE_SECRET must be configured for production security")
 
+        if self.contract_client is None:
+            self.contract_client = RagRetrievalContractClient(
+                backend_selector=self.backend_selector,
+            )
+
+    async def validate_scope(
+        self,
+        *,
+        query: str,
+        tenant_id: str,
+        collection_id: str | None,
+        plan: RetrievalPlan,
+        user_id: str | None = None,
+        filters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if str(settings.ORCH_RETRIEVAL_CONTRACT or "").lower() != "advanced":
+            return {"valid": True, "normalized_scope": {"tenant_id": tenant_id, "collection_id": collection_id, "filters": filters or {}}, "violations": [], "warnings": [], "query_scope": {}}
+        assert self.contract_client is not None
+        try:
+            payload = await self.contract_client.validate_scope(
+                query=query,
+                tenant_id=tenant_id,
+                collection_id=collection_id,
+                user_id=user_id,
+                filters=filters,
+            )
+        except RagContractNotSupportedError:
+            # Contract not deployed: allow caller to continue with legacy retrieval.
+            return {"valid": True, "normalized_scope": {"tenant_id": tenant_id, "collection_id": collection_id, "filters": filters or {}}, "violations": [], "warnings": [], "query_scope": {}}
+        if isinstance(payload, dict):
+            self._validated_scope_payload = payload
+        return payload if isinstance(payload, dict) else {}
+
+    def apply_validated_scope(self, validated: dict[str, Any]) -> None:
+        # normalized_scope: { tenant_id, collection_id, filters: { metadata, time_range, source_standard(s) } }
+        normalized = validated.get("normalized_scope") if isinstance(validated, dict) else None
+        filters = normalized.get("filters") if isinstance(normalized, dict) else None
+        self._validated_filters = filters if isinstance(filters, dict) else None
+        self._validated_scope_payload = validated
+
     async def retrieve_chunks(
         self,
         query: str,
@@ -45,6 +97,27 @@ class RagEngineRetrieverAdapter:
         plan: RetrievalPlan,
         user_id: str | None = None,
     ) -> list[EvidenceItem]:
+        if str(settings.ORCH_RETRIEVAL_CONTRACT or "").lower() == "advanced":
+            try:
+                return await self._retrieve_advanced(
+                    query=query,
+                    tenant_id=tenant_id,
+                    collection_id=collection_id,
+                    plan=plan,
+                    user_id=user_id,
+                )
+            except RagContractNotSupportedError:
+                logger.warning("rag_contract_not_supported_fallback_legacy", endpoint="retrieval_contract")
+                # Fall back to legacy for this request.
+                self.last_retrieval_diagnostics = RetrievalDiagnostics(
+                    contract="legacy",
+                    strategy="legacy_fallback",
+                    partial=False,
+                    trace={"warning": "advanced_contract_404_fallback_legacy"},
+                    scope_validation=self._validated_scope_payload or {},
+                )
+                # Continue into legacy call below.
+
         retrieval_metrics_store.record_request("chunks")
         payload = {
             "query": query,
@@ -78,6 +151,9 @@ class RagEngineRetrieverAdapter:
         plan: RetrievalPlan,
         user_id: str | None = None,
     ) -> list[EvidenceItem]:
+        if str(settings.ORCH_RETRIEVAL_CONTRACT or "").lower() == "advanced":
+            # Advanced contract retrieval is unified; "summaries" are not fetched separately.
+            return []
         retrieval_metrics_store.record_request("summaries")
         payload = {
             "query": query,
@@ -107,6 +183,101 @@ class RagEngineRetrieverAdapter:
             )
             return []
         items = data.get("items") if isinstance(data, dict) else []
+        return self._to_evidence(items)
+
+    async def _retrieve_advanced(
+        self,
+        *,
+        query: str,
+        tenant_id: str,
+        collection_id: str | None,
+        plan: RetrievalPlan,
+        user_id: str | None,
+    ) -> list[EvidenceItem]:
+        assert self.contract_client is not None
+
+        filters = self._validated_filters
+        # If caller did not pre-validate, keep behavior robust with a light default filter.
+        if filters is None:
+            filters = {"source_standards": list(plan.requested_standards)} if plan.requested_standards else None
+
+        k = max(1, min(int(plan.chunk_k), 24 if plan.mode == "comparativa" else 18))
+        fetch_k = max(1, int(plan.chunk_fetch_k))
+
+        hybrid_payload = await self.contract_client.hybrid(
+            query=query,
+            tenant_id=tenant_id,
+            collection_id=collection_id,
+            user_id=user_id,
+            k=k,
+            fetch_k=fetch_k,
+            filters=filters,
+            rerank={"enabled": True},
+            graph={"max_hops": 2},
+        )
+        items = hybrid_payload.get("items") if isinstance(hybrid_payload, dict) else []
+        trace = hybrid_payload.get("trace") if isinstance(hybrid_payload, dict) else {}
+        if not isinstance(items, list):
+            items = []
+        if not isinstance(trace, dict):
+            trace = {}
+
+        # Decide multihop fallback if configured.
+        clause_refs = extract_clause_refs(query)
+        multihop_hint = len(plan.requested_standards) >= 2 or len(clause_refs) >= 2
+        if settings.ORCH_MULTIHOP_FALLBACK and multihop_hint and plan.mode in {"comparativa", "explicativa"}:
+            rows: list[dict[str, Any]] = []
+            for it in items[: max(1, min(12, len(items)))]:
+                if not isinstance(it, dict):
+                    continue
+                meta = it.get("metadata")
+                row = meta.get("row") if isinstance(meta, dict) else None
+                if isinstance(row, dict):
+                    rows.append(row)
+
+            decision = decide_multihop_fallback(
+                query=query,
+                requested_standards=plan.requested_standards,
+                items=rows,
+                hybrid_trace=trace,
+                top_k=12,
+            )
+            if decision.needs_fallback:
+                subqueries = build_deterministic_subqueries(query=query, requested_standards=plan.requested_standards)
+                merge = {"strategy": "rrf", "rrf_k": 60, "top_k": min(16, max(12, k))}
+                mq_payload = await self.contract_client.multi_query(
+                    tenant_id=tenant_id,
+                    collection_id=collection_id,
+                    user_id=user_id,
+                    queries=subqueries,
+                    merge=merge,
+                )
+                mq_items = mq_payload.get("items") if isinstance(mq_payload, dict) else []
+                mq_trace = mq_payload.get("trace") if isinstance(mq_payload, dict) else {}
+                partial = bool(mq_payload.get("partial", False)) if isinstance(mq_payload, dict) else False
+                subq = mq_payload.get("subqueries") if isinstance(mq_payload, dict) else None
+                diag_trace: dict[str, Any] = {
+                    "fallback_reason": decision.reason,
+                    "hybrid_trace": trace,
+                    "multi_query_trace": mq_trace if isinstance(mq_trace, dict) else {},
+                    "subqueries": subq if isinstance(subq, list) else [],
+                }
+                self.last_retrieval_diagnostics = RetrievalDiagnostics(
+                    contract="advanced",
+                    strategy="multi_query",
+                    partial=partial,
+                    trace=diag_trace,
+                    scope_validation=self._validated_scope_payload or {},
+                )
+                return self._to_evidence(mq_items)
+
+        self.last_retrieval_diagnostics = RetrievalDiagnostics(
+            contract="advanced",
+            strategy="hybrid",
+            partial=False,
+            trace={"hybrid_trace": trace},
+            scope_validation=self._validated_scope_payload or {},
+        )
         return self._to_evidence(items)
 
     async def _post_json(
@@ -222,7 +393,55 @@ class GroundedAnswerAdapter:
         chunks: list[EvidenceItem],
         summaries: list[EvidenceItem],
     ) -> AnswerDraft:
+        # IMPORTANT: Literal modes are validated against explicit C#/R# markers.
+        # Always pass the LLM a context that includes those markers, otherwise the
+        # validator will (correctly) reject "literal" answers as ungrounded.
         del scope_label
-        context_chunks = [item.content for item in [*chunks, *summaries] if item.content]
-        text = await self.service.generate_answer(query=query, context_chunks=context_chunks)
+        def _clip(text: str, limit: int) -> str:
+            t = (text or "").strip()
+            if len(t) <= limit:
+                return t
+            return t[:limit].rstrip() + "..."
+
+        labeled: list[str] = []
+        for item in [*summaries, *chunks]:
+            content = (item.content or "").strip()
+            if not content:
+                continue
+            source = (item.source or "").strip() or "C1"
+            labeled.append(f"[{source}] {_clip(content, 900)}")
+
+        # Use more context for multi-standard interpretive questions.
+        if plan.mode == "comparativa":
+            max_ctx = 28
+        elif plan.require_literal_evidence:
+            max_ctx = 14
+        else:
+            max_ctx = 18
+
+        text = await self.service.generate_answer(
+            query=query,
+            context_chunks=labeled,
+            mode=plan.mode,
+            require_literal_evidence=bool(plan.require_literal_evidence),
+            max_chunks=max_ctx,
+        )
+        if plan.require_literal_evidence:
+            # Defense-in-depth: if the provider ignores instructions and returns no markers,
+            # append the reviewed references so the validator can trace the answer.
+            import re
+
+            if not re.search(r"\b[CR]\d+\b", text or ""):
+                sources: list[str] = []
+                seen: set[str] = set()
+                for item in [*summaries, *chunks]:
+                    src = (item.source or "").strip()
+                    if not src or src in seen:
+                        continue
+                    seen.add(src)
+                    sources.append(src)
+                if sources:
+                    suffix = "Referencias revisadas: " + ", ".join(sources)
+                    text = (text or "").rstrip()
+                    text = f"{text}\n\n{suffix}" if text else suffix
         return AnswerDraft(text=text, mode=plan.mode, evidence=[*chunks, *summaries])

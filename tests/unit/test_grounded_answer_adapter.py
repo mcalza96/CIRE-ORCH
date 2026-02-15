@@ -1,0 +1,62 @@
+import asyncio
+
+from app.agent.http_adapters import GroundedAnswerAdapter
+from app.agent.models import EvidenceItem, RetrievalPlan
+
+
+class _FakeGroundedService:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    async def generate_answer(self, query: str, context_chunks: list[str], *, mode: str, require_literal_evidence: bool, max_chunks: int = 10) -> str:  # type: ignore[override]
+        self.calls.append(
+            {
+                "query": query,
+                "context_chunks": list(context_chunks),
+                "mode": mode,
+                "require_literal_evidence": require_literal_evidence,
+                "max_chunks": max_chunks,
+            }
+        )
+        # Return a text that satisfies the validator expectations.
+        return "Hallazgo trazable. Fuente(C1)"
+
+
+def test_grounded_answer_adapter_passes_labeled_context() -> None:
+    service = _FakeGroundedService()
+    adapter = GroundedAnswerAdapter(service=service)  # type: ignore[arg-type]
+
+    plan = RetrievalPlan(
+        mode="literal_normativa",
+        chunk_k=8,
+        chunk_fetch_k=20,
+        summary_k=3,
+        require_literal_evidence=True,
+        requested_standards=("ISO 9001",),
+    )
+    chunks = [
+        EvidenceItem(source="C1", content="Texto de evidencia 1.", metadata={"row": {}}),
+        EvidenceItem(source="C2", content="Texto de evidencia 2.", metadata={"row": {}}),
+    ]
+    summaries = [EvidenceItem(source="R1", content="Resumen 1.", metadata={"row": {}})]
+
+    draft = asyncio.run(
+        adapter.generate(
+            query="Que exige ISO 9001?",
+            scope_label="ISO 9001",
+            plan=plan,
+            chunks=chunks,
+            summaries=summaries,
+        )
+    )
+
+    assert draft.text
+    assert service.calls, "Expected adapter to call service.generate_answer()"
+    call = service.calls[0]
+    assert call["mode"] == "literal_normativa"
+    assert call["require_literal_evidence"] is True
+
+    context = "\n".join(call["context_chunks"])
+    assert "[R1]" in context
+    assert "[C1]" in context
+    assert "[C2]" in context

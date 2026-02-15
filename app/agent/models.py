@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 
 QueryMode = Literal["literal_lista", "literal_normativa", "explicativa", "comparativa", "ambigua_scope"]
@@ -48,3 +48,12 @@ class ValidationResult:
 class ClarificationRequest:
     question: str
     options: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RetrievalDiagnostics:
+    contract: Literal["legacy", "advanced"]
+    strategy: str = "legacy"
+    partial: bool = False
+    trace: dict[str, Any] = field(default_factory=dict)
+    scope_validation: dict[str, Any] = field(default_factory=dict)

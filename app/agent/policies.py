@@ -28,6 +28,25 @@ LITERAL_NORMATIVE_HINTS = (
 
 COMPARATIVE_HINTS = ("compar", "difer", "vs", "ambas", "respecto")
 
+# Markers that suggest the user wants interpretation/impacts, not literal extraction.
+INTERPRETIVE_HINTS = (
+    "como",
+    "cómo",
+    "obliga",
+    "implica",
+    "impacto",
+    "interaccion",
+    "interacción",
+    "reevalu",
+    "re-evalu",
+    "ciclo de vida",
+    "perspectiva",
+    "gestion del cambio",
+    "gestión del cambio",
+    "validacion",
+    "validación",
+)
+
 SCOPE_HINTS: dict[str, tuple[str, ...]] = {
     "ISO 9001": ("calidad", "cliente", "producto", "servicio"),
     "ISO 14001": ("ambient", "legal", "cumplimiento", "aspecto ambiental"),
@@ -117,11 +136,20 @@ def detect_conflict_objectives(query: str) -> bool:
 def classify_intent(query: str) -> QueryIntent:
     text = (query or "").strip().lower()
     requested_standards = extract_requested_standards(query)
+    # Multi-ISO questions that ask for cross-impact between clauses behave better as "comparativa"
+    # than as a single-standard literal extraction.
+    if len(requested_standards) >= 2 and any(k in text for k in INTERPRETIVE_HINTS):
+        return QueryIntent(mode="comparativa", rationale="multi-standard interpretive cross-impact")
     if any(h in text for h in LITERAL_LIST_HINTS):
         return QueryIntent(mode="literal_lista", rationale="list-like normative query")
     if any(h in text for h in LITERAL_NORMATIVE_HINTS):
         if has_clause_reference(query) and not requested_standards:
             return QueryIntent(mode="ambigua_scope", rationale="clause reference without explicit standard scope")
+        # If the user is asking "how/impact" even while referencing clauses, treat as interpretive.
+        if any(h in text for h in INTERPRETIVE_HINTS):
+            if len(requested_standards) >= 2:
+                return QueryIntent(mode="comparativa", rationale="interpretive question with clause refs")
+            return QueryIntent(mode="explicativa", rationale="interpretive question with clause refs")
         return QueryIntent(mode="literal_normativa", rationale="normative exactness query")
     if any(h in text for h in COMPARATIVE_HINTS):
         return QueryIntent(mode="comparativa", rationale="cross-standard comparison")
@@ -145,7 +173,9 @@ def build_retrieval_plan(intent: QueryIntent, query: str = "") -> RetrievalPlan:
             chunk_k=35,
             chunk_fetch_k=140,
             summary_k=5,
-            require_literal_evidence=True,
+            # Comparativa is typically interpretive; still grounded in retrieved context,
+            # but do not force clause-by-clause literal quoting.
+            require_literal_evidence=False,
             requested_standards=requested_standards,
         )
     if intent.mode == "ambigua_scope":

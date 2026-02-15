@@ -132,7 +132,7 @@ build_orch_auth_curl_args() {
 fetch_api_tenants() {
   local status
   status=$(curl -sS -o /tmp/rag_tenants.json -w "%{http_code}" --max-time 4 \
-    "${AUTH_CURL_ARGS[@]}" \
+    ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
     "$RAG_URL/api/v1/management/tenants?limit=200" || true)
 
   if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
@@ -314,7 +314,11 @@ for t in data.get("tenants", []):
 PY
 )
   local api_tenants
-  api_tenants="$(fetch_api_tenants || true)"
+  api_tenants=""
+  # When user auth is available, tenant discovery must come from ORCH authorization.
+  if [[ -z "${ORCH_ACCESS_TOKEN:-}" ]]; then
+    api_tenants="$(fetch_api_tenants || true)"
+  fi
   local orch_tenants
   orch_tenants="$(fetch_orch_tenants || true)"
 
@@ -417,18 +421,22 @@ print(json.dumps(rows, ensure_ascii=True))
 PY
 )"
   else
-    local collections_status
-    collections_status=$(curl -sS -o /tmp/rag_collections.json -w "%{http_code}" --max-time 4 \
-      "${AUTH_CURL_ARGS[@]}" \
-      -H "X-Tenant-ID: $TENANT_ID" \
-      "$RAG_URL/api/v1/ingestion/collections?tenant_id=$TENANT_ID" || true)
-    if [[ "$collections_status" -ge 200 && "$collections_status" -lt 300 ]]; then
-      collections_json=$(cat /tmp/rag_collections.json 2>/dev/null || printf '[]')
-    else
+    if [[ -n "${ORCH_ACCESS_TOKEN:-}" ]]; then
       collections_json='[]'
-      if [[ "$collections_status" == "404" ]]; then
-        echo "⚠️  Endpoint /api/v1/ingestion/collections no disponible (HTTP 404)."
-        echo "💡 Probablemente la API está desactualizada; reinicia el servicio RAG."
+    else
+      local collections_status
+      collections_status=$(curl -sS -o /tmp/rag_collections.json -w "%{http_code}" --max-time 4 \
+        ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
+        -H "X-Tenant-ID: $TENANT_ID" \
+        "$RAG_URL/api/v1/ingestion/collections?tenant_id=$TENANT_ID" || true)
+      if [[ "$collections_status" -ge 200 && "$collections_status" -lt 300 ]]; then
+        collections_json=$(cat /tmp/rag_collections.json 2>/dev/null || printf '[]')
+      else
+        collections_json='[]'
+        if [[ "$collections_status" == "404" ]]; then
+          echo "⚠️  Endpoint /api/v1/ingestion/collections no disponible (HTTP 404)."
+          echo "💡 Probablemente la API está desactualizada; reinicia el servicio RAG."
+        fi
       fi
     fi
   fi
@@ -687,7 +695,7 @@ PY
   local status
   status=$(curl -sS -o /tmp/rag_collection_cleanup.json -w "%{http_code}" \
     -X POST "$RAG_URL/api/v1/ingestion/collections/cleanup" \
-    "${AUTH_CURL_ARGS[@]}" \
+    ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
     -H "X-Tenant-ID: $TENANT_ID" \
     -H "Content-Type: application/json" \
     -d "$payload")
@@ -731,7 +739,7 @@ PY
   local status
   status=$(curl -sS -o /tmp/rag_batch_create.json -w "%{http_code}" \
     -X POST "$RAG_URL/api/v1/ingestion/batches" \
-    "${AUTH_CURL_ARGS[@]}" \
+    ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
     -H "X-Tenant-ID: $TENANT_ID" \
     -H "Content-Type: application/json" \
     -d "$payload")
@@ -781,7 +789,7 @@ PY
   local status
   status=$(curl -sS -o /tmp/rag_batch_file.json -w "%{http_code}" \
     -X POST "$RAG_URL/api/v1/ingestion/batches/$BATCH_ID/files" \
-    "${AUTH_CURL_ARGS[@]}" \
+    ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
     -H "X-Tenant-ID: $TENANT_ID" \
     -F "file=@$file_path" \
     -F "metadata=$metadata")
@@ -798,7 +806,7 @@ PY
 show_batch_status() {
   local status
   status=$(curl -sS -o /tmp/rag_batch_status.json -w "%{http_code}" \
-    "${AUTH_CURL_ARGS[@]}" \
+    ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
     -H "X-Tenant-ID: $TENANT_ID" \
     "$RAG_URL/api/v1/ingestion/batches/$BATCH_ID/status")
   if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
@@ -1060,7 +1068,7 @@ wait_for_batch_completion_rag_poll() {
   while (( n < BATCH_POLL_MAX )); do
     local http_code
     http_code=$(curl -sS -o /tmp/rag_batch_status.json -w "%{http_code}" \
-      "${AUTH_CURL_ARGS[@]}" \
+      ${AUTH_CURL_ARGS[@]+"${AUTH_CURL_ARGS[@]}"} \
       -H "X-Tenant-ID: $TENANT_ID" \
       "$RAG_URL/api/v1/ingestion/batches/$BATCH_ID/status" || true)
 
@@ -1294,7 +1302,7 @@ wait_for_batch_completion_orch_poll() {
   while (( n < BATCH_POLL_MAX )); do
     local http_code
     http_code=$(curl -sS -o /tmp/orch_batch_progress.json -w "%{http_code}" \
-      "${ORCH_AUTH_CURL_ARGS[@]}" \
+      ${ORCH_AUTH_CURL_ARGS[@]+"${ORCH_AUTH_CURL_ARGS[@]}"} \
       -H "X-Tenant-ID: $TENANT_ID" \
       "$ORCH_URL/api/v1/observability/batches/$BATCH_ID/progress?tenant_id=$TENANT_ID" || true)
 
@@ -1386,31 +1394,14 @@ wait_for_batch_completion_orch_stream() {
 
   local stream_failed=0
   local reached_terminal=0
-  while IFS= read -r line; do
-    [[ -z "$line" ]] && continue
-    if [[ "$line" == ERR\|* ]]; then
-      echo "⚠️  Stream ORCH falló: $line"
-      stream_failed=1
-      break
-    fi
-    if [[ "$line" == TERMINAL\|* ]]; then
-      local status="${line#TERMINAL|}"
-      if [[ "$status" == "timeout" ]]; then
-        echo "⚠️  Stream ORCH expiró por timeout de sesión; cambiando a poll."
-        stream_failed=1
-        break
-      fi
-      echo "✅ Estado terminal alcanzado: $status"
-      STEP_WORKER="completado/terminal"
-      reached_terminal=1
-      break
-    fi
-    if [[ "$line" == SNAP\|* ]]; then
-      local rest="${line#SNAP|}"
-      IFS='|' read -r status percent terminal_count total processing_count queued_count docs_count failed loss_events docs_with_loss docs_with_visual copyright_blocks worker_phase worker_refs eta_seconds stalled <<< "$rest"
-      apply_progress_snapshot "$status" "$percent" "$terminal_count" "$total" "$processing_count" "$queued_count" "$docs_count" "$failed" "$loss_events" "$docs_with_loss" "$docs_with_visual" "$copyright_blocks" "$worker_phase" "$worker_refs" "$eta_seconds" "$stalled"
-    fi
-  done < <(python3 - "$ORCH_URL" "$TENANT_ID" "$BATCH_ID" "$ORCH_ACCESS_TOKEN" "$BATCH_POLL_MAX" "$BATCH_POLL_INTERVAL" <<'PY'
+  local stream_pipe
+  stream_pipe="$(mktemp -u "/tmp/orch_stream_${BATCH_ID}.XXXX")"
+  if ! mkfifo "$stream_pipe"; then
+    echo "⚠️  No se pudo crear FIFO para stream ORCH; fallback a poll."
+    return 1
+  fi
+
+  python3 - "$ORCH_URL" "$TENANT_ID" "$BATCH_ID" "$ORCH_ACCESS_TOKEN" "$BATCH_POLL_MAX" "$BATCH_POLL_INTERVAL" <<'PY' > "$stream_pipe" &
 import json
 import socket
 import sys
@@ -1501,7 +1492,39 @@ except urllib.error.HTTPError as exc:
 except Exception as exc:
     print(f"ERR|stream|{str(exc).replace('|','/')}")
 PY
-  )
+  local stream_pid=$!
+
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    if [[ "$line" == ERR\|* ]]; then
+      echo "⚠️  Stream ORCH falló: $line"
+      stream_failed=1
+      break
+    fi
+    if [[ "$line" == TERMINAL\|* ]]; then
+      local status="${line#TERMINAL|}"
+      if [[ "$status" == "timeout" ]]; then
+        echo "⚠️  Stream ORCH expiró por timeout de sesión; cambiando a poll."
+        stream_failed=1
+        break
+      fi
+      echo "✅ Estado terminal alcanzado: $status"
+      STEP_WORKER="completado/terminal"
+      reached_terminal=1
+      break
+    fi
+    if [[ "$line" == SNAP\|* ]]; then
+      local rest="${line#SNAP|}"
+      IFS='|' read -r status percent terminal_count total processing_count queued_count docs_count failed loss_events docs_with_loss docs_with_visual copyright_blocks worker_phase worker_refs eta_seconds stalled <<< "$rest"
+      apply_progress_snapshot "$status" "$percent" "$terminal_count" "$total" "$processing_count" "$queued_count" "$docs_count" "$failed" "$loss_events" "$docs_with_loss" "$docs_with_visual" "$copyright_blocks" "$worker_phase" "$worker_refs" "$eta_seconds" "$stalled"
+    fi
+  done < "$stream_pipe"
+
+  if ! wait "$stream_pid"; then
+    stream_failed=1
+  fi
+  rm -f "$stream_pipe"
+
   if [[ "$stream_failed" == "1" || "$reached_terminal" == "0" ]]; then
     return 1
   fi

@@ -95,6 +95,23 @@ async def _fetch_membership_tenants(user_id: str) -> list[str]:
     if rows:
         return rows
 
+    # Backward-compatible fallback for schemas that model tenant as institution_id.
+    if tenant_col != "institution_id":
+        institution_rows = await _query_membership_tenants(
+            user_id=user_id,
+            table=table,
+            user_col=user_col,
+            tenant_col="institution_id",
+        )
+        if institution_rows:
+            logger.info(
+                "tenant_membership_lookup_column_fallback",
+                configured_column=tenant_col,
+                fallback_column="institution_id",
+                count=len(institution_rows),
+            )
+            return institution_rows
+
     if table == "tenant_memberships":
         fallback_rows = await _query_membership_tenants(
             user_id=user_id,
@@ -110,6 +127,22 @@ async def _fetch_membership_tenants(user_id: str) -> list[str]:
                 count=len(fallback_rows),
             )
             return fallback_rows
+        if tenant_col != "institution_id":
+            fallback_institution_rows = await _query_membership_tenants(
+                user_id=user_id,
+                table="memberships",
+                user_col=user_col,
+                tenant_col="institution_id",
+            )
+            if fallback_institution_rows:
+                logger.info(
+                    "tenant_membership_lookup_fallback",
+                    configured_table=table,
+                    fallback_table="memberships",
+                    fallback_column="institution_id",
+                    count=len(fallback_institution_rows),
+                )
+                return fallback_institution_rows
     return []
 
 

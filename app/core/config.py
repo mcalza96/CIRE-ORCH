@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     RAG_ENGINE_BACKEND_TTL_SECONDS: int = 20
     RAG_ENGINE_FORCE_BACKEND: str | None = None
 
+    # Retrieval contract selection:
+    # - legacy: uses /api/v1/debug/retrieval/* endpoints
+    # - advanced: uses /api/v1/retrieval/* contract endpoints (validate-scope/hybrid/multi-query/explain)
+    ORCH_RETRIEVAL_CONTRACT: str = "advanced"
+    ORCH_MULTIHOP_FALLBACK: bool = True
+
     QA_LITERAL_SEMANTIC_FALLBACK_ENABLED: bool = True
     QA_LITERAL_SEMANTIC_MIN_KEYWORD_OVERLAP: int = 2
     QA_LITERAL_SEMANTIC_MIN_SIMILARITY: float = 0.3

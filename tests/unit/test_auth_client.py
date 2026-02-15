@@ -3,6 +3,7 @@ import base64
 import json
 from pathlib import Path
 
+import httpx
 import pytest
 
 from app.core import auth_client
@@ -115,6 +116,36 @@ def test_refresh_session_updates_session_file(monkeypatch, tmp_path):
     assert load_session(paths).refresh_token == "refresh-2"
 
 
+def test_refresh_session_returns_none_on_request_error(monkeypatch, tmp_path):
+    old = SessionToken(access_token=_jwt(1), refresh_token="refresh-1")
+    paths = _paths(tmp_path)
+    save_session(old, paths)
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, *args, **kwargs):
+            raise httpx.ConnectError("boom", request=httpx.Request("POST", "https://example.supabase.co"))
+
+    monkeypatch.setattr(auth_client.httpx, "AsyncClient", _Client)
+
+    refreshed = asyncio.run(
+        refresh_session(
+            supabase_url="https://example.supabase.co",
+            supabase_anon_key="anon",
+            paths=paths,
+        )
+    )
+    assert refreshed is None
+
+
 def test_login_with_password_raises_on_http_error(monkeypatch, tmp_path):
     class _Response:
         status_code = 401
@@ -149,3 +180,32 @@ def test_login_with_password_raises_on_http_error(monkeypatch, tmp_path):
                 paths=_paths(tmp_path),
             )
         )
+
+
+def test_login_with_password_raises_on_network_error(monkeypatch, tmp_path):
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, *args, **kwargs):
+            raise httpx.ConnectError("boom", request=httpx.Request("POST", "https://example.supabase.co"))
+
+    monkeypatch.setattr(auth_client.httpx, "AsyncClient", _Client)
+
+    with pytest.raises(auth_client.AuthLoginFailed) as exc:
+        asyncio.run(
+            login_with_password(
+                email="u@example.com",
+                password="pw",
+                supabase_url="https://example.supabase.co",
+                supabase_anon_key="anon",
+                paths=_paths(tmp_path),
+            )
+        )
+    assert "Could not reach Supabase Auth endpoint" in str(exc.value)
