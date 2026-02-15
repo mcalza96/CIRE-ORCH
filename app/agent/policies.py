@@ -30,9 +30,7 @@ COMPARATIVE_HINTS = ("compar", "difer", "vs", "ambas", "respecto")
 
 # Markers that suggest the user wants interpretation/impacts, not literal extraction.
 INTERPRETIVE_HINTS = (
-    "como",
-    "cómo",
-    "obliga",
+    "obliga ",
     "implica",
     "impacto",
     "interaccion",
@@ -143,13 +141,16 @@ def classify_intent(query: str) -> QueryIntent:
     if any(h in text for h in LITERAL_LIST_HINTS):
         return QueryIntent(mode="literal_lista", rationale="list-like normative query")
     if any(h in text for h in LITERAL_NORMATIVE_HINTS):
-        if has_clause_reference(query) and not requested_standards:
-            return QueryIntent(mode="ambigua_scope", rationale="clause reference without explicit standard scope")
         # If the user is asking "how/impact" even while referencing clauses, treat as interpretive.
+        # But if it's a specific clause reference without interpretive intent, it should be literal.
         if any(h in text for h in INTERPRETIVE_HINTS):
             if len(requested_standards) >= 2:
                 return QueryIntent(mode="comparativa", rationale="interpretive question with clause refs")
             return QueryIntent(mode="explicativa", rationale="interpretive question with clause refs")
+        
+        if has_clause_reference(query) and not requested_standards:
+            return QueryIntent(mode="ambigua_scope", rationale="clause reference without explicit standard scope")
+            
         return QueryIntent(mode="literal_normativa", rationale="normative exactness query")
     if any(h in text for h in COMPARATIVE_HINTS):
         return QueryIntent(mode="comparativa", rationale="cross-standard comparison")

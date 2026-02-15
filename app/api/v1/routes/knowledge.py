@@ -14,7 +14,11 @@ from app.api.deps import UserContext, get_current_user
 from app.clients.backend_selector import RagBackendSelector
 from app.core.config import settings
 from app.core.scope_metrics import scope_metrics_store
-from app.security.tenant_authorizer import authorize_requested_tenant, fetch_tenant_names, resolve_allowed_tenants
+from app.security.tenant_authorizer import (
+    authorize_requested_tenant,
+    fetch_tenant_names,
+    resolve_allowed_tenants,
+)
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(tags=["knowledge"])
@@ -119,7 +123,9 @@ async def answer_with_orchestrator(
     use_case: HandleQuestionUseCase = Depends(_build_use_case),
 ):
     try:
-        authorized_tenant = await authorize_requested_tenant(http_request, current_user, request.tenant_id)
+        authorized_tenant = await authorize_requested_tenant(
+            http_request, current_user, request.tenant_id
+        )
         scope_metrics_store.record_request(authorized_tenant)
 
         result = await use_case.execute(
@@ -135,9 +141,8 @@ async def answer_with_orchestrator(
         if result.clarification:
             scope_metrics_store.record_clarification(authorized_tenant)
 
-        blocked = (
-            not result.validation.accepted
-            and any("Scope mismatch" in issue for issue in result.validation.issues)
+        blocked = not result.validation.accepted and any(
+            "Scope mismatch" in issue for issue in result.validation.issues
         )
         if blocked:
             scope_metrics_store.record_mismatch_detected(authorized_tenant)
@@ -174,6 +179,22 @@ async def answer_with_orchestrator(
             "citations": citations,
             "context_chunks": context_chunks,
             "requested_scopes": list(result.plan.requested_standards),
+            "retrieval_plan": {
+                "promoted": bool((result.retrieval.trace or {}).get("promoted", False)),
+                "reason": str(
+                    (result.retrieval.trace or {}).get("reason")
+                    or (result.retrieval.trace or {}).get("fallback_reason")
+                    or ""
+                ),
+                "subqueries": list((result.retrieval.trace or {}).get("subqueries") or []),
+                "timings_ms": dict((result.retrieval.trace or {}).get("timings_ms") or {}),
+                "kernel_flags": {
+                    "semantic_planner": bool(settings.ORCH_SEMANTIC_PLANNER),
+                    "multi_query_primary": bool(settings.ORCH_MULTI_QUERY_PRIMARY),
+                    "multi_query_refine": bool(settings.ORCH_MULTI_QUERY_REFINE),
+                    "multi_query_evaluator": bool(settings.ORCH_MULTI_QUERY_EVALUATOR),
+                },
+            },
             "retrieval": {
                 "contract": result.retrieval.contract,
                 "strategy": result.retrieval.strategy,
@@ -264,10 +285,15 @@ async def list_authorized_collections(
             },
         ) from exc
     except Exception as exc:
-        logger.warning("orchestrator_collection_proxy_error", tenant_id=authorized_tenant, error=str(exc))
+        logger.warning(
+            "orchestrator_collection_proxy_error", tenant_id=authorized_tenant, error=str(exc)
+        )
         raise HTTPException(
             status_code=500,
-            detail={"code": "ORCH_COLLECTION_PROXY_ERROR", "message": "Unexpected collection proxy error"},
+            detail={
+                "code": "ORCH_COLLECTION_PROXY_ERROR",
+                "message": "Unexpected collection proxy error",
+            },
         ) from exc
     return CollectionListResponse(items=items)
 
@@ -278,7 +304,9 @@ async def validate_scope_proxy(
     request: OrchestratorValidateScopeRequest,
     current_user: UserContext = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    authorized_tenant = await authorize_requested_tenant(http_request, current_user, request.tenant_id)
+    authorized_tenant = await authorize_requested_tenant(
+        http_request, current_user, request.tenant_id
+    )
     selector = RagBackendSelector(
         local_url=str(settings.RAG_ENGINE_LOCAL_URL or "http://localhost:8000"),
         docker_url=str(settings.RAG_ENGINE_DOCKER_URL or "http://localhost:8000"),
@@ -310,7 +338,9 @@ async def explain_retrieval_proxy(
     request: OrchestratorExplainRequest,
     current_user: UserContext = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    authorized_tenant = await authorize_requested_tenant(http_request, current_user, request.tenant_id)
+    authorized_tenant = await authorize_requested_tenant(
+        http_request, current_user, request.tenant_id
+    )
     selector = RagBackendSelector(
         local_url=str(settings.RAG_ENGINE_LOCAL_URL or "http://localhost:8000"),
         docker_url=str(settings.RAG_ENGINE_DOCKER_URL or "http://localhost:8000"),

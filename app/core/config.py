@@ -34,6 +34,16 @@ class Settings(BaseSettings):
     # - advanced: uses /api/v1/retrieval/* contract endpoints (validate-scope/hybrid/multi-query/explain)
     ORCH_RETRIEVAL_CONTRACT: str = "advanced"
     ORCH_MULTIHOP_FALLBACK: bool = True
+    ORCH_SEMANTIC_PLANNER: bool = False
+    ORCH_PLANNER_MAX_QUERIES: int = 5
+    ORCH_PLANNER_MODEL: str | None = None
+
+    # Multi-query promotion/iteration (agentic kernel guardrails)
+    ORCH_MULTI_QUERY_PRIMARY: bool = False
+    ORCH_MULTI_QUERY_REFINE: bool = False
+    ORCH_MULTI_QUERY_MIN_ITEMS: int = 6
+    ORCH_MULTI_QUERY_EVALUATOR: bool = False
+    ORCH_EVALUATOR_MODEL: str | None = None
 
     QA_LITERAL_SEMANTIC_FALLBACK_ENABLED: bool = True
     QA_LITERAL_SEMANTIC_MIN_KEYWORD_OVERLAP: int = 2
@@ -77,7 +87,9 @@ class Settings(BaseSettings):
         if self.SUPABASE_JWKS_URL:
             return str(self.SUPABASE_JWKS_URL).strip()
         if self.SUPABASE_URL:
-            return urljoin(str(self.SUPABASE_URL).rstrip("/") + "/", "auth/v1/.well-known/jwks.json")
+            return urljoin(
+                str(self.SUPABASE_URL).rstrip("/") + "/", "auth/v1/.well-known/jwks.json"
+            )
         return None
 
     @property

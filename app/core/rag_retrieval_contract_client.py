@@ -8,6 +8,7 @@ import structlog
 
 from app.clients.backend_selector import RagBackendSelector
 from app.core.config import settings
+from app.core.rag_contract_schemas import MergeOptions, MultiQueryRetrievalRequest, SubQueryRequest
 from app.core.retrieval_metrics import retrieval_metrics_store
 
 
@@ -47,7 +48,12 @@ class RagRetrievalContractClient:
         filters: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         retrieval_metrics_store.record_request("validate_scope")
-        payload: dict[str, Any] = {"query": query, "tenant_id": tenant_id, "collection_id": collection_id, "filters": filters}
+        payload: dict[str, Any] = {
+            "query": query,
+            "tenant_id": tenant_id,
+            "collection_id": collection_id,
+            "filters": filters,
+        }
         try:
             data = await self._post_json(
                 "/api/v1/retrieval/validate-scope",
@@ -110,12 +116,35 @@ class RagRetrievalContractClient:
         merge: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         retrieval_metrics_store.record_request("multi_query")
-        payload: dict[str, Any] = {
-            "tenant_id": tenant_id,
-            "collection_id": collection_id,
-            "queries": queries,
-            "merge": merge or {"strategy": "rrf", "rrf_k": 60, "top_k": 12},
-        }
+
+        parsed_queries: list[SubQueryRequest] = []
+        for raw in queries:
+            if not isinstance(raw, dict):
+                continue
+            try:
+                parsed_queries.append(SubQueryRequest.model_validate(raw))
+            except Exception:
+                logger.warning(
+                    "multi_query_subquery_invalid_dropped",
+                    tenant_id=tenant_id,
+                    raw_id=str(raw.get("id") or ""),
+                )
+
+        # Only RRF is supported by the RAG contract at the moment.
+        merge_obj = MergeOptions()
+        if isinstance(merge, dict):
+            try:
+                merge_obj = MergeOptions.model_validate(merge)
+            except Exception:
+                logger.warning("multi_query_merge_invalid_defaulted", tenant_id=tenant_id)
+
+        request_obj = MultiQueryRetrievalRequest(
+            tenant_id=tenant_id,
+            collection_id=collection_id,
+            queries=parsed_queries,
+            merge=merge_obj,
+        )
+        payload = request_obj.model_dump(by_alias=True, exclude_none=True)
         try:
             data = await self._post_json(
                 "/api/v1/retrieval/multi-query",
@@ -195,7 +224,9 @@ class RagRetrievalContractClient:
         except httpx.HTTPStatusError as exc:
             # If contract is not deployed yet, allow caller to fall back to legacy.
             if exc.response is not None and exc.response.status_code == 404:
-                raise RagContractNotSupportedError(f"RAG contract endpoint not found: {path}") from exc
+                raise RagContractNotSupportedError(
+                    f"RAG contract endpoint not found: {path}"
+                ) from exc
             raise
         except (httpx.RequestError, httpx.HTTPStatusError) as primary_exc:
             if selector.is_forced():
@@ -253,4 +284,3 @@ class RagRetrievalContractClient:
             if isinstance(data, dict):
                 return data
             return {"items": data}
-
