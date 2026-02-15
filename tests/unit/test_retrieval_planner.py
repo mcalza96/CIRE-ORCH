@@ -22,8 +22,10 @@ def test_decide_multihop_fallback_when_missing_standard_and_planner_not_multihop
 def test_build_deterministic_subqueries_bounded() -> None:
     query = "ISO 45001:2018 (Cláusula 8.1.2) ISO 14001:2015 (Cláusula 8.1) ISO 9001:2015 (Cláusula 8.5.1)"
     requested = ("ISO 45001", "ISO 14001", "ISO 9001")
-    subqueries = build_deterministic_subqueries(query=query, requested_standards=requested, max_queries=6)
+    subqueries = build_deterministic_subqueries(
+        query=query, requested_standards=requested, max_queries=6
+    )
     assert 1 <= len(subqueries) <= 6
     ids = {item["id"] for item in subqueries}
-    assert any("impacto_documental" in item_id for item_id in ids)
-
+    # Agnostic bridge queries should be present when there is room.
+    assert "bridge_contexto" in ids or "step_back" in ids

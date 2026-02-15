@@ -45,6 +45,16 @@ class Settings(BaseSettings):
     ORCH_MULTI_QUERY_EVALUATOR: bool = False
     ORCH_EVALUATOR_MODEL: str | None = None
 
+    # Agnostic coverage gate: ensure multi-scope queries retrieve evidence per requested scope.
+    ORCH_COVERAGE_GATE_ENABLED: bool = True
+    ORCH_COVERAGE_GATE_TOP_N: int = 12
+    ORCH_COVERAGE_GATE_MAX_MISSING: int = 2
+    ORCH_COVERAGE_GATE_STEP_BACK: bool = True
+
+    # Raptor summaries (optional). Advanced contract does not include summaries,
+    # so we can call the debug summaries endpoint in a controlled way.
+    ORCH_RAPTOR_SUMMARIES_ENABLED: bool = False
+
     QA_LITERAL_SEMANTIC_FALLBACK_ENABLED: bool = True
     QA_LITERAL_SEMANTIC_MIN_KEYWORD_OVERLAP: int = 2
     QA_LITERAL_SEMANTIC_MIN_SIMILARITY: float = 0.3

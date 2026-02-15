@@ -37,12 +37,12 @@ DOCTOR_DEFAULT_QUERY = "Que exige ISO 9001 en la clausula 7.5.3?"
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     default_orchestrator_url = (
-        os.getenv("ORCH_URL")
-        or os.getenv("ORCHESTRATOR_URL")
-        or "http://localhost:8001"
+        os.getenv("ORCH_URL") or os.getenv("ORCHESTRATOR_URL") or "http://localhost:8001"
     )
     parser = argparse.ArgumentParser(description="Q/A chat via Orchestrator API")
-    parser.add_argument("--tenant-id", help="Institutional tenant id (optional if tenant storage is configured)")
+    parser.add_argument(
+        "--tenant-id", help="Institutional tenant id (optional if tenant storage is configured)"
+    )
     parser.add_argument(
         "--tenant-storage-path",
         help="Optional path to persisted tenant context JSON",
@@ -84,6 +84,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Show compact observability diagnostics after each answer",
     )
+    parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=float(os.getenv("ORCH_HTTP_READ_TIMEOUT_SECONDS") or 45.0),
+        help="Read timeout for /knowledge/answer requests (default: env ORCH_HTTP_READ_TIMEOUT_SECONDS or 45)",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print verbose error diagnostics (exception types, traces, HTTP payload snippets)",
+    )
     return parser.parse_args(argv)
 
 
@@ -91,11 +102,7 @@ def _rewrite_query_with_clarification(original_query: str, clarification_answer:
     text = (clarification_answer or "").strip()
     if not text:
         return original_query
-    return (
-        f"{original_query}\n\n"
-        "__clarified_scope__=true "
-        f"Aclaracion de alcance: {text}."
-    )
+    return f"{original_query}\n\n__clarified_scope__=true Aclaracion de alcance: {text}."
 
 
 def _parse_error_payload(response: httpx.Response) -> dict[str, Any]:
@@ -109,6 +116,49 @@ def _parse_error_payload(response: httpx.Response) -> dict[str, Any]:
         if isinstance(data.get("detail"), dict):
             return data["detail"]
     return {}
+
+
+def _print_debug_http_error(response: httpx.Response) -> None:
+    try:
+        body_text = response.text
+    except Exception:
+        body_text = ""
+
+    cid = response.headers.get("X-Correlation-ID") or response.headers.get("x-correlation-id")
+    ctype = response.headers.get("Content-Type") or response.headers.get("content-type")
+    if cid:
+        print(f"   correlation_id={cid}")
+    if ctype:
+        print(f"   content_type={ctype}")
+
+    error = _parse_error_payload(response)
+    if error:
+        code = str(error.get("code") or "")
+        message = str(error.get("message") or "")
+        request_id = str(error.get("request_id") or cid or "")
+        if code:
+            print(f"   code={code}")
+        if request_id:
+            print(f"   request_id={request_id}")
+        if message:
+            print(f"   message={message[:400]}")
+
+    if body_text:
+        snippet = body_text.strip().replace("\n", " ")
+        if len(snippet) > 800:
+            snippet = snippet[:800] + "..."
+        print(f"   body={snippet}")
+
+
+def _print_debug_exception(exc: BaseException) -> None:
+    import traceback
+
+    print(f"   exc_type={type(exc).__name__}")
+    try:
+        print(f"   exc_repr={exc!r}")
+    except Exception:
+        pass
+    traceback.print_exception(exc)
 
 
 def _short_token(token: str) -> str:
@@ -149,7 +199,11 @@ async def _post_answer(
     if not resolved_tenant:
         logger.warning(
             "tenant_missing_blocked",
-            extra={"event": "tenant_missing_blocked", "endpoint": "/api/v1/knowledge/answer", "status": "blocked"},
+            extra={
+                "event": "tenant_missing_blocked",
+                "endpoint": "/api/v1/knowledge/answer",
+                "status": "blocked",
+            },
         )
         raise TenantSelectionRequiredError()
 
@@ -173,7 +227,9 @@ async def _post_answer(
     if response.status_code >= 400:
         error = _parse_error_payload(response)
         code = str(error.get("code") or "")
-        request_id = str(error.get("request_id") or response.headers.get("X-Correlation-ID") or "unknown")
+        request_id = str(
+            error.get("request_id") or response.headers.get("X-Correlation-ID") or "unknown"
+        )
         if code == TENANT_MISMATCH_CODE and retry_on_mismatch and tenant_context.storage_path:
             logger.warning(
                 "tenant_mismatch_detected",
@@ -247,19 +303,116 @@ async def _post_explain(
 
 
 def _print_trace(last_result: dict[str, Any]) -> None:
-    retrieval = last_result.get("retrieval") if isinstance(last_result.get("retrieval"), dict) else {}
-    scope_validation = last_result.get("scope_validation") if isinstance(last_result.get("scope_validation"), dict) else {}
+    retrieval = (
+        last_result.get("retrieval") if isinstance(last_result.get("retrieval"), dict) else {}
+    )
+    retrieval_plan = (
+        last_result.get("retrieval_plan")
+        if isinstance(last_result.get("retrieval_plan"), dict)
+        else {}
+    )
+    scope_validation = (
+        last_result.get("scope_validation")
+        if isinstance(last_result.get("scope_validation"), dict)
+        else {}
+    )
     print("🧾 Trace")
     print(f"   contract={retrieval.get('contract')}")
     print(f"   strategy={retrieval.get('strategy')}")
     print(f"   partial={bool(retrieval.get('partial', False))}")
+
+    if retrieval_plan:
+        promoted = bool(retrieval_plan.get("promoted", False))
+        reason = str(retrieval_plan.get("reason") or "").strip()
+        if promoted or reason:
+            print(f"   plan_promoted={promoted}")
+            if reason:
+                print(f"   plan_reason={reason}")
+        timings = (
+            retrieval_plan.get("timings_ms")
+            if isinstance(retrieval_plan.get("timings_ms"), dict)
+            else {}
+        )
+        if timings:
+            parts: list[str] = []
+            for key, value in list(timings.items())[:10]:
+                if isinstance(value, (int, float)):
+                    parts.append(f"{key}={round(float(value), 2)}")
+            if parts:
+                print("   timings_ms=" + ", ".join(parts))
+        flags = (
+            retrieval_plan.get("kernel_flags")
+            if isinstance(retrieval_plan.get("kernel_flags"), dict)
+            else {}
+        )
+        if flags:
+            enabled = ", ".join(k for k, v in flags.items() if bool(v))
+            if enabled:
+                print(f"   kernel_flags_enabled={enabled}")
+        subq = (
+            retrieval_plan.get("subqueries")
+            if isinstance(retrieval_plan.get("subqueries"), list)
+            else []
+        )
+        if subq:
+            shown: list[str] = []
+            for item in subq[:6]:
+                if not isinstance(item, dict):
+                    continue
+                qid = str(item.get("id") or "")
+                status = str(item.get("status") or "")
+                latency = item.get("latency_ms")
+                cnt = item.get("items_count")
+                if qid:
+                    frag = f"{qid}:{status}"
+                    if isinstance(cnt, int):
+                        frag += f" items={cnt}"
+                    if isinstance(latency, (int, float)):
+                        frag += f" {round(float(latency), 1)}ms"
+                    shown.append(frag)
+            if shown:
+                print("   subqueries=" + " | ".join(shown))
     trace = retrieval.get("trace") if isinstance(retrieval.get("trace"), dict) else {}
     if trace:
         keys = ", ".join(sorted(trace.keys())[:12])
         print(f"   trace_keys={keys}")
-    query_scope = scope_validation.get("query_scope") if isinstance(scope_validation.get("query_scope"), dict) else {}
+        layer_counts = (
+            trace.get("layer_counts") if isinstance(trace.get("layer_counts"), dict) else {}
+        )
+        if layer_counts:
+            compact = ", ".join(
+                f"{k}={v}" for k, v in list(layer_counts.items())[:8] if isinstance(v, int)
+            )
+            if compact:
+                print(f"   layer_counts={compact}")
+        raptor = trace.get("raptor_summary_count")
+        if isinstance(raptor, int) and raptor:
+            print(f"   raptor_summary_count={raptor}")
+        feats = trace.get("rag_features") if isinstance(trace.get("rag_features"), dict) else {}
+        if feats:
+            enabled = ", ".join(
+                f"{k}={v}" for k, v in feats.items() if str(v) not in {"", "False", "0"}
+            )
+            if enabled:
+                print(f"   rag_features={enabled}")
+        attempts = trace.get("attempts") if isinstance(trace.get("attempts"), list) else []
+        if attempts:
+            last = attempts[-1] if isinstance(attempts[-1], dict) else {}
+            action = str(last.get("action") or "")
+            validation = last.get("validation") if isinstance(last.get("validation"), dict) else {}
+            accepted = bool(validation.get("accepted", True))
+            print(f"   attempts={len(attempts)} last_action={action} last_accepted={accepted}")
+    query_scope = (
+        scope_validation.get("query_scope")
+        if isinstance(scope_validation.get("query_scope"), dict)
+        else {}
+    )
     if query_scope:
-        requested = query_scope.get("requested_standards") if isinstance(query_scope.get("requested_standards"), list) else []
+        requested = (
+            query_scope.get("requested_standards")
+            if isinstance(query_scope.get("requested_standards"), list)
+            else []
+        )
         if requested:
             print("   requested_standards=" + ", ".join(str(x) for x in requested))
         if bool(query_scope.get("requires_scope_clarification", False)):
@@ -282,12 +435,18 @@ def _print_explain(payload: dict[str, Any]) -> None:
         source = str(item.get("source") or "")
         score = item.get("score")
         explain = item.get("explain") if isinstance(item.get("explain"), dict) else {}
-        comps = explain.get("score_components") if isinstance(explain.get("score_components"), dict) else {}
+        comps = (
+            explain.get("score_components")
+            if isinstance(explain.get("score_components"), dict)
+            else {}
+        )
         final_score = comps.get("final_score")
         base_sim = comps.get("base_similarity")
         jina = comps.get("jina_relevance_score")
         penalized = comps.get("scope_penalized")
-        print(f"   {idx}) {source} score={score} final={final_score} sim={base_sim} jina={jina} penalized={penalized}")
+        print(
+            f"   {idx}) {source} score={score} final={final_score} sim={base_sim} jina={jina} penalized={penalized}"
+        )
 
 
 def _print_answer(data: dict[str, Any]) -> None:
@@ -323,7 +482,9 @@ def _obs_headers(access_token: str | None, tenant_id: str | None = None) -> dict
 
 def _print_obs_answer(result: dict[str, Any], latency_ms: float) -> None:
     mode = str(result.get("mode") or "unknown")
-    context_chunks = result.get("context_chunks") if isinstance(result.get("context_chunks"), list) else []
+    context_chunks = (
+        result.get("context_chunks") if isinstance(result.get("context_chunks"), list) else []
+    )
     citations = result.get("citations") if isinstance(result.get("citations"), list) else []
     validation = result.get("validation") if isinstance(result.get("validation"), dict) else {}
     accepted = bool(validation.get("accepted", True))
@@ -405,10 +566,14 @@ async def _watch_batch_stream(
 
     current_event = "message"
     try:
-        async with client.stream("GET", url, params=params, headers=headers, timeout=None) as response:
+        async with client.stream(
+            "GET", url, params=params, headers=headers, timeout=None
+        ) as response:
             if response.status_code < 200 or response.status_code >= 300:
                 text = await response.aread()
-                print(f"❌ watch failed (HTTP {response.status_code}): {text.decode('utf-8', errors='ignore')[:300]}")
+                print(
+                    f"❌ watch failed (HTTP {response.status_code}): {text.decode('utf-8', errors='ignore')[:300]}"
+                )
                 return
             async for raw_line in response.aiter_lines():
                 line = str(raw_line or "").strip()
@@ -426,14 +591,25 @@ async def _watch_batch_stream(
                     continue
                 if current_event == "snapshot":
                     progress = payload.get("progress") if isinstance(payload, dict) else {}
-                    batch = progress.get("batch") if isinstance(progress, dict) and isinstance(progress.get("batch"), dict) else {}
-                    obs = progress.get("observability") if isinstance(progress, dict) and isinstance(progress.get("observability"), dict) else {}
+                    batch = (
+                        progress.get("batch")
+                        if isinstance(progress, dict) and isinstance(progress.get("batch"), dict)
+                        else {}
+                    )
+                    obs = (
+                        progress.get("observability")
+                        if isinstance(progress, dict)
+                        and isinstance(progress.get("observability"), dict)
+                        else {}
+                    )
                     status = str(batch.get("status") or "unknown")
                     percent = float(obs.get("progress_percent") or 0.0)
                     stage = str(obs.get("dominant_stage") or "OTHER")
                     eta = int(obs.get("eta_seconds") or 0)
                     stalled = bool(obs.get("stalled", False))
-                    print(f"📡 status={status} progress={percent}% stage={stage} eta={eta}s stalled={stalled}")
+                    print(
+                        f"📡 status={status} progress={percent}% stage={stage} eta={eta}s stalled={stalled}"
+                    )
                 elif current_event == "terminal":
                     status = str(payload.get("status") or "unknown")
                     print(f"✅ watch terminal: {status}")
@@ -522,7 +698,9 @@ async def _resolve_collection(
         return args.collection_id, args.collection_name
 
     try:
-        collections = await list_authorized_collections(args.orchestrator_url, access_token, tenant_id)
+        collections = await list_authorized_collections(
+            args.orchestrator_url, access_token, tenant_id
+        )
     except OrchestratorDiscoveryError as exc:
         if exc.status_code == 401:
             raise
@@ -598,7 +776,9 @@ async def _run_doctor(
 
     if tenant_id:
         try:
-            collections = await list_authorized_collections(args.orchestrator_url, access_token, tenant_id)
+            collections = await list_authorized_collections(
+                args.orchestrator_url, access_token, tenant_id
+            )
             collection_count = len(collections)
             print("collection_discovery_ok: yes")
         except Exception as exc:
@@ -622,7 +802,9 @@ async def _run_doctor(
             access_token=access_token,
         )
         mode = str(result.get("mode") or "unknown")
-        context_chunks = result.get("context_chunks") if isinstance(result.get("context_chunks"), list) else []
+        context_chunks = (
+            result.get("context_chunks") if isinstance(result.get("context_chunks"), list) else []
+        )
         citations = result.get("citations") if isinstance(result.get("citations"), list) else []
         validation = result.get("validation") if isinstance(result.get("validation"), dict) else {}
         print("retrieval_probe_ok: yes")
@@ -697,7 +879,9 @@ async def main(argv: list[str] | None = None) -> None:
         print(f"❌ {exc}")
         raise SystemExit(1)
 
-    timeout = httpx.Timeout(20.0, connect=5.0)
+    # The orchestrator may spend significant time in retrieval + reranking + synthesis.
+    # Use a longer READ timeout by default so the CLI doesn't time out first.
+    timeout = httpx.Timeout(connect=5.0, read=float(args.timeout_seconds), write=20.0, pool=5.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
         if args.doctor:
             await _run_doctor(
@@ -790,11 +974,19 @@ async def main(argv: list[str] | None = None) -> None:
                 if args.obs:
                     _print_obs_answer(result, latency_ms)
 
-                clarification = result.get("clarification") if isinstance(result.get("clarification"), dict) else None
+                clarification = (
+                    result.get("clarification")
+                    if isinstance(result.get("clarification"), dict)
+                    else None
+                )
                 rounds = 0
                 while clarification and rounds < 3:
                     question = str(clarification.get("question") or "").strip()
-                    options = clarification.get("options") if isinstance(clarification.get("options"), list) else []
+                    options = (
+                        clarification.get("options")
+                        if isinstance(clarification.get("options"), list)
+                        else []
+                    )
                     if question:
                         print("🧠 Clarificacion requerida: " + question)
                     if options:
@@ -816,16 +1008,38 @@ async def main(argv: list[str] | None = None) -> None:
                     last_query = clarified_query
                     if args.obs:
                         _print_obs_answer(result, 0.0)
-                    clarification = result.get("clarification") if isinstance(result.get("clarification"), dict) else None
+                    clarification = (
+                        result.get("clarification")
+                        if isinstance(result.get("clarification"), dict)
+                        else None
+                    )
                     rounds += 1
             except TenantSelectionRequiredError as exc:
                 print(f"❌ {exc}")
             except TenantProtocolError as exc:
                 print(f"❌ {exc.user_message} (code={exc.code}, request_id={exc.request_id})")
+            except httpx.ReadTimeout as exc:
+                print(
+                    "❌ Error: ReadTimeout (el backend puede seguir trabajando). "
+                    f"Sugerencia: reintenta con --timeout-seconds {int(max(60, args.timeout_seconds))} "
+                    "o revisa el trace en el servidor con el trace_id/correlation_id."
+                )
+                if args.debug:
+                    _print_debug_exception(exc)
             except httpx.HTTPStatusError as exc:
-                print(f"❌ Error HTTP {exc.response.status_code}: {exc.response.text}")
+                status = exc.response.status_code if exc.response is not None else 0
+                print(f"❌ Error HTTP {status}")
+                if exc.response is not None:
+                    _print_debug_http_error(exc.response)
+                if args.debug:
+                    _print_debug_exception(exc)
             except Exception as exc:
-                print(f"❌ Error: {exc}")
+                msg = str(exc).strip()
+                if not msg:
+                    msg = "(sin mensaje)"
+                print(f"❌ Error: {msg} [type={type(exc).__name__}]")
+                if args.debug:
+                    _print_debug_exception(exc)
 
 
 if __name__ == "__main__":

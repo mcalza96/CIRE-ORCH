@@ -180,8 +180,13 @@ class RagEngineRetrieverAdapter:
         user_id: str | None = None,
     ) -> list[EvidenceItem]:
         if str(settings.ORCH_RETRIEVAL_CONTRACT or "").lower() == "advanced":
-            # Advanced contract retrieval is unified; "summaries" are not fetched separately.
-            return []
+            # Advanced contract does not expose summaries. Optionally hit the debug endpoint
+            # to keep RAPTOR wired-in (agnostic feature; bounded by summary_k).
+            if not settings.ORCH_RAPTOR_SUMMARIES_ENABLED:
+                return []
+            if int(plan.summary_k or 0) <= 0:
+                return []
+            # Continue into debug endpoint call below.
         retrieval_metrics_store.record_request("summaries")
         payload = {
             "query": query,
@@ -239,6 +244,166 @@ class RagEngineRetrieverAdapter:
         clause_refs = extract_clause_refs(query)
         multihop_hint = len(plan.requested_standards) >= 2 or len(clause_refs) >= 2
 
+        def _layer_stats(raw_items: list[dict[str, Any]]) -> dict[str, Any]:
+            counts: dict[str, int] = {}
+            raptor = 0
+            for it in raw_items:
+                meta = it.get("metadata") if isinstance(it.get("metadata"), dict) else {}
+                row = meta.get("row") if isinstance(meta.get("row"), dict) else None
+                if not isinstance(row, dict):
+                    continue
+                layer = str(row.get("source_layer") or "").strip() or "unknown"
+                counts[layer] = counts.get(layer, 0) + 1
+                row_meta = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+                if bool(row_meta.get("is_raptor_summary", False)):
+                    raptor += 1
+            return {"layer_counts": counts, "raptor_summary_count": raptor}
+
+        def _features_from_hybrid_trace(trace: Any) -> dict[str, Any]:
+            if not isinstance(trace, dict):
+                return {}
+            return {
+                "engine_mode": str(trace.get("engine_mode") or ""),
+                "planner_used": bool(trace.get("planner_used", False)),
+                "planner_multihop": bool(trace.get("planner_multihop", False)),
+                "fallback_used": bool(trace.get("fallback_used", False)),
+            }
+
+        def _extract_row_scope(row: dict[str, Any]) -> str:
+            meta = row.get("metadata")
+            if isinstance(meta, dict):
+                for key in ("source_standard", "scope", "standard"):
+                    value = meta.get(key)
+                    if isinstance(value, str) and value.strip():
+                        return value.strip().upper()
+            value2 = row.get("source_standard")
+            if isinstance(value2, str) and value2.strip():
+                return value2.strip().upper()
+            return ""
+
+        def _missing_scopes(items: list[dict[str, Any]], requested: tuple[str, ...]) -> list[str]:
+            if len(requested) < 2:
+                return []
+            top_n = max(1, int(settings.ORCH_COVERAGE_GATE_TOP_N or 12))
+            present: set[str] = set()
+            for it in items[:top_n]:
+                meta = it.get("metadata") if isinstance(it.get("metadata"), dict) else {}
+                row = meta.get("row") if isinstance(meta.get("row"), dict) else None
+                if not isinstance(row, dict):
+                    continue
+                scope = _extract_row_scope(row)
+                if scope:
+                    present.add(scope)
+            req_upper = [s.upper() for s in requested if s]
+            return [s for s in req_upper if s not in present]
+
+        async def _coverage_repair(
+            *,
+            items: list[dict[str, Any]],
+            base_trace: dict[str, Any],
+            reason: str,
+        ) -> list[dict[str, Any]]:
+            if not settings.ORCH_COVERAGE_GATE_ENABLED:
+                return items
+            missing = _missing_scopes(items, plan.requested_standards)
+            if not missing:
+                return items
+            cap = max(1, int(settings.ORCH_COVERAGE_GATE_MAX_MISSING or 2))
+            missing = missing[:cap]
+
+            # Build one focused subquery per missing scope (agnostic: treat scope labels as strings).
+            focused: list[dict[str, Any]] = []
+            for idx, scope in enumerate(missing, start=1):
+                qtext = " ".join(part for part in [scope, *clause_refs[:3], query] if part).strip()
+                focused.append(
+                    {
+                        "id": f"scope_repair_{idx}",
+                        "query": qtext[:900],
+                        "k": None,
+                        "fetch_k": None,
+                        "filters": {"source_standard": scope},
+                    }
+                )
+
+            merge = {"strategy": "rrf", "rrf_k": 60, "top_k": min(18, max(12, k))}
+            t_cov = time.perf_counter()
+            cov_payload = await self.contract_client.multi_query(
+                tenant_id=tenant_id,
+                collection_id=collection_id,
+                user_id=user_id,
+                queries=focused,
+                merge=merge,
+            )
+            timings_ms["coverage_gate"] = round((time.perf_counter() - t_cov) * 1000, 2)
+
+            cov_items = cov_payload.get("items") if isinstance(cov_payload, dict) else []
+            if not isinstance(cov_items, list) or not cov_items:
+                return items
+
+            # Merge and dedupe by source id.
+            merged: list[dict[str, Any]] = []
+            seen: set[str] = set()
+            for it in [*items, *cov_items]:
+                if not isinstance(it, dict):
+                    continue
+                sid = str(it.get("source") or "")
+                key = sid or str(len(seen))
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(it)
+
+            base_trace["coverage_gate"] = {
+                "trigger_reason": reason,
+                "missing_scopes": missing,
+                "added_queries": [q.get("id") for q in focused],
+            }
+
+            # If still missing after focused queries, optionally try a step-back pass per missing scope.
+            remaining = _missing_scopes(merged, plan.requested_standards)
+            if remaining and settings.ORCH_COVERAGE_GATE_STEP_BACK:
+                remaining = remaining[:cap]
+                step_back_queries: list[dict[str, Any]] = []
+                for idx, scope in enumerate(remaining, start=1):
+                    step_back_queries.append(
+                        {
+                            "id": f"scope_step_back_{idx}",
+                            "query": f"principios generales y requisitos clave relacionados con: {query}",
+                            "k": None,
+                            "fetch_k": None,
+                            "filters": {"source_standard": scope},
+                        }
+                    )
+                t_sb = time.perf_counter()
+                sb_payload = await self.contract_client.multi_query(
+                    tenant_id=tenant_id,
+                    collection_id=collection_id,
+                    user_id=user_id,
+                    queries=step_back_queries,
+                    merge=merge,
+                )
+                timings_ms["coverage_gate_step_back"] = round(
+                    (time.perf_counter() - t_sb) * 1000, 2
+                )
+                sb_items = sb_payload.get("items") if isinstance(sb_payload, dict) else []
+                if isinstance(sb_items, list) and sb_items:
+                    for it in sb_items:
+                        if not isinstance(it, dict):
+                            continue
+                        sid = str(it.get("source") or "")
+                        key = sid or str(len(seen))
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        merged.append(it)
+                    if isinstance(base_trace.get("coverage_gate"), dict):
+                        base_trace["coverage_gate"]["step_back_missing_scopes"] = remaining
+                        base_trace["coverage_gate"]["step_back_queries"] = [
+                            q.get("id") for q in step_back_queries
+                        ]
+
+            return merged
+
         async def build_subqueries() -> list[dict[str, Any]]:
             subqueries_local = build_deterministic_subqueries(
                 query=query,
@@ -291,6 +456,14 @@ class RagEngineRetrieverAdapter:
             if isinstance(mq_items, list) and len(mq_items) >= max(
                 1, int(settings.ORCH_MULTI_QUERY_MIN_ITEMS or 6)
             ):
+                diag_trace.update(_layer_stats([it for it in mq_items if isinstance(it, dict)]))
+                # Coverage gate (agnostic) before returning.
+                mq_items = await _coverage_repair(
+                    items=[it for it in mq_items if isinstance(it, dict)],
+                    base_trace=diag_trace,
+                    reason="multi_query_primary",
+                )
+
                 self.last_retrieval_diagnostics = RetrievalDiagnostics(
                     contract="advanced",
                     strategy="multi_query_primary",
@@ -311,6 +484,12 @@ class RagEngineRetrieverAdapter:
                 if decision.sufficient:
                     diag_trace["evaluator_override"] = True
                     diag_trace["evaluator_reason"] = decision.reason
+                    diag_trace.update(_layer_stats([it for it in mq_items if isinstance(it, dict)]))
+                    mq_items = await _coverage_repair(
+                        items=[it for it in mq_items if isinstance(it, dict)],
+                        base_trace=diag_trace,
+                        reason="multi_query_primary_evaluator",
+                    )
                     self.last_retrieval_diagnostics = RetrievalDiagnostics(
                         contract="advanced",
                         strategy="multi_query_primary_evaluator",
@@ -350,6 +529,14 @@ class RagEngineRetrieverAdapter:
                     diag_trace["refined"] = True
                     diag_trace["refine_reason"] = "insufficient_primary_multi_query"
                     diag_trace["timings_ms"] = dict(timings_ms)
+                    diag_trace.update(
+                        _layer_stats([it for it in mq2_items if isinstance(it, dict)])
+                    )
+                    mq2_items = await _coverage_repair(
+                        items=[it for it in mq2_items if isinstance(it, dict)],
+                        base_trace=diag_trace,
+                        reason="multi_query_refined",
+                    )
                     self.last_retrieval_diagnostics = RetrievalDiagnostics(
                         contract="advanced",
                         strategy="multi_query_refined",
@@ -428,6 +615,9 @@ class RagEngineRetrieverAdapter:
                     "subqueries": subq if isinstance(subq, list) else [],
                     "timings_ms": dict(timings_ms),
                 }
+                diag_trace["rag_features"] = _features_from_hybrid_trace(trace)
+                if isinstance(mq_items, list):
+                    diag_trace.update(_layer_stats([it for it in mq_items if isinstance(it, dict)]))
                 self.last_retrieval_diagnostics = RetrievalDiagnostics(
                     contract="advanced",
                     strategy="multi_query",
@@ -435,7 +625,12 @@ class RagEngineRetrieverAdapter:
                     trace=diag_trace,
                     scope_validation=self._validated_scope_payload or {},
                 )
-                return self._to_evidence(mq_items)
+                mq_items2 = await _coverage_repair(
+                    items=[it for it in mq_items if isinstance(it, dict)],
+                    base_trace=diag_trace,
+                    reason="multi_query_fallback",
+                )
+                return self._to_evidence(mq_items2)
 
         self.last_retrieval_diagnostics = RetrievalDiagnostics(
             contract="advanced",
@@ -444,7 +639,21 @@ class RagEngineRetrieverAdapter:
             trace={"hybrid_trace": trace, "timings_ms": dict(timings_ms)},
             scope_validation=self._validated_scope_payload or {},
         )
-        return self._to_evidence(items)
+        if isinstance(items, list) and isinstance(self.last_retrieval_diagnostics.trace, dict):
+            self.last_retrieval_diagnostics.trace.update(
+                _layer_stats([it for it in items if isinstance(it, dict)])
+            )
+            self.last_retrieval_diagnostics.trace["rag_features"] = _features_from_hybrid_trace(
+                trace
+            )
+        items2 = await _coverage_repair(
+            items=[it for it in items if isinstance(it, dict)],
+            base_trace=self.last_retrieval_diagnostics.trace
+            if isinstance(self.last_retrieval_diagnostics.trace, dict)
+            else {},
+            reason="hybrid",
+        )
+        return self._to_evidence(items2)
 
     async def _post_json(
         self,

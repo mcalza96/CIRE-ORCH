@@ -63,7 +63,9 @@ def _row_mentions_clause(row: dict[str, Any], clause: str) -> bool:
             if isinstance(value, str) and value.strip() == clause:
                 return True
         refs = meta.get("clause_refs")
-        if isinstance(refs, list) and any(isinstance(item, str) and item.strip() == clause for item in refs):
+        if isinstance(refs, list) and any(
+            isinstance(item, str) and item.strip() == clause for item in refs
+        ):
             return True
     return False
 
@@ -121,7 +123,9 @@ def decide_multihop_fallback(
     return CoverageDecision(needs_fallback=False, reason="coverage_ok")
 
 
-def build_initial_scope_filters(*, plan_requested: tuple[str, ...], mode: str, query: str) -> dict[str, Any] | None:
+def build_initial_scope_filters(
+    *, plan_requested: tuple[str, ...], mode: str, query: str
+) -> dict[str, Any] | None:
     requested = tuple(plan_requested) or extract_requested_standards(query)
     filters: dict[str, Any] = {}
     if requested:
@@ -167,27 +171,30 @@ def build_deterministic_subqueries(
             return out
 
     # Bridge/documentation impact query.
+    shared_filters: dict[str, Any] | None = (
+        {"source_standards": list(requested_standards)} if requested_standards else None
+    )
+
     if len(out) < max_queries:
         out.append(
             {
-                "id": "impacto_documental",
-                "query": f"{query} impacto documental validacion proceso registros",
+                "id": "bridge_contexto",
+                "query": f"{query} impacto documental evidencia registros cumplimiento riesgos",
                 "k": None,
                 "fetch_k": None,
-                "filters": {"source_standard": "ISO 9001"} if "ISO 9001" in requested_standards else None,
+                "filters": shared_filters,
             }
         )
 
     if len(out) < max_queries:
         out.append(
             {
-                "id": "ciclo_vida",
-                "query": f"{query} perspectiva ciclo de vida control operacional",
+                "id": "step_back",
+                "query": f"principios generales y requisitos clave relacionados: {query}",
                 "k": None,
                 "fetch_k": None,
-                "filters": {"source_standard": "ISO 14001"} if "ISO 14001" in requested_standards else None,
+                "filters": shared_filters,
             }
         )
 
     return out[:max_queries]
-
