@@ -26,7 +26,7 @@ try:
         message="Que exige la clausula 8.5 de ISO 9001?",
         max_context_chunks=8,
     )
-    print(response["answer"])
+    print(response["context_chunks"])
     print(response["citations"])
 except CireRagApiError as err:
     print(err.status, err.code, err.request_id)
@@ -45,7 +45,7 @@ async def main() -> None:
         result = await client.create_chat_completion(
             message="Resume ISO 14001 clause 6.1",
         )
-        print(result["answer"])
+        print(result["context_chunks"])
 
 
 asyncio.run(main())
@@ -62,6 +62,10 @@ asyncio.run(main())
 - `list_tenant_collections`
 - `get_tenant_queue_status`
 - `get_management_health`
+- `validate_scope`
+- `retrieval_hybrid`
+- `retrieval_multi_query`
+- `retrieval_explain`
 
 Sync and async clients expose the same method names.
 

@@ -56,6 +56,29 @@ La comunicación entre ORCH y RAG es **Service-to-Service (S2S)** pero con conte
 2.  **Contexto:** ORCH **DEBE** enviar el header `X-Tenant-ID` en cada petición.
 3.  **Trazabilidad:** ORCH genera un `Trace-ID` y lo pasa al RAG. Si hay un error, el log debe mostrar el camino completo.
 
+## 3.1 Contrato HTTP del RAG (inventario)
+
+Base URL: `http(s)://<rag-host>/api/v1`
+
+Headers obligatorios (S2S):
+- `X-Tenant-ID: <tenant_id>` en todas las rutas S2S (excepto `/health`, `/docs`, `/openapi.json`, `/api/v1/management/tenants`).
+- En entornos desplegados: `Authorization: Bearer <RAG_SERVICE_SECRET>` o `X-Service-Secret: <RAG_SERVICE_SECRET>`.
+- Si el payload/query incluye `tenant_id`, debe coincidir con `X-Tenant-ID`.
+
+Endpoints disponibles (RAG):
+- Health: `GET /health`
+- Chat: `POST /chat/completions`, `POST /chat/feedback`
+- Documents: `POST /documents`, `GET /documents`, `GET /documents/{document_id}/status`, `DELETE /documents/{document_id}`
+- Management: `GET /management/tenants`, `GET /management/collections`, `GET /management/queue/status`, `GET /management/health`, `GET /management/retrieval/metrics`
+- Retrieval (oficial v1): `POST /retrieval/validate-scope`, `POST /retrieval/hybrid`, `POST /retrieval/multi-query`, `POST /retrieval/explain`
+- Retrieval (debug/diagnostico): `POST /debug/retrieval/chunks`, `POST /debug/retrieval/summaries`
+- Ingestion: `POST /ingestion/embed`, `POST /ingestion/ingest`, `POST /ingestion/institutional`, `GET /ingestion/documents`, `GET /ingestion/collections`, `GET /ingestion/queue/status`, `POST /ingestion/collections/cleanup`, `POST /ingestion/retry/{doc_id}`, `POST /ingestion/batches`, `POST /ingestion/batches/{batch_id}/files`, `POST /ingestion/batches/{batch_id}/seal`, `GET /ingestion/batches/{batch_id}/status`, `GET /ingestion/batches/{batch_id}/progress`, `GET /ingestion/batches/{batch_id}/events`, `GET /ingestion/batches/active`, `GET /ingestion/batches/{batch_id}/stream`
+
+Legacy retirado (no usar):
+- `POST /knowledge/retrieve`
+- `POST /retrieval/chunks`
+- `POST /retrieval/summaries`
+
 ## 4. Estado Actual del Proyecto (A febrero 2026)
 
 * **RAG:** Estable y robusto. Migrando lógica compleja a RPCs de Supabase. Enfocado en rendimiento (Matryoshka Embeddings, HNSW).

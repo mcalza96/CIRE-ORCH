@@ -69,10 +69,184 @@ export interface CreateChatCompletionRequest {
 
 export interface CreateChatCompletionResponse {
   interaction_id: string;
-  answer: string;
+  query?: string;
+  context_chunks?: string[];
+  context_map?: Record<string, unknown>;
   citations: string[];
   mode: string;
+  requires_scope_clarification?: boolean;
   scope_warnings: string | null;
+}
+
+export type TimeRangeField = "created_at" | "updated_at";
+
+export interface TimeRangeFilter {
+  field: TimeRangeField;
+  from?: string | null;
+  to?: string | null;
+}
+
+export interface ScopeFilters {
+  metadata?: Record<string, unknown> | null;
+  time_range?: TimeRangeFilter | null;
+  source_standard?: string | null;
+  source_standards?: string[] | null;
+}
+
+export interface RerankOptions {
+  enabled?: boolean;
+}
+
+export interface GraphOptions {
+  relation_types?: string[] | null;
+  node_types?: string[] | null;
+  max_hops?: number | null;
+}
+
+export interface RetrievalItem {
+  source: string;
+  content: string;
+  score: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface HybridTrace {
+  filters_applied: Record<string, unknown>;
+  engine_mode: string;
+  planner_used: boolean;
+  planner_multihop: boolean;
+  fallback_used: boolean;
+  timings_ms: Record<string, number>;
+  warnings: string[];
+}
+
+export interface HybridRetrievalRequest {
+  query: string;
+  tenant_id: string;
+  collection_id?: string | null;
+  k?: number;
+  fetch_k?: number;
+  filters?: ScopeFilters | null;
+  rerank?: RerankOptions | null;
+  graph?: GraphOptions | null;
+}
+
+export interface HybridRetrievalResponse {
+  items: RetrievalItem[];
+  trace: HybridTrace;
+}
+
+export interface SubQueryRequest {
+  id: string;
+  query: string;
+  k?: number | null;
+  fetch_k?: number | null;
+  filters?: ScopeFilters | null;
+}
+
+export interface MergeOptions {
+  strategy?: "rrf";
+  rrf_k?: number;
+  top_k?: number;
+}
+
+export interface MultiQueryRetrievalRequest {
+  tenant_id: string;
+  collection_id?: string | null;
+  queries: SubQueryRequest[];
+  merge?: MergeOptions;
+}
+
+export interface SubQueryExecution {
+  id: string;
+  status: "ok" | "error";
+  items_count: number;
+  latency_ms: number;
+  error_code?: string | null;
+  error_message?: string | null;
+}
+
+export interface MultiQueryTrace {
+  merge_strategy: string;
+  rrf_k: number;
+  failed_count: number;
+  timings_ms: Record<string, number>;
+}
+
+export interface MultiQueryRetrievalResponse {
+  items: RetrievalItem[];
+  subqueries: SubQueryExecution[];
+  partial: boolean;
+  trace: MultiQueryTrace;
+}
+
+export interface ExplainRetrievalRequest extends HybridRetrievalRequest {
+  top_n?: number;
+}
+
+export interface ScoreComponents {
+  base_similarity: number;
+  jina_relevance_score?: number | null;
+  final_score: number;
+  scope_penalized: boolean;
+  scope_penalty_ratio?: number | null;
+}
+
+export interface RetrievalPath {
+  source_layer?: string | null;
+  source_type?: string | null;
+}
+
+export interface MatchedFilters {
+  collection_id_match?: boolean | null;
+  time_range_match?: boolean | null;
+  metadata_keys_matched: string[];
+}
+
+export interface ExplainedItemDetails {
+  score_components: ScoreComponents;
+  retrieval_path: RetrievalPath;
+  matched_filters: MatchedFilters;
+}
+
+export interface ExplainedRetrievalItem extends RetrievalItem {
+  explain: ExplainedItemDetails;
+}
+
+export interface ExplainTrace extends HybridTrace {
+  top_n: number;
+}
+
+export interface ExplainRetrievalResponse {
+  items: ExplainedRetrievalItem[];
+  trace: ExplainTrace;
+}
+
+export interface ScopeIssue {
+  code: string;
+  field: string;
+  message: string;
+}
+
+export interface QueryScopeSummary {
+  requested_standards: string[];
+  requires_scope_clarification: boolean;
+  suggested_scopes: string[];
+}
+
+export interface ValidateScopeRequest {
+  query: string;
+  tenant_id: string;
+  collection_id?: string | null;
+  filters?: ScopeFilters | null;
+}
+
+export interface ValidateScopeResponse {
+  valid: boolean;
+  normalized_scope: Record<string, unknown>;
+  violations: ScopeIssue[];
+  warnings: ScopeIssue[];
+  query_scope: QueryScopeSummary;
 }
 
 export interface SubmitChatFeedbackRequest {
@@ -126,6 +300,7 @@ export class CireRagClient {
     file: Blob;
     filename: string;
     metadataJson: string;
+    tenantId?: string;
   }): Promise<CreateDocumentResponse> {
     const form = new FormData();
     form.append("file", params.file, params.filename);
@@ -133,21 +308,23 @@ export class CireRagClient {
 
     return this.request<CreateDocumentResponse>("POST", "/documents", {
       body: form,
+      tenantId: params.tenantId,
     });
   }
 
-  async listDocuments(limit = 20): Promise<ListDocumentsResponse> {
-    return this.request<ListDocumentsResponse>("GET", `/documents?limit=${encodeURIComponent(String(limit))}`);
+  async listDocuments(limit = 20, tenantId?: string): Promise<ListDocumentsResponse> {
+    return this.request<ListDocumentsResponse>("GET", `/documents?limit=${encodeURIComponent(String(limit))}`, { tenantId });
   }
 
-  async getDocumentStatus(documentId: string): Promise<DocumentStatusResponse> {
-    return this.request<DocumentStatusResponse>("GET", `/documents/${encodeURIComponent(documentId)}/status`);
+  async getDocumentStatus(documentId: string, tenantId?: string): Promise<DocumentStatusResponse> {
+    return this.request<DocumentStatusResponse>("GET", `/documents/${encodeURIComponent(documentId)}/status`, { tenantId });
   }
 
-  async deleteDocument(documentId: string, purgeChunks = true): Promise<DeleteDocumentResponse> {
+  async deleteDocument(documentId: string, purgeChunks = true, tenantId?: string): Promise<DeleteDocumentResponse> {
     return this.request<DeleteDocumentResponse>(
       "DELETE",
       `/documents/${encodeURIComponent(documentId)}?purge_chunks=${encodeURIComponent(String(purgeChunks))}`,
+      { tenantId },
     );
   }
 
@@ -157,6 +334,7 @@ export class CireRagClient {
     return this.request<CreateChatCompletionResponse>("POST", "/chat/completions", {
       body: JSON.stringify(payload),
       contentType: "application/json",
+      tenantId: payload.tenant_id,
     });
   }
 
@@ -171,6 +349,7 @@ export class CireRagClient {
     return this.request<ListTenantCollectionsResponse>(
       "GET",
       `/management/collections?tenant_id=${encodeURIComponent(tenantId)}`,
+      { tenantId },
     );
   }
 
@@ -178,11 +357,44 @@ export class CireRagClient {
     return this.request<GetTenantQueueStatusResponse>(
       "GET",
       `/management/queue/status?tenant_id=${encodeURIComponent(tenantId)}`,
+      { tenantId },
     );
   }
 
-  async getManagementHealth(): Promise<GetManagementHealthResponse> {
-    return this.request<GetManagementHealthResponse>("GET", "/management/health");
+  async getManagementHealth(tenantId?: string): Promise<GetManagementHealthResponse> {
+    return this.request<GetManagementHealthResponse>("GET", "/management/health", { tenantId });
+  }
+
+  async validateScope(payload: ValidateScopeRequest): Promise<ValidateScopeResponse> {
+    return this.request<ValidateScopeResponse>("POST", "/retrieval/validate-scope", {
+      body: JSON.stringify(payload),
+      contentType: "application/json",
+      tenantId: payload.tenant_id,
+    });
+  }
+
+  async retrievalHybrid(payload: HybridRetrievalRequest): Promise<HybridRetrievalResponse> {
+    return this.request<HybridRetrievalResponse>("POST", "/retrieval/hybrid", {
+      body: JSON.stringify(payload),
+      contentType: "application/json",
+      tenantId: payload.tenant_id,
+    });
+  }
+
+  async retrievalMultiQuery(payload: MultiQueryRetrievalRequest): Promise<MultiQueryRetrievalResponse> {
+    return this.request<MultiQueryRetrievalResponse>("POST", "/retrieval/multi-query", {
+      body: JSON.stringify(payload),
+      contentType: "application/json",
+      tenantId: payload.tenant_id,
+    });
+  }
+
+  async retrievalExplain(payload: ExplainRetrievalRequest): Promise<ExplainRetrievalResponse> {
+    return this.request<ExplainRetrievalResponse>("POST", "/retrieval/explain", {
+      body: JSON.stringify(payload),
+      contentType: "application/json",
+      tenantId: payload.tenant_id,
+    });
   }
 
   private async request<T>(
@@ -191,6 +403,7 @@ export class CireRagClient {
     options?: {
       body?: BodyInit;
       contentType?: string;
+      tenantId?: string;
     },
   ): Promise<T> {
     const headers: Record<string, string> = {
@@ -202,6 +415,9 @@ export class CireRagClient {
     }
     if (options?.contentType) {
       headers["Content-Type"] = options.contentType;
+    }
+    if (options?.tenantId && !headers["X-Tenant-ID"]) {
+      headers["X-Tenant-ID"] = options.tenantId;
     }
 
     const response = await this.fetchImpl(`${this.baseUrl}/api/v1${path}`, {

@@ -294,6 +294,111 @@ class CireRagClient:
     def get_management_health(self) -> Dict[str, Any]:
         return self._request("GET", "/management/health", enforce_tenant=False)
 
+    def validate_scope(
+        self,
+        *,
+        query: str,
+        tenant_id: Optional[str] = None,
+        collection_id: Optional[str] = None,
+        filters: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"query": query}
+        if collection_id:
+            payload["collection_id"] = collection_id
+        if filters is not None:
+            payload["filters"] = filters
+        return self._request(
+            "POST",
+            "/retrieval/validate-scope",
+            json_body=payload,
+            tenant_id=tenant_id,
+            sync_tenant_body=True,
+            enforce_tenant=True,
+        )
+
+    def retrieval_hybrid(
+        self,
+        *,
+        query: str,
+        tenant_id: Optional[str] = None,
+        collection_id: Optional[str] = None,
+        k: int = 12,
+        fetch_k: int = 60,
+        filters: Optional[Dict[str, Any]] = None,
+        rerank: Optional[Dict[str, Any]] = None,
+        graph: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"query": query, "k": k, "fetch_k": fetch_k}
+        if collection_id:
+            payload["collection_id"] = collection_id
+        if filters is not None:
+            payload["filters"] = filters
+        if rerank is not None:
+            payload["rerank"] = rerank
+        if graph is not None:
+            payload["graph"] = graph
+        return self._request(
+            "POST",
+            "/retrieval/hybrid",
+            json_body=payload,
+            tenant_id=tenant_id,
+            sync_tenant_body=True,
+            enforce_tenant=True,
+        )
+
+    def retrieval_multi_query(
+        self,
+        *,
+        queries: List[Dict[str, Any]],
+        tenant_id: Optional[str] = None,
+        collection_id: Optional[str] = None,
+        merge: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"queries": queries}
+        if collection_id:
+            payload["collection_id"] = collection_id
+        if merge is not None:
+            payload["merge"] = merge
+        return self._request(
+            "POST",
+            "/retrieval/multi-query",
+            json_body=payload,
+            tenant_id=tenant_id,
+            sync_tenant_body=True,
+            enforce_tenant=True,
+        )
+
+    def retrieval_explain(
+        self,
+        *,
+        query: str,
+        tenant_id: Optional[str] = None,
+        collection_id: Optional[str] = None,
+        k: int = 12,
+        fetch_k: int = 60,
+        top_n: int = 10,
+        filters: Optional[Dict[str, Any]] = None,
+        rerank: Optional[Dict[str, Any]] = None,
+        graph: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"query": query, "k": k, "fetch_k": fetch_k, "top_n": top_n}
+        if collection_id:
+            payload["collection_id"] = collection_id
+        if filters is not None:
+            payload["filters"] = filters
+        if rerank is not None:
+            payload["rerank"] = rerank
+        if graph is not None:
+            payload["graph"] = graph
+        return self._request(
+            "POST",
+            "/retrieval/explain",
+            json_body=payload,
+            tenant_id=tenant_id,
+            sync_tenant_body=True,
+            enforce_tenant=True,
+        )
+
     def _resolve_tenant(self, tenant_id: Optional[str], *, endpoint: str, enforce_tenant: bool) -> Optional[str]:
         explicit_tenant = _sanitize_tenant_id(tenant_id)
         context_tenant = self.tenant_context.get_tenant()
@@ -518,6 +623,111 @@ class AsyncCireRagClient:
 
     async def get_management_health(self) -> Dict[str, Any]:
         return await self._request("GET", "/management/health", enforce_tenant=False)
+
+    async def validate_scope(
+        self,
+        *,
+        query: str,
+        tenant_id: Optional[str] = None,
+        collection_id: Optional[str] = None,
+        filters: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"query": query}
+        if collection_id:
+            payload["collection_id"] = collection_id
+        if filters is not None:
+            payload["filters"] = filters
+        return await self._request(
+            "POST",
+            "/retrieval/validate-scope",
+            json_body=payload,
+            tenant_id=tenant_id,
+            sync_tenant_body=True,
+            enforce_tenant=True,
+        )
+
+    async def retrieval_hybrid(
+        self,
+        *,
+        query: str,
+        tenant_id: Optional[str] = None,
+        collection_id: Optional[str] = None,
+        k: int = 12,
+        fetch_k: int = 60,
+        filters: Optional[Dict[str, Any]] = None,
+        rerank: Optional[Dict[str, Any]] = None,
+        graph: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"query": query, "k": k, "fetch_k": fetch_k}
+        if collection_id:
+            payload["collection_id"] = collection_id
+        if filters is not None:
+            payload["filters"] = filters
+        if rerank is not None:
+            payload["rerank"] = rerank
+        if graph is not None:
+            payload["graph"] = graph
+        return await self._request(
+            "POST",
+            "/retrieval/hybrid",
+            json_body=payload,
+            tenant_id=tenant_id,
+            sync_tenant_body=True,
+            enforce_tenant=True,
+        )
+
+    async def retrieval_multi_query(
+        self,
+        *,
+        queries: List[Dict[str, Any]],
+        tenant_id: Optional[str] = None,
+        collection_id: Optional[str] = None,
+        merge: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"queries": queries}
+        if collection_id:
+            payload["collection_id"] = collection_id
+        if merge is not None:
+            payload["merge"] = merge
+        return await self._request(
+            "POST",
+            "/retrieval/multi-query",
+            json_body=payload,
+            tenant_id=tenant_id,
+            sync_tenant_body=True,
+            enforce_tenant=True,
+        )
+
+    async def retrieval_explain(
+        self,
+        *,
+        query: str,
+        tenant_id: Optional[str] = None,
+        collection_id: Optional[str] = None,
+        k: int = 12,
+        fetch_k: int = 60,
+        top_n: int = 10,
+        filters: Optional[Dict[str, Any]] = None,
+        rerank: Optional[Dict[str, Any]] = None,
+        graph: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"query": query, "k": k, "fetch_k": fetch_k, "top_n": top_n}
+        if collection_id:
+            payload["collection_id"] = collection_id
+        if filters is not None:
+            payload["filters"] = filters
+        if rerank is not None:
+            payload["rerank"] = rerank
+        if graph is not None:
+            payload["graph"] = graph
+        return await self._request(
+            "POST",
+            "/retrieval/explain",
+            json_body=payload,
+            tenant_id=tenant_id,
+            sync_tenant_body=True,
+            enforce_tenant=True,
+        )
 
     def _resolve_tenant(self, tenant_id: Optional[str], *, endpoint: str, enforce_tenant: bool) -> Optional[str]:
         explicit_tenant = _sanitize_tenant_id(tenant_id)

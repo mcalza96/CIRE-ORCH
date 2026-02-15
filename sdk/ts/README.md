@@ -13,6 +13,10 @@ Base API client for product endpoints under `/api/v1`.
 - `listTenantCollections` -> `GET /management/collections`
 - `getTenantQueueStatus` -> `GET /management/queue/status`
 - `getManagementHealth` -> `GET /management/health`
+- `validateScope` -> `POST /retrieval/validate-scope`
+- `retrievalHybrid` -> `POST /retrieval/hybrid`
+- `retrievalMultiQuery` -> `POST /retrieval/multi-query`
+- `retrievalExplain` -> `POST /retrieval/explain`
 
 ## Usage
 
@@ -30,7 +34,7 @@ const answer = await client.createChatCompletion({
   max_context_chunks: 8,
 });
 
-console.log(answer.answer, answer.citations);
+console.log(answer.context_chunks, answer.citations);
 ```
 
 ## Error handling
