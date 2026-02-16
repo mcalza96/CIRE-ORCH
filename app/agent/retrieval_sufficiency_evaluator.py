@@ -81,9 +81,9 @@ class RetrievalSufficiencyEvaluator:
             "Devuelve SOLO JSON con este schema:\n"
             '{"sufficient": true|false, "reason": "..."}\n\n'
             f"PREGUNTA: {query}\n"
-            f"NORMAS OBJETIVO: {', '.join(requested_standards) if requested_standards else '(no especificadas)'}\n"
+            f"ALCANCES OBJETIVO: {', '.join(requested_standards) if requested_standards else '(no especificados)'}\n"
             f"EVIDENCIA (muestra):\n{json.dumps(sample, ensure_ascii=True)}\n\n"
-            "Criterio: suficiente si hay cobertura razonable de las normas/clausulas pedidas y chunks relevantes."
+            "Criterio: suficiente si hay cobertura razonable de los alcances/referencias pedidos y chunks relevantes."
         )
 
         try:

@@ -9,6 +9,7 @@ import time
 
 from app.agent.grounded_answer_service import GroundedAnswerService
 from app.agent.models import AnswerDraft, EvidenceItem, RetrievalDiagnostics, RetrievalPlan
+from app.cartridges.models import AgentProfile
 from app.agent.retrieval_planner import (
     build_deterministic_subqueries,
     decide_multihop_fallback,
@@ -775,6 +776,7 @@ class GroundedAnswerAdapter:
         plan: RetrievalPlan,
         chunks: list[EvidenceItem],
         summaries: list[EvidenceItem],
+        agent_profile: AgentProfile | None = None,
     ) -> AnswerDraft:
         # IMPORTANT: Literal modes are validated against explicit C#/R# markers.
         # Always pass the LLM a context that includes those markers, otherwise the
@@ -789,37 +791,30 @@ class GroundedAnswerAdapter:
                 return t
             return t[:limit].rstrip() + "..."
 
-        def _extract_iso_standards(text: str) -> list[str]:
-            import re
-
-            found = []
-            for match in re.findall(
-                r"\biso\s*[-:]?\s*(\d{4,5})\b", (text or ""), flags=re.IGNORECASE
-            ):
-                found.append(f"ISO {match}")
-            # Preserve order, unique.
+        def _extract_scope_labels(text: str, candidates: list[str]) -> list[str]:
+            source = (text or "").lower()
             seen: set[str] = set()
             ordered: list[str] = []
-            for s in found:
-                if s in seen:
+            for candidate in candidates:
+                label = (candidate or "").strip()
+                if not label:
                     continue
-                seen.add(s)
-                ordered.append(s)
+                key = label.lower()
+                if key in source and key not in seen:
+                    seen.add(key)
+                    ordered.append(label)
             return ordered
 
-        def _row_mentions_standards(row: dict[str, Any], standards: list[str]) -> set[str]:
-            import re
-
+        def _row_mentions_scopes(row: dict[str, Any], scope_labels: list[str]) -> set[str]:
             content = str(row.get("content") or "")
             meta_raw = row.get("metadata")
             meta: dict[str, Any] = meta_raw if isinstance(meta_raw, dict) else {}
-            blob = (content + "\n" + json.dumps(meta, default=str, ensure_ascii=True)).upper()
+            blob = (content + "\n" + json.dumps(meta, default=str, ensure_ascii=True)).lower()
             present: set[str] = set()
-            for std in standards:
-                key = re.search(r"\b(\d{4,5})\b", std)
-                digits = key.group(1) if key else ""
-                if digits and digits in blob:
-                    present.add(f"ISO {digits}")
+            for label in scope_labels:
+                key = (label or "").strip().lower()
+                if key and key in blob:
+                    present.add(label)
             return present
 
         def _safe_parse_iso8601(value: Any) -> float | None:
@@ -872,23 +867,30 @@ class GroundedAnswerAdapter:
         text = await self.service.generate_answer(
             query=query,
             context_chunks=labeled,
+            agent_profile=agent_profile,
             mode=plan.mode,
             require_literal_evidence=bool(plan.require_literal_evidence),
             max_chunks=max_ctx,
         )
 
-        # Guardrail: if the answer ties multiple standards together but evidence has no explicit bridge,
+        # Guardrail: if the answer ties multiple scopes together but evidence has no explicit bridge,
         # enforce transparent language (inference vs direct citation).
-        requested = list(plan.requested_standards or ())
-        mentioned = _extract_iso_standards(text)
-        standards = requested if len(requested) >= 2 else mentioned
-        if len(standards) >= 2 and not plan.require_literal_evidence:
+        requested_scopes = list(plan.requested_standards or ())
+        candidate_scopes: list[str] = []
+        if agent_profile is not None:
+            candidate_scopes.extend(list(agent_profile.router.scope_hints.keys()))
+            candidate_scopes.extend(list(agent_profile.domain_entities))
+        candidate_scopes.extend(requested_scopes)
+
+        mentioned_scopes = _extract_scope_labels(text, candidate_scopes)
+        scopes = requested_scopes if len(requested_scopes) >= 2 else mentioned_scopes
+        if len(scopes) >= 2 and not plan.require_literal_evidence:
             bridges = 0
             for ev in ordered_items:
                 row = ev.metadata.get("row") if isinstance(ev.metadata, dict) else None
                 if not isinstance(row, dict):
                     continue
-                present = _row_mentions_standards(row, standards)
+                present = _row_mentions_scopes(row, scopes)
                 if len(present) >= 2:
                     bridges += 1
                     break
@@ -898,7 +900,7 @@ class GroundedAnswerAdapter:
             )
             if bridges == 0 and not already_disclosed:
                 note = (
-                    "Nota de trazabilidad: La relacion entre normas se presenta como inferencia basada en "
+                    "Nota de trazabilidad: La relacion entre fuentes se presenta como inferencia basada en "
                     "evidencias separadas; no hay un fragmento unico que las vincule explicitamente."
                 )
                 text = f"{note}\n\n{text}" if (text or "").strip() else note

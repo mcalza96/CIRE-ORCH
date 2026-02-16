@@ -5,17 +5,36 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from app.cartridges.models import AgentProfile
 from app.agent.models import AnswerDraft, EvidenceItem, RetrievalPlan, ValidationResult
-from app.agent.policies import extract_requested_standards
+from app.agent.policies import extract_requested_scopes
 from app.core.config import settings
 
 
 def _extract_keywords(query: str) -> set[str]:
     terms = set(re.findall(r"[a-zA-Z0-9áéíóúñÁÉÍÓÚÑ\.]{3,}", query.lower()))
     stop = {
-        "para", "como", "cómo", "donde", "dónde", "sobre", "entre", "respecto",
-        "tiene", "tienen", "debe", "deben", "norma", "normas", "iso", "clausula",
-        "cláusula", "requisitos", "pregunta", "diferencia", "difiere", "ambas",
+        "para",
+        "como",
+        "cómo",
+        "donde",
+        "dónde",
+        "sobre",
+        "entre",
+        "respecto",
+        "tiene",
+        "tienen",
+        "debe",
+        "deben",
+        "norma",
+        "normas",
+        "alcance",
+        "referencia",
+        "requisitos",
+        "pregunta",
+        "diferencia",
+        "difiere",
+        "ambas",
     }
     return {t for t in terms if t not in stop}
 
@@ -105,7 +124,7 @@ def _row_matches_standards(row: dict[str, Any], standards: list[str]) -> bool:
 def _rerank_for_literal(query: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     keywords = _extract_keywords(query)
     clause_refs = _extract_clause_refs(query)
-    requested_standards = [item.upper() for item in extract_requested_standards(query)]
+    requested_standards = [item.upper() for item in extract_requested_scopes(query)]
     if not keywords and not clause_refs:
         return rows
 
@@ -145,7 +164,7 @@ class RetrievalToolsAdapter:
         user_id: str | None = None,
     ) -> list[EvidenceItem]:
         del user_id
-        requested_standards = list(extract_requested_standards(query))
+        requested_standards = list(extract_requested_scopes(query))
         strict_scope = plan.require_literal_evidence and bool(requested_standards)
 
         scope_context: dict[str, Any] = {"type": "institutional", "tenant_id": tenant_id}
@@ -173,7 +192,8 @@ class RetrievalToolsAdapter:
 
         if self.allowed_source_ids:
             rows = [
-                r for r in rows
+                r
+                for r in rows
                 if str(r.get("source_id") or r.get("id") or "") in self.allowed_source_ids
             ]
 
@@ -190,7 +210,7 @@ class RetrievalToolsAdapter:
 
         return [
             EvidenceItem(
-                source=f"C{i+1}",
+                source=f"C{i + 1}",
                 content=str(row.get("content") or "").strip(),
                 score=float(row.get("similarity") or 0.0),
                 metadata={"row": row},
@@ -208,7 +228,7 @@ class RetrievalToolsAdapter:
         user_id: str | None = None,
     ) -> list[EvidenceItem]:
         del user_id
-        requested_standards = list(extract_requested_standards(query))
+        requested_standards = list(extract_requested_scopes(query))
         strict_scope = plan.require_literal_evidence and bool(requested_standards)
 
         try:
@@ -234,7 +254,10 @@ class RetrievalToolsAdapter:
                 if collection_id and row_collection_id == str(collection_id):
                     filtered.append(row)
                     continue
-                if self.collection_name and row_collection_name.lower() == str(self.collection_name).lower():
+                if (
+                    self.collection_name
+                    and row_collection_name.lower() == str(self.collection_name).lower()
+                ):
                     filtered.append(row)
             rows = filtered
 
@@ -251,7 +274,7 @@ class RetrievalToolsAdapter:
 
         return [
             EvidenceItem(
-                source=f"R{i+1}",
+                source=f"R{i + 1}",
                 content=str(row.get("content") or "").strip(),
                 score=float(row.get("similarity") or 0.0),
                 metadata={"row": row},
@@ -273,6 +296,7 @@ class GroqAnswerGeneratorAdapter:
         plan: RetrievalPlan,
         chunks: list[EvidenceItem],
         summaries: list[EvidenceItem],
+        agent_profile: AgentProfile | None = None,
     ) -> AnswerDraft:
         if not chunks and not summaries:
             return AnswerDraft(
@@ -291,16 +315,37 @@ class GroqAnswerGeneratorAdapter:
         context = "\n\n".join(context_parts)
 
         strict_literal = plan.mode in {"literal_normativa", "literal_lista", "comparativa"}
+        persona = (
+            agent_profile.synthesis.system_persona
+            if agent_profile is not None
+            else "Eres un analista tecnico."
+        )
+        citation_format = (
+            agent_profile.synthesis.citation_format
+            if agent_profile is not None and agent_profile.synthesis.citation_format
+            else "C#/R#"
+        )
+        subject_label = (
+            agent_profile.synthesis.strict_subject_label
+            if agent_profile is not None and agent_profile.synthesis.strict_subject_label
+            else "Afirmacion"
+        )
+        reference_label = (
+            agent_profile.synthesis.strict_reference_label
+            if agent_profile is not None and agent_profile.synthesis.strict_reference_label
+            else "Referencia"
+        )
         if strict_literal:
             prompt = f"""
-Eres un auditor de normas ISO. Contexto: {scope_label}
+{persona} Contexto: {scope_label}
 
 REGLAS:
 1) Usa solo evidencia del contexto.
 2) No inventes items ni sinonimos normativos.
-3) Para cada afirmacion clave da: Clausula | Cita literal breve | Fuente(C# o R#).
+3) Para cada afirmacion clave da: {subject_label} | Cita literal breve | {reference_label}.
 4) Si falta evidencia: "No encontrado explicitamente en el contexto recuperado".
 5) Prioriza precision sobre fluidez.
+6) Formato de cita requerido: {citation_format}.
 
 CONTEXTO:
 {context}
@@ -312,7 +357,7 @@ RESPUESTA:
 """
         else:
             prompt = f"""
-Eres un analista experto. Contexto: {scope_label}
+{persona} Contexto: {scope_label}
 
 Usa solo informacion del contexto recuperado. Si no hay evidencia, dilo explicitamente.
 
@@ -340,11 +385,14 @@ RESPUESTA:
                     if len(snippet) > 220:
                         snippet = snippet[:220].rstrip() + "..."
                     bullets.append(f"- {snippet} Fuente({item.source})")
-                text = "No hubo salida textual del modelo. Resumen mínimo desde evidencia recuperada:\n" + "\n".join(bullets)
+                text = (
+                    "No hubo salida textual del modelo. Resumen mínimo desde evidencia recuperada:\n"
+                    + "\n".join(bullets)
+                )
             else:
                 text = (
                     "No encontrado explicitamente en el contexto recuperado. "
-                    "No puedo emitir una conclusion confiable sin evidencia trazable adicional (C#/R#)."
+                    f"No puedo emitir una conclusion confiable sin evidencia trazable adicional ({citation_format})."
                 )
         return AnswerDraft(text=text, mode=plan.mode, evidence=[*chunks, *summaries])
 
@@ -361,12 +409,18 @@ class LiteralEvidenceValidator:
             if not has_citation_marker:
                 issues.append("Answer does not include explicit source markers (C#/R#).")
 
-        requested = plan.requested_standards or extract_requested_standards(query)
-        mentioned_in_answer = {item.upper() for item in extract_requested_standards(draft.text)}
+        requested = plan.requested_standards or extract_requested_scopes(query)
+        mentioned_in_answer = {item.upper() for item in extract_requested_scopes(draft.text)}
         requested_upper = {item.upper() for item in requested}
 
-        if requested_upper and mentioned_in_answer and not mentioned_in_answer.issubset(requested_upper):
-            issues.append("Scope mismatch detected: answer mentions a different standard than the query scope.")
+        if (
+            requested_upper
+            and mentioned_in_answer
+            and not mentioned_in_answer.issubset(requested_upper)
+        ):
+            issues.append(
+                "Scope mismatch detected: answer mentions a different standard than the query scope."
+            )
 
         if requested and draft.evidence:
             mismatched = 0
@@ -387,7 +441,9 @@ class LiteralEvidenceValidator:
                 if query_clause_refs:
                     content = str(row.get("content") or "")
                     meta_refs = _extract_metadata_clause_refs(row)
-                    if any(ref in content for ref in query_clause_refs) or any(ref in meta_refs for ref in query_clause_refs):
+                    if any(ref in content for ref in query_clause_refs) or any(
+                        ref in meta_refs for ref in query_clause_refs
+                    ):
                         clause_hits += 1
 
             if total_with_scope > 0 and mismatched > 0:
@@ -401,7 +457,9 @@ class LiteralEvidenceValidator:
                     row = ev.metadata.get("row") if isinstance(ev.metadata, dict) else {}
                     if not isinstance(row, dict):
                         continue
-                    if _semantic_clause_match(query=query, row=row, requested_upper=requested_upper):
+                    if _semantic_clause_match(
+                        query=query, row=row, requested_upper=requested_upper
+                    ):
                         semantic_hits += 1
 
                 if semantic_hits == 0:

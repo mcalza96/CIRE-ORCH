@@ -1,0 +1,69 @@
+profile_id: legal_cl
+version: 1.0.0
+status: draft
+
+domain_entities:
+  - codigo civil
+  - codigo del trabajo
+  - articulo
+  - jurisprudencia
+
+synthesis:
+  system_persona: >-
+    Eres un analista legal chileno. Responde con evidencia recuperada y explicita
+    cuando una conclusion sea inferencia.
+  citation_format: Art. X / Fuente
+  strict_subject_label: Articulo
+  strict_reference_label: Referencia legal
+  synthesis_rules:
+    - Prioriza norma vigente y jerarquia normativa.
+    - Si hay conflicto normativo, explicitalo.
+    - No inventes articulos ni interpretaciones sin soporte.
+
+router:
+  literal_list_hints: [lista, enumera, listado]
+  literal_normative_hints: [articulo, inciso, literal, exacto, texto]
+  comparative_hints: [compar, difer, versus, conflicto]
+  interpretive_hints: [aplica, interpreta, impacto, efectos]
+  conflict_markers: [conflicto, contradiccion, colision]
+  evidence_markers: [evidencia, fuente, jurisprudencia]
+  scope_hints:
+    codigo civil: [civil, contrato, obligaciones]
+    codigo del trabajo: [laboral, trabajador, empleador]
+  scope_patterns:
+    - label: codigo civil
+      regex: "\\bcodigo\\s+civil\\b"
+    - label: codigo del trabajo
+      regex: "\\bcodigo\\s+del\\s+trabajo\\b"
+  reference_patterns:
+    - "\\bart(?:iculo)?\\s*\\d+(?:\\s*letra\\s*[a-z])?\\b"
+
+clarification_rules: []
+
+retrieval:
+  by_mode:
+    literal_lista:
+      chunk_k: 40
+      chunk_fetch_k: 180
+      summary_k: 3
+      require_literal_evidence: true
+    literal_normativa:
+      chunk_k: 40
+      chunk_fetch_k: 180
+      summary_k: 3
+      require_literal_evidence: true
+    comparativa:
+      chunk_k: 32
+      chunk_fetch_k: 130
+      summary_k: 5
+      require_literal_evidence: false
+    ambigua_scope:
+      chunk_k: 0
+      chunk_fetch_k: 0
+      summary_k: 0
+      require_literal_evidence: true
+    explicativa:
+      chunk_k: 28
+      chunk_fetch_k: 110
+      summary_k: 5
+      require_literal_evidence: false

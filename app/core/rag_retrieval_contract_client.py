@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from uuid import uuid4
 
 import httpx
 import structlog
@@ -270,10 +271,14 @@ class RagRetrievalContractClient:
         user_id: str | None,
     ) -> dict[str, Any]:
         url = base_url.rstrip("/") + path
+        trace_id = str(uuid4())
         headers: dict[str, str] = {
             "X-Service-Secret": settings.RAG_SERVICE_SECRET or "",
             "X-Tenant-ID": tenant_id,
             "Content-Type": "application/json",
+            # RAG correlation middleware accepts either header.
+            "X-Trace-ID": trace_id,
+            "X-Correlation-ID": trace_id,
         }
         if user_id:
             headers["X-User-ID"] = user_id

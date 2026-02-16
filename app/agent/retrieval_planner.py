@@ -4,25 +4,39 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from app.agent.policies import extract_requested_standards
+from app.cartridges.models import AgentProfile
+from app.agent.policies import extract_requested_scopes
 
 
 _CLAUSE_RE = re.compile(r"\b\d+(?:\.\d+)+\b")
 
 
-def extract_clause_refs(text: str) -> list[str]:
+def extract_clause_refs(text: str, profile: AgentProfile | None = None) -> list[str]:
+    patterns = profile.router.reference_patterns if profile is not None else []
+    compiled: list[re.Pattern[str]] = []
+    for expr in patterns:
+        try:
+            compiled.append(re.compile(expr, flags=re.IGNORECASE))
+        except re.error:
+            continue
+
+    if not compiled:
+        compiled = [_CLAUSE_RE]
+
     seen: set[str] = set()
     ordered: list[str] = []
-    for match in _CLAUSE_RE.findall(text or ""):
-        if match in seen:
-            continue
-        seen.add(match)
-        ordered.append(match)
+    for pattern in compiled:
+        for match in pattern.findall(text or ""):
+            value = match if isinstance(match, str) else str(match)
+            if value in seen:
+                continue
+            seen.add(value)
+            ordered.append(value)
     return ordered
 
 
 def _standard_key(standard: str) -> str:
-    # "ISO 45001" -> "45001"
+    # "scope label 45001" -> "45001"
     m = re.search(r"\b(\d{4,5})\b", standard or "")
     return m.group(1) if m else (standard or "").strip()
 
@@ -32,7 +46,9 @@ def _clause_near_standard(query: str, standard: str) -> str | None:
     key = _standard_key(standard)
     if not key:
         return None
-    m = re.search(rf"\bISO\s*[-:]?\s*{re.escape(key)}\b", text, flags=re.IGNORECASE)
+    m = re.search(rf"\b{re.escape(standard)}\b", text, flags=re.IGNORECASE)
+    if not m:
+        m = re.search(rf"\b{re.escape(key)}\b", text, flags=re.IGNORECASE)
     if not m:
         return None
     window = text[m.end() : m.end() + 90]
@@ -83,9 +99,10 @@ def decide_multihop_fallback(
     items: list[dict[str, Any]],
     hybrid_trace: dict[str, Any] | None,
     top_k: int = 12,
+    profile: AgentProfile | None = None,
 ) -> CoverageDecision:
     """Decide whether to switch from hybrid to multi-query for better balanced evidence."""
-    clause_refs = extract_clause_refs(query)
+    clause_refs = extract_clause_refs(query, profile=profile)
     top = items[: max(1, int(top_k))]
 
     present_standards: set[str] = set()
@@ -124,16 +141,20 @@ def decide_multihop_fallback(
 
 
 def build_initial_scope_filters(
-    *, plan_requested: tuple[str, ...], mode: str, query: str
+    *,
+    plan_requested: tuple[str, ...],
+    mode: str,
+    query: str,
+    profile: AgentProfile | None = None,
 ) -> dict[str, Any] | None:
-    requested = tuple(plan_requested) or extract_requested_standards(query)
+    requested = tuple(plan_requested) or extract_requested_scopes(query, profile=profile)
     filters: dict[str, Any] = {}
     if requested:
         filters["source_standards"] = list(requested)
 
     # Only narrow to clause_id for strict literal extraction; interpretive modes keep recall.
     if mode in {"literal_normativa", "literal_lista"}:
-        clause_refs = extract_clause_refs(query)
+        clause_refs = extract_clause_refs(query, profile=profile)
         if clause_refs:
             filters["metadata"] = {"clause_id": clause_refs[0], "clause_refs": clause_refs}
 
@@ -145,14 +166,15 @@ def build_deterministic_subqueries(
     query: str,
     requested_standards: tuple[str, ...],
     max_queries: int = 6,
+    profile: AgentProfile | None = None,
 ) -> list[dict[str, Any]]:
-    clause_refs = extract_clause_refs(query)
+    clause_refs = extract_clause_refs(query, profile=profile)
     out: list[dict[str, Any]] = []
 
     # Per-standard subqueries (bounded).
     for standard in requested_standards[:3]:
         clause = _clause_near_standard(query, standard)
-        key = _standard_key(standard).lower() or "iso"
+        key = _standard_key(standard).lower() or "scope"
         qtext = f"{standard} {clause or ''} " + " ".join(clause_refs[:3])
         qtext = " ".join(part for part in qtext.split() if part).strip()
         filters: dict[str, Any] = {"source_standard": standard}
@@ -160,7 +182,7 @@ def build_deterministic_subqueries(
             filters["metadata"] = {"clause_id": clause}
         out.append(
             {
-                "id": f"iso{key}_{(clause or 'general').replace('.', '_')}",
+                "id": f"scope_{key}_{(clause or 'general').replace('.', '_')}",
                 "query": qtext,
                 "k": None,
                 "fetch_k": None,

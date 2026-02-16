@@ -2,13 +2,23 @@ import asyncio
 
 from app.agent.http_adapters import GroundedAnswerAdapter
 from app.agent.models import EvidenceItem, RetrievalPlan
+from app.cartridges.models import AgentProfile
 
 
 class _FakeGroundedService:
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
-    async def generate_answer(self, query: str, context_chunks: list[str], *, mode: str, require_literal_evidence: bool, max_chunks: int = 10) -> str:  # type: ignore[override]
+    async def generate_answer(
+        self, 
+        query: str, 
+        context_chunks: list[str], 
+        *, 
+        mode: str, 
+        require_literal_evidence: bool, 
+        max_chunks: int = 10,
+        agent_profile: AgentProfile | None = None
+    ) -> str:  # type: ignore[override]
         self.calls.append(
             {
                 "query": query,
@@ -16,6 +26,7 @@ class _FakeGroundedService:
                 "mode": mode,
                 "require_literal_evidence": require_literal_evidence,
                 "max_chunks": max_chunks,
+                "agent_profile": agent_profile,
             }
         )
         # Return a text that satisfies the validator expectations.
@@ -47,6 +58,7 @@ def test_grounded_answer_adapter_passes_labeled_context() -> None:
             plan=plan,
             chunks=chunks,
             summaries=summaries,
+            agent_profile=AgentProfile(profile_id="test-profile")
         )
     )
 
@@ -55,6 +67,7 @@ def test_grounded_answer_adapter_passes_labeled_context() -> None:
     call = service.calls[0]
     assert call["mode"] == "literal_normativa"
     assert call["require_literal_evidence"] is True
+    assert call["agent_profile"] is not None
 
     context = "\n".join(call["context_chunks"])
     assert "[R1]" in context

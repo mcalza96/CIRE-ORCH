@@ -32,7 +32,7 @@ from sdk.python.cire_rag_sdk import (
 )
 
 logger = logging.getLogger(__name__)
-DOCTOR_DEFAULT_QUERY = "Que exige ISO 9001 en la clausula 7.5.3?"
+DOCTOR_DEFAULT_QUERY = "Que exige la referencia 7.5.3 en este alcance?"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -102,6 +102,9 @@ def _rewrite_query_with_clarification(original_query: str, clarification_answer:
     text = (clarification_answer or "").strip()
     if not text:
         return original_query
+    lowered = text.lower().strip()
+    if lowered in {"comparativa", "explicativa", "literal_normativa", "literal_lista"}:
+        return f"{original_query}\n\n__clarified_mode__={lowered} Aclaracion de modo: {text}."
     return f"{original_query}\n\n__clarified_scope__=true Aclaracion de alcance: {text}."
 
 

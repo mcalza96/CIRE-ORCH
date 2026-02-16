@@ -10,3 +10,4 @@ pytest
 ruff
 PyJWT
 cryptography
+PyYAML

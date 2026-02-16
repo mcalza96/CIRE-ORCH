@@ -3,6 +3,7 @@ from __future__ import annotations
 from openai import AsyncOpenAI
 import structlog
 
+from app.cartridges.models import AgentProfile
 from app.core.config import settings
 
 logger = structlog.get_logger(__name__)
@@ -24,6 +25,7 @@ class GroundedAnswerService:
         query: str,
         context_chunks: list[str],
         *,
+        agent_profile: AgentProfile | None = None,
         mode: str = "explicativa",
         require_literal_evidence: bool = False,
         max_chunks: int = 10,
@@ -40,37 +42,90 @@ class GroundedAnswerService:
 
         # "comparativa" is often interpretive. Only force strict literal formatting when explicitly required.
         strict = bool(require_literal_evidence) or mode in {"literal_normativa", "literal_lista"}
+        synthesis = agent_profile.synthesis if agent_profile is not None else None
+        persona_prefix = (
+            str(synthesis.system_persona).strip()
+            if synthesis is not None and synthesis.system_persona
+            else ""
+        )
+        rules_text = "\n".join(
+            f"- {rule}" for rule in (synthesis.synthesis_rules if synthesis is not None else [])
+        )
+        style_strict = "\n".join(synthesis.strict_style) if synthesis is not None else ""
+        style_interpretive = (
+            "\n".join(synthesis.interpretive_style) if synthesis is not None else ""
+        )
+        citation_format = (
+            str(synthesis.citation_format).strip()
+            if synthesis is not None and synthesis.citation_format
+            else "C#/R#"
+        )
+        strict_subject_label = (
+            str(synthesis.strict_subject_label).strip()
+            if synthesis is not None and synthesis.strict_subject_label
+            else "Afirmacion"
+        )
+        strict_reference_label = (
+            str(synthesis.strict_reference_label).strip()
+            if synthesis is not None and synthesis.strict_reference_label
+            else "Referencia"
+        )
+
+        ref_label = synthesis.strict_reference_label if synthesis else "Evidencia"
+        subj_label = synthesis.strict_subject_label if synthesis else "Afirmacion"
+        cite_fmt = synthesis.citation_format if synthesis else "C#/R#"
+
+        system_prompt_base = (
+            f"{persona_prefix}\n\n"
+            "REGLAS DE SINTESIS:\n"
+            + "\n".join(f"- {r}" for r in (synthesis.synthesis_rules if synthesis is not None else []))
+            + f"\n- Utiliza el formato de cita: {cite_fmt}."
+            + f"\n- Cada {subj_label} debe estar vinculada a su {ref_label}."
+        )
+
         if strict:
-            system = (
-                "Eres un auditor de normas ISO. Responde SOLO con evidencia del CONTEXTO. "
+            strict_system = (
+                "Responde SOLO con evidencia del CONTEXTO. "
                 "Cada afirmacion clave debe incluir al menos una cita con marcadores exactos "
-                "del tipo C# o R# tal como aparecen en el CONTEXTO (ej: C1, R2). "
+                f"con el formato '{cite_fmt}' tal como aparecen en el CONTEXTO. "
                 "Si no hay evidencia suficiente, responde: "
-                "\"No encontrado explicitamente en el contexto recuperado. Referencias revisadas: C1, C2, ...\""
+                '"No encontrado explicitamente en el contexto recuperado. Referencias revisadas: <lista>"'
             )
             style = (
                 "FORMATO:\n"
-                "1) Para cada afirmacion clave: Clausula | Cita literal breve | Fuente(C# o R#).\n"
-                "2) No inventes clausulas ni texto normativo.\n"
+                f"1) Para cada afirmacion clave: {strict_subject_label} | Cita literal breve | {strict_reference_label}.\n"
+                "2) No inventes referencias ni texto fuente.\n"
             )
+            system = f"{persona_prefix}\n\n{strict_system}".strip()
+            if rules_text:
+                system = f"{system}\n\nReglas:\n{rules_text}".strip()
+            if style_strict:
+                style = f"{style}\n{style_strict}".strip()
         else:
-            system = (
+            interpretive_system = (
                 "Responde solo con evidencia del CONTEXTO. "
-                "Puedes interpretar y conectar requisitos entre normas usando evidencias separadas "
+                "Puedes interpretar y conectar requisitos entre fuentes usando evidencias separadas "
                 "(no tiene que existir una frase que las conecte literalmente), "
                 "pero cada afirmacion relevante debe incluir al menos una referencia C# o R# "
                 "tal como aparecen en el CONTEXTO (ej: C3, R1). "
                 "Si una parte no esta respaldada por evidencia, marca: "
-                "\"No encontrado explicitamente en el contexto recuperado\" y no inventes."
+                '"No encontrado explicitamente en el contexto recuperado" y no inventes.'
             )
             style = (
                 "Estructura recomendada:\n"
-                "- ISO 45001 8.1.2: que exige y como aplica al cambio.\n"
-                "- ISO 14001 8.1: que reevaluar en ciclo de vida por el cambio.\n"
-                "- ISO 9001 8.5.1: impacto documental/validacion de proceso.\n"
-                "- Integracion: que documentos/registros cambian y por que.\n"
+                "- Hallazgo principal respaldado por evidencia.\n"
+                "- Implicaciones operativas y tecnicas.\n"
+                "- Riesgos o vacios de evidencia detectados.\n"
+                "- Integracion entre fuentes y conclusion.\n"
                 "Incluye referencias (C#/R#) al final de cada punto."
             )
+            system = f"{persona_prefix}\n\n{interpretive_system}".strip()
+            if rules_text:
+                system = f"{system}\n\nReglas:\n{rules_text}".strip()
+            if style_interpretive:
+                style = f"{style}\n{style_interpretive}".strip()
+
+        style = f"{style}\n\nFormato de cita requerido: {citation_format}".strip()
 
         try:
             completion = await self._client.chat.completions.create(
@@ -83,11 +138,7 @@ class GroundedAnswerService:
                     },
                     {
                         "role": "user",
-                        "content": (
-                            f"PREGUNTA:\n{query}\n\n"
-                            f"CONTEXTO:\n{context}\n\n"
-                            f"{style}\n"
-                        ),
+                        "content": (f"PREGUNTA:\n{query}\n\nCONTEXTO:\n{context}\n\n{style}\n"),
                     },
                 ],
             )

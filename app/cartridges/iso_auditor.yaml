@@ -1,0 +1,132 @@
+profile_id: iso_auditor
+version: 1.0.0
+status: active
+
+domain_entities:
+  - ISO 9001
+  - ISO 14001
+  - ISO 45001
+  - NC
+  - accion correctiva
+
+synthesis:
+  system_persona: >-
+    Eres un auditor trinorma. Responde con trazabilidad estricta usando evidencia
+    del contexto recuperado.
+  citation_format: C#/R#
+  strict_subject_label: Clausula
+  strict_reference_label: Fuente (C#/R#)
+  synthesis_rules:
+    - Prioriza evidencia explicita de clausulas y requisitos.
+    - Si no hay evidencia suficiente, indicalo sin inventar contenido normativo.
+    - Manten lenguaje tecnico y verificable.
+  strict_style:
+    - "Para cada afirmacion: clausula | cita literal breve | fuente C#/R#."
+    - "No inventes clausulas ni texto normativo."
+  interpretive_style:
+    - Para comparativas, conecta evidencias separadas solo cuando sea trazable.
+    - Si la conexion es inferida, declaralo explicitamente.
+
+router:
+  literal_list_hints:
+    - entradas
+    - salidas
+    - lista
+    - exclusivas
+    - enumera
+    - listado
+    - vinetas
+  literal_normative_hints:
+    - clausula
+    - documento obligatorio
+    - obligatorio
+    - exacto
+    - literal
+    - que exige
+  comparative_hints: [compar, difer, vs, ambas, respecto]
+  interpretive_hints:
+    - obliga
+    - implica
+    - impacto
+    - impacta
+    - impide
+    - analice
+    - interaccion
+    - reevalu
+    - re-evalu
+    - ciclo de vida
+    - perspectiva
+    - gestion del cambio
+    - validacion
+    - por que
+    - basado
+  conflict_markers:
+    - conflicto
+    - represalia
+    - confidencial
+    - denuncia
+    - anonim
+    - proteccion de datos
+    - rrhh
+    - se niega
+  evidence_markers:
+    - evidencia
+    - trazabilidad
+    - verificar
+    - registros
+    - informacion documentada
+  scope_hints:
+    ISO 9001: [calidad, cliente, producto, servicio]
+    ISO 14001: [ambient, legal, cumplimiento, aspecto ambiental]
+    ISO 45001: [seguridad, salud, sst, riesgo laboral, trabajador]
+  scope_patterns:
+    - label: ISO 9001
+      regex: "\\biso\\s*[-:]?\\s*9001\\b|\\b9001\\b"
+    - label: ISO 14001
+      regex: "\\biso\\s*[-:]?\\s*14001\\b|\\b14001\\b"
+    - label: ISO 45001
+      regex: "\\biso\\s*[-:]?\\s*45001\\b|\\b45001\\b"
+  reference_patterns:
+    - "\\b\\d+(?:\\.\\d+)+\\b"
+    - "\\bcl(?:a|á)usula\\s*\\d+(?:\\.\\d+)+\\b"
+
+clarification_rules:
+  - rule_id: denunciante_vs_trazabilidad
+    min_scope_count: 2
+    all_markers: [conflicto]
+    any_markers: [denuncia, confidencial, represalia, trazabilidad]
+    question_template: >-
+      Detecte conflicto entre objetivos en un escenario multi-scope ({scopes}).
+      ¿Priorizo proteccion del denunciante, forense de trazabilidad, o balanceado?
+    options:
+      - Proteccion al denunciante
+      - Forense de trazabilidad
+      - Balanceado
+
+retrieval:
+  by_mode:
+    literal_lista:
+      chunk_k: 45
+      chunk_fetch_k: 220
+      summary_k: 3
+      require_literal_evidence: true
+    literal_normativa:
+      chunk_k: 45
+      chunk_fetch_k: 220
+      summary_k: 3
+      require_literal_evidence: true
+    comparativa:
+      chunk_k: 35
+      chunk_fetch_k: 140
+      summary_k: 5
+      require_literal_evidence: false
+    ambigua_scope:
+      chunk_k: 0
+      chunk_fetch_k: 0
+      summary_k: 0
+      require_literal_evidence: true
+    explicativa:
+      chunk_k: 30
+      chunk_fetch_k: 120
+      summary_k: 5
+      require_literal_evidence: false

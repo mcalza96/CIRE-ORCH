@@ -1,0 +1,67 @@
+profile_id: base
+version: 1.0.0
+status: active
+
+domain_entities:
+  - evidencia
+  - fuente
+  - requisito
+
+synthesis:
+  system_persona: >-
+    Eres un analista tecnico agnostico. Responde solo con evidencia recuperada.
+  citation_format: C#/R#
+  strict_subject_label: Afirmacion
+  strict_reference_label: Referencia
+  synthesis_rules:
+    - Cada afirmacion relevante debe tener soporte en el contexto recuperado.
+    - Si no existe evidencia suficiente, dilo explicitamente.
+    - No inventes fuentes ni requisitos.
+  strict_style:
+    - "Para cada afirmacion: requisito | cita breve | fuente."
+    - "Si falta evidencia: No encontrado explicitamente en el contexto recuperado."
+  interpretive_style:
+    - Puedes conectar evidencias separadas, pero marca cuando sea inferencia.
+    - Incluye referencias al final de cada punto.
+
+router:
+  literal_list_hints: [entradas, salidas, lista, enumera, listado]
+  literal_normative_hints: [clausula, obligatorio, exacto, literal, "que exige"]
+  comparative_hints: [compar, difer, vs, ambas, respecto]
+  interpretive_hints: [implica, impacto, analice, interaccion, por que]
+  conflict_markers: [conflicto, confidencial, denuncia, represalia]
+  evidence_markers: [evidencia, trazabilidad, verificar, registros]
+  scope_hints: {}
+  scope_patterns: []
+  reference_patterns:
+    - "\\b\\d+(?:\\.\\d+)+\\b"
+
+clarification_rules: []
+
+retrieval:
+  by_mode:
+    literal_lista:
+      chunk_k: 45
+      chunk_fetch_k: 220
+      summary_k: 3
+      require_literal_evidence: true
+    literal_normativa:
+      chunk_k: 45
+      chunk_fetch_k: 220
+      summary_k: 3
+      require_literal_evidence: true
+    comparativa:
+      chunk_k: 35
+      chunk_fetch_k: 140
+      summary_k: 5
+      require_literal_evidence: false
+    ambigua_scope:
+      chunk_k: 0
+      chunk_fetch_k: 0
+      summary_k: 0
+      require_literal_evidence: true
+    explicativa:
+      chunk_k: 30
+      chunk_fetch_k: 120
+      summary_k: 5
+      require_literal_evidence: false

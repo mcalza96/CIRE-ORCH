@@ -55,6 +55,26 @@ class Settings(BaseSettings):
     # so we can call the debug summaries endpoint in a controlled way.
     ORCH_RAPTOR_SUMMARIES_ENABLED: bool = False
 
+    # Mode classifier v2 (agnostic, feature-based) + optional LLM advisor.
+    ORCH_MODE_CLASSIFIER_V2: bool = True
+    ORCH_MODE_ADVISOR_ENABLED: bool = False
+    ORCH_MODE_ADVISOR_MODEL: str | None = None
+    ORCH_MODE_LOW_CONFIDENCE_THRESHOLD: float = 0.55
+
+    # Level-4-ish internal retries driven by classifier + validation.
+    ORCH_MODE_AUTORETRY_ENABLED: bool = True
+    ORCH_MODE_AUTORETRY_MAX_ATTEMPTS: int = 2
+
+    # Human-in-the-loop fallback when confidence low and internal retry not enough.
+    ORCH_MODE_HITL_ENABLED: bool = False
+
+    # Cartridge system (Level 4 dynamic profile injection)
+    ORCH_CARTRIDGES_DIR: str | None = None
+    ORCH_DEFAULT_PROFILE_ID: str = "base"
+    ORCH_TENANT_PROFILE_MAP: str | None = None
+    ORCH_TENANT_PROFILE_WHITELIST: str | None = None
+    ORCH_AGENT_PROFILE_HEADER: str = "X-Agent-Profile"
+
     QA_LITERAL_SEMANTIC_FALLBACK_ENABLED: bool = True
     QA_LITERAL_SEMANTIC_MIN_KEYWORD_OVERLAP: int = 2
     QA_LITERAL_SEMANTIC_MIN_SIMILARITY: float = 0.3

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
@@ -11,12 +12,15 @@ from app.agent.models import (
     ClarificationRequest,
     EvidenceItem,
     QueryIntent,
+    QueryMode,
     RetrievalDiagnostics,
     RetrievalPlan,
     ValidationResult,
 )
+from app.cartridges.models import AgentProfile
 from app.agent.errors import ScopeValidationError
 from app.agent.retrieval_planner import build_initial_scope_filters
+from app.agent.mode_advisor import ModeAdvisor
 from app.core.config import settings
 
 
@@ -40,7 +44,16 @@ class RetrieverPort(Protocol):
     ) -> list[EvidenceItem]: ...
 
     # Optional methods supported by advanced contract adapters.
-    async def validate_scope(self, **kwargs: Any) -> dict[str, Any]: ...
+    async def validate_scope(
+        self,
+        *,
+        query: str,
+        tenant_id: str,
+        collection_id: str | None,
+        plan: RetrievalPlan,
+        user_id: str | None = None,
+        filters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]: ...
 
     def apply_validated_scope(self, validated: dict[str, Any]) -> None: ...
 
@@ -53,6 +66,7 @@ class AnswerGeneratorPort(Protocol):
         plan: RetrievalPlan,
         chunks: list[EvidenceItem],
         summaries: list[EvidenceItem],
+        agent_profile: AgentProfile | None = None,
     ) -> AnswerDraft: ...
 
 
@@ -63,8 +77,11 @@ class ValidatorPort(Protocol):
 from app.agent.policies import (
     build_retrieval_plan,
     classify_intent,
+    classify_intent_with_trace,
     detect_conflict_objectives,
     detect_scope_candidates,
+    extract_requested_scopes,
+    has_clause_reference,
     suggest_scope_candidates,
 )
 
@@ -79,6 +96,7 @@ class HandleQuestionCommand:
     collection_id: str | None
     scope_label: str
     user_id: str | None = None
+    agent_profile: AgentProfile | None = None
 
 
 @dataclass(frozen=True)
@@ -105,6 +123,23 @@ class HandleQuestionUseCase:
         self._validator = validator
 
     async def execute(self, cmd: HandleQuestionCommand) -> HandleQuestionResult:
+        def _parse_explicit_mode_override(text: str) -> QueryMode | None:
+            raw = (text or "").lower()
+            m = re.search(r"__mode__\s*=\s*(\w+)", raw)
+            if not m:
+                m = re.search(r"__clarified_mode__\s*=\s*(\w+)", raw)
+            if not m:
+                return None
+            value = m.group(1).strip()
+            mapping = {
+                "comparativa": "comparativa",
+                "explicativa": "explicativa",
+                "literal_normativa": "literal_normativa",
+                "literal_lista": "literal_lista",
+                "ambigua_scope": "ambigua_scope",
+            }
+            return cast(QueryMode | None, mapping.get(value))
+
         def _extract_row_standard(row: dict[str, Any]) -> str:
             meta_raw = row.get("metadata")
             meta: dict[str, Any] = meta_raw if isinstance(meta_raw, dict) else {}
@@ -150,10 +185,113 @@ class HandleQuestionUseCase:
             or "__clarified_scope__=true" in normalized_query
         )
 
-        intent = classify_intent(cmd.query)
-        plan = build_retrieval_plan(intent, query=cmd.query)
-        detected_scopes = detect_scope_candidates(cmd.query)
-        conflict_mode = detect_conflict_objectives(cmd.query)
+        intent_trace: dict[str, Any] = {}
+        explicit_mode = _parse_explicit_mode_override(cmd.query)
+        mode_clarified = explicit_mode is not None
+        intent = classify_intent(cmd.query, profile=cmd.agent_profile)
+        if settings.ORCH_MODE_CLASSIFIER_V2:
+            intent, intent_trace = classify_intent_with_trace(cmd.query, profile=cmd.agent_profile)
+
+        if explicit_mode is not None and explicit_mode != intent.mode:
+            intent = QueryIntent(mode=explicit_mode, rationale="explicit_mode_override")
+            if isinstance(intent_trace, dict):
+                intent_trace["explicit_override"] = True
+                intent_trace["explicit_mode"] = explicit_mode
+
+        # Optional LLM advisor for low-confidence classifications.
+        if (
+            settings.ORCH_MODE_ADVISOR_ENABLED
+            and isinstance(intent_trace, dict)
+            and float(intent_trace.get("confidence") or 1.0)
+            < float(settings.ORCH_MODE_LOW_CONFIDENCE_THRESHOLD or 0.55)
+        ):
+            blocked = set(
+                item for item in (intent_trace.get("blocked_modes") or []) if isinstance(item, str)
+            )
+            candidates = cast(
+                tuple[QueryMode, ...],
+                tuple(
+                    m
+                    for m in (
+                        "comparativa",
+                        "explicativa",
+                        "literal_normativa",
+                        "literal_lista",
+                        "ambigua_scope",
+                    )
+                    if m not in blocked
+                ),
+            )
+            suggestion = await ModeAdvisor().suggest(
+                query=cmd.query,
+                candidate_modes=candidates,
+                profile=cmd.agent_profile,
+            )
+            if suggestion is not None and suggestion.mode not in blocked:
+                intent_trace["advisor_used"] = True
+                intent_trace["advisor_suggestion"] = {
+                    "mode": suggestion.mode,
+                    "confidence": suggestion.confidence,
+                    "rationale": suggestion.rationale,
+                }
+                # Kernel chooses the advisor mode only when it differs and is not blocked.
+                if suggestion.mode != intent.mode:
+                    intent = QueryIntent(
+                        mode=suggestion.mode,
+                        rationale=f"advisor override: {suggestion.rationale}".strip(),
+                    )
+
+        plan = build_retrieval_plan(intent, query=cmd.query, profile=cmd.agent_profile)
+        detected_scopes = detect_scope_candidates(cmd.query, profile=cmd.agent_profile)
+        conflict_mode = detect_conflict_objectives(cmd.query, profile=cmd.agent_profile)
+
+        def _build_profile_clarification() -> ClarificationRequest | None:
+            profile = cmd.agent_profile
+            if profile is None or has_user_clarification:
+                return None
+            scopes_text = ", ".join(detected_scopes)
+            for rule in profile.clarification_rules:
+                if not isinstance(rule, dict):
+                    continue
+                # 1. Scope mismatch trigger (min_scope_count)
+                min_scope_raw: Any = rule.get("min_scope_count")
+                if min_scope_raw is not None:
+                    try:
+                        min_scope_count = int(min_scope_raw)
+                        if len(detected_scopes) < min_scope_count:
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+
+                # 2. Mode trigger
+                target_mode = rule.get("mode")
+                if target_mode and target_mode != intent.mode:
+                    continue
+
+                # 3. Marker triggers
+                all_markers = [str(m).lower() for m in rule.get("all_markers", [])]
+                any_markers = [str(m).lower() for m in rule.get("any_markers", [])]
+
+                virtual_markers = {f"__mode__={intent.mode}"}
+                confidence = float(intent_trace.get("confidence") or 1.0)
+                if confidence < float(settings.ORCH_MODE_LOW_CONFIDENCE_THRESHOLD or 0.55):
+                    virtual_markers.add("__low_confidence__")
+
+                def _match_marker(m: str) -> bool:
+                    return m in normalized_query or m in virtual_markers
+
+                if all_markers and not all(_match_marker(m) for m in all_markers):
+                    continue
+                if any_markers and not any(_match_marker(m) for m in any_markers):
+                    continue
+
+                template = str(rule.get("question_template") or rule.get("question") or "").strip()
+                if not template:
+                    continue
+                question = template.format(scopes=scopes_text)
+                options = tuple(str(o).strip() for o in rule.get("options", []))
+                return ClarificationRequest(question=question, options=options)
+            return None
 
         if conflict_mode and has_user_clarification:
             plan = RetrievalPlan(
@@ -165,20 +303,9 @@ class HandleQuestionUseCase:
                 requested_standards=plan.requested_standards,
             )
 
-        if not has_user_clarification and conflict_mode and len(detected_scopes) >= 2:
-            clarification = ClarificationRequest(
-                question=(
-                    "Detecté conflicto entre integridad de evidencia y confidencialidad del denunciante "
-                    f"en un escenario multinorma ({', '.join(detected_scopes)}). "
-                    "¿Priorizo un análisis conservador de protección al denunciante y no represalia, "
-                    "o un análisis forense estricto centrado en trazabilidad documental?"
-                ),
-                options=(
-                    "Protección al denunciante",
-                    "Forense de trazabilidad",
-                    "Balanceado trinorma",
-                ),
-            )
+        clarification_from_profile = _build_profile_clarification()
+        if clarification_from_profile is not None:
+            clarification = clarification_from_profile
             answer = AnswerDraft(text=clarification.question, mode=plan.mode, evidence=[])
             validation = ValidationResult(accepted=True, issues=[])
             return HandleQuestionResult(
@@ -194,60 +321,6 @@ class HandleQuestionUseCase:
                     scope_validation={},
                 ),
                 clarification=clarification,
-            )
-
-        if (
-            not has_user_clarification
-            and intent.mode == "explicativa"
-            and len(detected_scopes) >= 2
-            and len(plan.requested_standards) < 2
-        ):
-            clarification = ClarificationRequest(
-                question=(
-                    "Detecté señales de múltiples normas ("
-                    + ", ".join(detected_scopes)
-                    + "). ¿Quieres análisis integrado trinorma o limitarlo a una norma específica?"
-                ),
-                options=("Análisis integrado trinorma", *detected_scopes),
-            )
-            answer = AnswerDraft(text=clarification.question, mode=plan.mode, evidence=[])
-            validation = ValidationResult(accepted=True, issues=[])
-            return HandleQuestionResult(
-                intent=intent,
-                plan=plan,
-                answer=answer,
-                validation=validation,
-                retrieval=RetrievalDiagnostics(
-                    contract="legacy",
-                    strategy="clarification",
-                    partial=False,
-                    trace={},
-                    scope_validation={},
-                ),
-                clarification=clarification,
-            )
-
-        if intent.mode == "ambigua_scope":
-            options = suggest_scope_candidates(cmd.query)
-            suggestion = ", ".join(options[:3])
-            clarification = (
-                "Necesito desambiguar el alcance antes de responder con trazabilidad. "
-                f"Indica la norma objetivo (sugeridas: {suggestion})."
-            )
-            answer = AnswerDraft(text=clarification, mode=plan.mode, evidence=[])
-            validation = ValidationResult(accepted=True, issues=[])
-            return HandleQuestionResult(
-                intent=intent,
-                plan=plan,
-                answer=answer,
-                validation=validation,
-                retrieval=RetrievalDiagnostics(
-                    contract="legacy",
-                    strategy="clarification",
-                    partial=False,
-                    trace={},
-                    scope_validation={},
-                ),
             )
 
         # Advanced retrieval contract: validate scope first to avoid executing retrieval with invalid filters
@@ -259,6 +332,7 @@ class HandleQuestionUseCase:
                 plan_requested=plan.requested_standards,
                 mode=plan.mode,
                 query=cmd.query,
+                profile=cmd.agent_profile,
             )
             validated = await self._retriever.validate_scope(
                 query=cmd.query,
@@ -334,6 +408,33 @@ class HandleQuestionUseCase:
         async def _run_retrieval(
             *, attempt_plan: RetrievalPlan
         ) -> tuple[list[EvidenceItem], list[EvidenceItem], RetrievalDiagnostics]:
+            # If we are in advanced contract mode and the plan changed (e.g. mode auto-retry),
+            # re-validate scope to avoid stale clause_id filters.
+            if (
+                str(settings.ORCH_RETRIEVAL_CONTRACT or "").lower() == "advanced"
+                and hasattr(self._retriever, "validate_scope")
+                and hasattr(self._retriever, "apply_validated_scope")
+            ):
+                try:
+                    attempt_filters = build_initial_scope_filters(
+                        plan_requested=attempt_plan.requested_standards,
+                        mode=attempt_plan.mode,
+                        query=cmd.query,
+                        profile=cmd.agent_profile,
+                    )
+                    validated_attempt = await self._retriever.validate_scope(
+                        query=cmd.query,
+                        tenant_id=cmd.tenant_id,
+                        collection_id=cmd.collection_id,
+                        plan=attempt_plan,
+                        user_id=cmd.user_id,
+                        filters=attempt_filters,
+                    )
+                    if isinstance(validated_attempt, dict):
+                        self._retriever.apply_validated_scope(validated_attempt)
+                except Exception:
+                    pass
+
             chunks_task = asyncio.create_task(
                 self._retriever.retrieve_chunks(
                     query=cmd.query,
@@ -407,12 +508,98 @@ class HandleQuestionUseCase:
 
         current_plan = plan
         chunks, summaries, retrieval = await _run_retrieval(attempt_plan=current_plan)
+
+        initial_plan = current_plan
+        initial_chunks = chunks
+        initial_summaries = summaries
+        initial_retrieval = retrieval
+
+        # Auto-retry on retrieval collapse when the initial mode was overly strict.
+        if (
+            settings.ORCH_MODE_AUTORETRY_ENABLED
+            and int(settings.ORCH_MODE_AUTORETRY_MAX_ATTEMPTS or 2) >= 2
+            and not chunks
+            and not summaries
+            and current_plan.mode in {"literal_normativa", "literal_lista"}
+        ):
+            fallback_mode: QueryMode = (
+                "comparativa" if len(current_plan.requested_standards) >= 2 else "explicativa"
+            )
+            if fallback_mode != current_plan.mode:
+                retry_intent = QueryIntent(
+                    mode=fallback_mode,
+                    rationale="auto_retry_on_empty_retrieval",
+                )
+                retry_plan = build_retrieval_plan(
+                    retry_intent,
+                    query=cmd.query,
+                    profile=cmd.agent_profile,
+                )
+                chunks2, summaries2, retrieval2 = await _run_retrieval(attempt_plan=retry_plan)
+                current_plan = retry_plan
+                chunks, summaries, retrieval = chunks2, summaries2, retrieval2
+
+        # HITL fallback for low-confidence queries that still produced no evidence.
+        if (
+            settings.ORCH_MODE_HITL_ENABLED
+            and not mode_clarified
+            and not chunks
+            and not summaries
+            and isinstance(intent_trace, dict)
+            and float(intent_trace.get("confidence") or 1.0)
+            < float(settings.ORCH_MODE_LOW_CONFIDENCE_THRESHOLD or 0.55)
+        ):
+            clarification = ClarificationRequest(
+                question=(
+                    "No pude recuperar evidencia suficiente y la pregunta es ambigua en cuanto al tipo de respuesta. "
+                    "Elige el modo: comparativa (integrada), explicativa (analitica) o literal_normativa (citas exactas)."
+                ),
+                options=("comparativa", "explicativa", "literal_normativa"),
+            )
+            answer = AnswerDraft(text=clarification.question, mode=current_plan.mode, evidence=[])
+            validation = ValidationResult(accepted=True, issues=[])
+            trace_payload = dict(retrieval.trace or {})
+            trace_payload["mode_clarification"] = {
+                "intent": intent.mode,
+                "confidence": float(intent_trace.get("confidence") or 0.0),
+            }
+            return HandleQuestionResult(
+                intent=intent,
+                plan=current_plan,
+                answer=answer,
+                validation=validation,
+                retrieval=RetrievalDiagnostics(
+                    contract=retrieval.contract,
+                    strategy="clarification_mode",
+                    partial=bool(retrieval.partial),
+                    trace=trace_payload,
+                    scope_validation=retrieval.scope_validation,
+                ),
+                clarification=clarification,
+            )
+        # --------------------------------------------------------------------------
+        # PHASE 2: Profile-driven Clarifications (Declarative Engine)
+        # --------------------------------------------------------------------------
+        # Profile rules handled higher up in Execute if applicable before retrieval.
+        # This section is for post-retrieval corrections if needed.
+        
+        # Legacy fallback/cleanup for structural ambiguity
+        if (
+            not has_user_clarification
+            and intent.mode == "explicativa"
+            and len(detected_scopes) >= 2
+            and len(plan.requested_standards) < 2
+            and has_clause_reference(cmd.query, profile=cmd.agent_profile)
+        ):
+            # ... keep existing structural ambiguity logic if needed ...
+            pass
         answer = await self._answer_generator.generate(
             query=cmd.query,
             scope_label=cmd.scope_label,
             plan=current_plan,
             chunks=chunks,
             summaries=summaries,
+            agent_profile=cmd.agent_profile,
         )
         validation = self._validator.validate(answer, current_plan, cmd.query)
 
@@ -420,24 +607,54 @@ class HandleQuestionUseCase:
             {
                 "attempt": 1,
                 "plan": {
-                    "mode": current_plan.mode,
-                    "chunk_k": current_plan.chunk_k,
-                    "chunk_fetch_k": current_plan.chunk_fetch_k,
-                    "summary_k": current_plan.summary_k,
-                    "requested_standards": list(current_plan.requested_standards),
+                    "mode": initial_plan.mode,
+                    "chunk_k": initial_plan.chunk_k,
+                    "chunk_fetch_k": initial_plan.chunk_fetch_k,
+                    "summary_k": initial_plan.summary_k,
+                    "requested_standards": list(initial_plan.requested_standards),
                 },
                 "retrieval": {
-                    "contract": retrieval.contract,
-                    "strategy": retrieval.strategy,
-                    "partial": bool(retrieval.partial),
+                    "contract": initial_retrieval.contract,
+                    "strategy": initial_retrieval.strategy,
+                    "partial": bool(initial_retrieval.partial),
                 },
                 "validation": {
-                    "accepted": bool(validation.accepted),
-                    "issues": list(validation.issues),
+                    "accepted": bool(validation.accepted)
+                    if (initial_chunks or initial_summaries)
+                    else False,
+                    "issues": list(validation.issues)
+                    if (initial_chunks or initial_summaries)
+                    else ["retrieval_empty"],
                 },
                 "action": "initial",
             }
         )
+
+        if initial_plan.mode != current_plan.mode:
+            attempts_trace.append(
+                {
+                    "attempt": 2,
+                    "plan": {
+                        "mode": current_plan.mode,
+                        "chunk_k": current_plan.chunk_k,
+                        "chunk_fetch_k": current_plan.chunk_fetch_k,
+                        "summary_k": current_plan.summary_k,
+                        "requested_standards": list(current_plan.requested_standards),
+                    },
+                    "retrieval": {
+                        "contract": retrieval.contract,
+                        "strategy": retrieval.strategy,
+                        "partial": bool(retrieval.partial),
+                    },
+                    "validation": {
+                        "accepted": bool(validation.accepted),
+                        "issues": list(validation.issues),
+                    },
+                    "action": "auto_retry_mode",
+                    "retry_from": initial_plan.mode,
+                    "retry_to": current_plan.mode,
+                }
+            )
 
         if not validation.accepted:
             issues = list(validation.issues)
@@ -477,6 +694,7 @@ class HandleQuestionUseCase:
                         plan=current_plan,
                         chunks=chunks2,
                         summaries=summaries2,
+                        agent_profile=cmd.agent_profile,
                     )
                     validation2 = self._validator.validate(answer2, current_plan, cmd.query)
                     if validation2.accepted:
@@ -524,6 +742,7 @@ class HandleQuestionUseCase:
                     plan=boosted,
                     chunks=chunks2,
                     summaries=summaries2,
+                    agent_profile=cmd.agent_profile,
                 )
                 validation2 = self._validator.validate(answer2, boosted, cmd.query)
                 attempts_trace.append(
@@ -562,6 +781,7 @@ class HandleQuestionUseCase:
                     plan=current_plan,
                     chunks=chunks,
                     summaries=summaries,
+                    agent_profile=cmd.agent_profile,
                 )
                 validation2 = self._validator.validate(answer2, current_plan, cmd.query)
                 attempts_trace.append(
@@ -601,11 +821,11 @@ class HandleQuestionUseCase:
             if len(detected_scopes) >= 2:
                 clarification = ClarificationRequest(
                     question=(
-                        "La consulta parece cruzar múltiples normas ("
+                        "La consulta parece cruzar multiples alcances ("
                         + ", ".join(detected_scopes)
-                        + "). ¿Confirmas análisis integrado o prefieres restringir el alcance?"
+                        + "). ¿Confirmas analisis integrado o prefieres restringir el alcance?"
                     ),
-                    options=("Análisis integrado trinorma", *detected_scopes),
+                    options=("Analisis integrado", *detected_scopes),
                 )
                 answer = AnswerDraft(
                     text=clarification.question, mode=plan.mode, evidence=answer.evidence
@@ -623,7 +843,7 @@ class HandleQuestionUseCase:
             answer = AnswerDraft(
                 text=(
                     "⚠️ Respuesta bloqueada por inconsistencia de ámbito entre la pregunta y las fuentes recuperadas. "
-                    "Reformula indicando explícitamente la norma objetivo (por ejemplo: ISO 9001)."
+                    "Reformula indicando explícitamente el alcance objetivo."
                 ),
                 mode=plan.mode,
                 evidence=answer.evidence,
@@ -631,6 +851,26 @@ class HandleQuestionUseCase:
 
         # Attach attempt history to retrieval trace for white-box debugging.
         trace_out = dict(retrieval.trace or {})
+        if isinstance(intent_trace, dict) and intent_trace:
+            # Keep payload bounded.
+            trace_out["classification"] = {
+                "version": intent_trace.get("version"),
+                "mode": intent_trace.get("mode") or intent.mode,
+                "confidence": intent_trace.get("confidence"),
+                "reasons": intent_trace.get("reasons"),
+                "blocked_modes": intent_trace.get("blocked_modes"),
+                "advisor_used": bool(intent_trace.get("advisor_used", False)),
+                "advisor_suggestion": intent_trace.get("advisor_suggestion"),
+                "explicit_override": bool(intent_trace.get("explicit_override", False)),
+                "explicit_mode": intent_trace.get("explicit_mode"),
+                "features": intent_trace.get("features"),
+            }
+        if cmd.agent_profile is not None:
+            trace_out["agent_profile"] = {
+                "profile_id": cmd.agent_profile.profile_id,
+                "version": cmd.agent_profile.version,
+                "status": cmd.agent_profile.status,
+            }
         if attempts_trace:
             trace_out["attempts"] = attempts_trace
         retrieval = RetrievalDiagnostics(

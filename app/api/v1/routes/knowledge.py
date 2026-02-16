@@ -11,6 +11,7 @@ from app.agent.errors import ScopeValidationError
 from app.agent.grounded_answer_service import GroundedAnswerService
 from app.agent.http_adapters import GroundedAnswerAdapter, RagEngineRetrieverAdapter
 from app.api.deps import UserContext, get_current_user
+from app.cartridges.deps import resolve_agent_profile
 from app.clients.backend_selector import RagBackendSelector
 from app.core.config import settings
 from app.core.scope_metrics import scope_metrics_store
@@ -126,6 +127,7 @@ async def answer_with_orchestrator(
         authorized_tenant = await authorize_requested_tenant(
             http_request, current_user, request.tenant_id
         )
+        agent_profile = resolve_agent_profile(tenant_id=authorized_tenant, request=http_request)
         scope_metrics_store.record_request(authorized_tenant)
 
         result = await use_case.execute(
@@ -135,6 +137,7 @@ async def answer_with_orchestrator(
                 user_id=current_user.user_id,
                 collection_id=request.collection_id,
                 scope_label=f"tenant={authorized_tenant}",
+                agent_profile=agent_profile,
             )
         )
 
@@ -162,6 +165,8 @@ async def answer_with_orchestrator(
             citations_count=len(citations),
             validation_accepted=validation_accepted,
             clarification_present=clarification_present,
+            agent_profile_id=agent_profile.profile_id,
+            agent_profile_version=agent_profile.version,
         )
         if len(context_chunks) == 0:
             reason = "scope_validation_blocked" if blocked else "retrieval_empty"
@@ -176,6 +181,11 @@ async def answer_with_orchestrator(
         return {
             "answer": result.answer.text,
             "mode": result.plan.mode,
+            "agent_profile": {
+                "profile_id": agent_profile.profile_id,
+                "version": agent_profile.version,
+                "status": agent_profile.status,
+            },
             "citations": citations,
             "context_chunks": context_chunks,
             "requested_scopes": list(result.plan.requested_standards),

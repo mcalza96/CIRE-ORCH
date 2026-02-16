@@ -80,7 +80,7 @@ class SemanticSubqueryPlanner:
             f"REGLAS:\n- Maximo {limit} subqueries.\n- id corto (snake_case).\n"
             "- filters solo puede contener: source_standard, source_standards, metadata, time_range.\n"
             '- time_range, si lo usas, debe ser: {"field": "updated_at"|"created_at", "from": <iso8601>|null, "to": <iso8601>|null }.\n'
-            "- Si hay ISO explicitas, crea al menos una subquery por ISO.\n"
+            "- Si hay alcances explicitos, crea al menos una subquery por alcance.\n"
             "- No inventes IDs de documentos ni tenants.\n\n"
             f"PREGUNTA: {query}\n"
             f"NORMAS DETECTADAS: {standards_text}\n"
