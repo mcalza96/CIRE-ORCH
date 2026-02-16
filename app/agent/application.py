@@ -32,6 +32,8 @@ class RetrieverPort(Protocol):
         collection_id: str | None,
         plan: RetrievalPlan,
         user_id: str | None = None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> list[EvidenceItem]: ...
 
     async def retrieve_summaries(
@@ -41,6 +43,8 @@ class RetrieverPort(Protocol):
         collection_id: str | None,
         plan: RetrievalPlan,
         user_id: str | None = None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> list[EvidenceItem]: ...
 
     # Optional methods supported by advanced contract adapters.
@@ -52,6 +56,8 @@ class RetrieverPort(Protocol):
         collection_id: str | None,
         plan: RetrievalPlan,
         user_id: str | None = None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
         filters: dict[str, Any] | None = None,
     ) -> dict[str, Any]: ...
 
@@ -97,6 +103,9 @@ class HandleQuestionCommand:
     scope_label: str
     user_id: str | None = None
     agent_profile: AgentProfile | None = None
+    profile_resolution: dict[str, Any] | None = None
+    request_id: str | None = None
+    correlation_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -176,6 +185,50 @@ class HandleQuestionUseCase:
                     out.append(item)
             return out
 
+        def _validate_with_profile_policy(
+            draft: AnswerDraft,
+            active_plan: RetrievalPlan,
+        ) -> ValidationResult:
+            base = self._validator.validate(draft, active_plan, cmd.query)
+            profile = cmd.agent_profile
+            if profile is None:
+                return base
+
+            issues = list(base.issues)
+            if profile.validation.require_citations:
+                has_citation_marker = bool(re.search(r"\b[CR]\d+\b", draft.text or ""))
+                if (
+                    not has_citation_marker
+                    and "Answer does not include explicit source markers (C#/R#)." not in issues
+                ):
+                    issues.append("Answer does not include explicit source markers (C#/R#).")
+
+            lower_text = (draft.text or "").lower()
+            for concept in profile.validation.forbidden_concepts:
+                candidate = str(concept or "").strip()
+                if not candidate:
+                    continue
+                if candidate.lower() in lower_text:
+                    issue = f"Policy violation: forbidden concept '{candidate}' in answer."
+                    if issue not in issues:
+                        issues.append(issue)
+
+            return ValidationResult(accepted=not issues, issues=issues)
+
+        def _base_trace_payload(extra: dict[str, Any] | None = None) -> dict[str, Any]:
+            payload: dict[str, Any] = {}
+            if cmd.agent_profile is not None:
+                payload["agent_profile"] = {
+                    "profile_id": cmd.agent_profile.profile_id,
+                    "version": cmd.agent_profile.version,
+                    "status": cmd.agent_profile.status,
+                }
+            if isinstance(cmd.profile_resolution, dict) and cmd.profile_resolution:
+                payload["agent_profile_resolution"] = dict(cmd.profile_resolution)
+            if isinstance(extra, dict) and extra:
+                payload.update(extra)
+            return payload
+
         normalized_query = (cmd.query or "").lower()
         has_user_clarification = (
             "aclaración de alcance:" in normalized_query
@@ -184,6 +237,15 @@ class HandleQuestionUseCase:
             or "modo preferido en sesion:" in normalized_query
             or "__clarified_scope__=true" in normalized_query
         )
+
+        if hasattr(self._retriever, "set_profile_context"):
+            try:
+                self._retriever.set_profile_context(
+                    profile=cmd.agent_profile,
+                    profile_resolution=cmd.profile_resolution,
+                )
+            except Exception:
+                pass
 
         intent_trace: dict[str, Any] = {}
         explicit_mode = _parse_explicit_mode_override(cmd.query)
@@ -317,7 +379,7 @@ class HandleQuestionUseCase:
                     contract="legacy",
                     strategy="clarification",
                     partial=False,
-                    trace={},
+                    trace=_base_trace_payload(),
                     scope_validation={},
                 ),
                 clarification=clarification,
@@ -340,6 +402,8 @@ class HandleQuestionUseCase:
                 collection_id=cmd.collection_id,
                 plan=plan,
                 user_id=cmd.user_id,
+                request_id=cmd.request_id,
+                correlation_id=cmd.correlation_id,
                 filters=initial_filters,
             )
             valid = bool(validated.get("valid", True)) if isinstance(validated, dict) else True
@@ -390,7 +454,7 @@ class HandleQuestionUseCase:
                         contract="advanced",
                         strategy="validate_scope",
                         partial=False,
-                        trace={},
+                        trace=_base_trace_payload(),
                         scope_validation=validated if isinstance(validated, dict) else {},
                     ),
                     clarification=clarification,
@@ -428,6 +492,8 @@ class HandleQuestionUseCase:
                         collection_id=cmd.collection_id,
                         plan=attempt_plan,
                         user_id=cmd.user_id,
+                        request_id=cmd.request_id,
+                        correlation_id=cmd.correlation_id,
                         filters=attempt_filters,
                     )
                     if isinstance(validated_attempt, dict):
@@ -442,6 +508,8 @@ class HandleQuestionUseCase:
                     collection_id=cmd.collection_id,
                     plan=attempt_plan,
                     user_id=cmd.user_id,
+                    request_id=cmd.request_id,
+                    correlation_id=cmd.correlation_id,
                 )
             )
             summaries_task = asyncio.create_task(
@@ -451,6 +519,8 @@ class HandleQuestionUseCase:
                     collection_id=cmd.collection_id,
                     plan=attempt_plan,
                     user_id=cmd.user_id,
+                    request_id=cmd.request_id,
+                    correlation_id=cmd.correlation_id,
                 )
             )
             chunks_result, summaries_result = await asyncio.gather(
@@ -563,6 +633,7 @@ class HandleQuestionUseCase:
                 "intent": intent.mode,
                 "confidence": float(intent_trace.get("confidence") or 0.0),
             }
+            trace_payload.update(_base_trace_payload())
             return HandleQuestionResult(
                 intent=intent,
                 plan=current_plan,
@@ -582,7 +653,7 @@ class HandleQuestionUseCase:
         # --------------------------------------------------------------------------
         # Profile rules handled higher up in Execute if applicable before retrieval.
         # This section is for post-retrieval corrections if needed.
-        
+
         # Legacy fallback/cleanup for structural ambiguity
         if (
             not has_user_clarification
@@ -601,7 +672,7 @@ class HandleQuestionUseCase:
             summaries=summaries,
             agent_profile=cmd.agent_profile,
         )
-        validation = self._validator.validate(answer, current_plan, cmd.query)
+        validation = _validate_with_profile_policy(answer, current_plan)
 
         attempts_trace.append(
             {
@@ -696,7 +767,7 @@ class HandleQuestionUseCase:
                         summaries=summaries2,
                         agent_profile=cmd.agent_profile,
                     )
-                    validation2 = self._validator.validate(answer2, current_plan, cmd.query)
+                    validation2 = _validate_with_profile_policy(answer2, current_plan)
                     if validation2.accepted:
                         answer = answer2
                         validation = validation2
@@ -744,7 +815,7 @@ class HandleQuestionUseCase:
                     summaries=summaries2,
                     agent_profile=cmd.agent_profile,
                 )
-                validation2 = self._validator.validate(answer2, boosted, cmd.query)
+                validation2 = _validate_with_profile_policy(answer2, boosted)
                 attempts_trace.append(
                     {
                         "attempt": 2,
@@ -783,7 +854,7 @@ class HandleQuestionUseCase:
                     summaries=summaries,
                     agent_profile=cmd.agent_profile,
                 )
-                validation2 = self._validator.validate(answer2, current_plan, cmd.query)
+                validation2 = _validate_with_profile_policy(answer2, current_plan)
                 attempts_trace.append(
                     {
                         "attempt": 2,
@@ -871,6 +942,8 @@ class HandleQuestionUseCase:
                 "version": cmd.agent_profile.version,
                 "status": cmd.agent_profile.status,
             }
+        if isinstance(cmd.profile_resolution, dict) and cmd.profile_resolution:
+            trace_out["agent_profile_resolution"] = dict(cmd.profile_resolution)
         if attempts_trace:
             trace_out["attempts"] = attempts_trace
         retrieval = RetrievalDiagnostics(

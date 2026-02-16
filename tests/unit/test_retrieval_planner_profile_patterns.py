@@ -1,5 +1,9 @@
-from app.agent.retrieval_planner import build_initial_scope_filters, extract_clause_refs
-from app.cartridges.models import AgentProfile, ScopePattern, RouterHeuristics
+from app.agent.retrieval_planner import (
+    apply_search_hints,
+    build_initial_scope_filters,
+    extract_clause_refs,
+)
+from app.cartridges.models import AgentProfile, RouterHeuristics, ScopePattern, SearchHint
 
 
 def test_extract_clause_refs_uses_profile_reference_patterns() -> None:
@@ -34,3 +38,17 @@ def test_build_initial_scope_filters_uses_first_extracted_reference() -> None:
     metadata = filters.get("metadata")
     assert isinstance(metadata, dict)
     assert metadata.get("clause_id") == "art. 7 letra a"
+
+
+def test_apply_search_hints_expands_query_terms() -> None:
+    profile = AgentProfile(
+        profile_id="test-hints",
+    )
+    profile.retrieval.search_hints = [
+        SearchHint(term="epp", expand_to=["equipo de proteccion personal", "casco"])
+    ]
+
+    expanded, trace = apply_search_hints("revisar uso de epp", profile=profile)
+    assert "equipo de proteccion personal" in expanded
+    assert "casco" in expanded
+    assert trace.get("applied")

@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, Request, status
@@ -6,6 +7,7 @@ from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.responses import JSONResponse
 
 from app.api.v1.api_router import v1_router
+from app.cartridges.loader import get_cartridge_loader
 from app.core.config import settings
 
 logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO), format="%(message)s")
@@ -18,10 +20,19 @@ structlog.configure(
 )
 logger = structlog.get_logger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    del app
+    get_cartridge_loader().validate_cartridge_files_strict()
+    yield
+
+
 app = FastAPI(
     title="Q/A Orchestrator API",
     description="Q/A orchestration API backed by external rag-engine retrieval contracts.",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 

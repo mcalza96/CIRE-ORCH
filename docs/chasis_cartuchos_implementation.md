@@ -34,6 +34,21 @@
 - Fase 4: en progreso (router/planner migrando a config inyectable).
 - Fase 5: iniciado (trazas con `agent_profile` y respuesta API con metadata de perfil).
 
+## Resolucion en cascada (implementado)
+
+El `CartridgeLoader` usa resolucion hibrida para evitar acoplamiento y soportar overrides privados:
+
+1. Buscar cartucho privado en BD (`tenant_configs`) usando `tenant_id`.
+2. Si no hay override valido, usar perfil explicito/header autorizado o mapping `tenant -> profile_id`.
+3. Si no hay perfil resuelto, intentar `app/cartridges/{tenant_id}.yaml`.
+4. Fallback final a `app/cartridges/base.yaml`.
+
+Notas operativas:
+
+- El lookup de BD se cachea por tenant (`ORCH_CARTRIDGE_DB_CACHE_TTL_SECONDS`).
+- La fila de BD debe validar contra `AgentProfile`; si falla, el request continua con fallback.
+- Header de perfil se controla por whitelist (`ORCH_TENANT_PROFILE_WHITELIST`).
+
 ## Criterio anti-monolito
 
 Si una regla menciona dominio especifico y no esta en cartucho, esta en lugar incorrecto.

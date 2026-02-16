@@ -2,6 +2,18 @@ profile_id: legal_cl
 version: 1.0.0
 status: draft
 
+meta:
+  id: legal_cl_v1
+  description: "Analista legal chileno basado en evidencia normativa"
+  owner: "legal-domain-team"
+
+identity:
+  role: "Analista legal chileno"
+  tone: "Formal, prudente y basado en hechos"
+  style_guide:
+    - "Citar articulos o fuentes por cada conclusion."
+    - "Separar claramente texto normativo vs inferencia."
+
 domain_entities:
   - codigo civil
   - codigo del trabajo
@@ -41,6 +53,20 @@ router:
 clarification_rules: []
 
 retrieval:
+  min_score: 0.8
+  search_hints:
+    - term: despido
+      expand_to:
+        - terminacion de contrato
+        - causal de despido
+    - term: indemnizacion
+      expand_to:
+        - compensacion legal
+        - prestaciones laborales
+    - term: contrato
+      expand_to:
+        - obligaciones contractuales
+        - clausulas del contrato
   by_mode:
     literal_lista:
       chunk_k: 40
@@ -67,3 +93,11 @@ retrieval:
       chunk_fetch_k: 110
       summary_k: 5
       require_literal_evidence: false
+
+validation:
+  require_citations: true
+  forbidden_concepts:
+    - recomendacion de inversion
+    - consejo medico
+  fallback_message: >-
+    No encuentro evidencia legal suficiente en el contexto recuperado para emitir una conclusion.

@@ -30,11 +30,16 @@ class GroundedAnswerService:
         require_literal_evidence: bool = False,
         max_chunks: int = 10,
     ) -> str:
+        profile_fallback = (
+            str(agent_profile.validation.fallback_message).strip()
+            if agent_profile is not None and agent_profile.validation.fallback_message
+            else "No tengo informacion suficiente en el contexto para responder."
+        )
         if not query.strip():
             return "No hay una pregunta para responder."
 
         if not context_chunks:
-            return "No tengo informacion suficiente en el contexto para responder."
+            return profile_fallback
 
         context = "\n\n".join(context_chunks[: max(1, max_chunks)]).strip()
         if not self._client:
@@ -43,11 +48,23 @@ class GroundedAnswerService:
         # "comparativa" is often interpretive. Only force strict literal formatting when explicitly required.
         strict = bool(require_literal_evidence) or mode in {"literal_normativa", "literal_lista"}
         synthesis = agent_profile.synthesis if agent_profile is not None else None
-        persona_prefix = (
-            str(synthesis.system_persona).strip()
-            if synthesis is not None and synthesis.system_persona
-            else ""
-        )
+        identity = agent_profile.identity if agent_profile is not None else None
+        identity_lines: list[str] = []
+        if identity is not None:
+            if identity.role:
+                identity_lines.append(f"Rol operativo: {identity.role}")
+            if identity.tone:
+                identity_lines.append(f"Tono: {identity.tone}")
+        persona_prefix = "\n".join(
+            line
+            for line in [
+                "\n".join(identity_lines).strip(),
+                str(synthesis.system_persona).strip()
+                if synthesis is not None and synthesis.system_persona
+                else "",
+            ]
+            if line
+        ).strip()
         rules_text = "\n".join(
             f"- {rule}" for rule in (synthesis.synthesis_rules if synthesis is not None else [])
         )
@@ -74,6 +91,9 @@ class GroundedAnswerService:
         ref_label = synthesis.strict_reference_label if synthesis else "Evidencia"
         subj_label = synthesis.strict_subject_label if synthesis else "Afirmacion"
         cite_fmt = synthesis.citation_format if synthesis else "C#/R#"
+        style_guide_text = "\n".join(
+            f"- {rule}" for rule in (identity.style_guide if identity is not None else [])
+        ).strip()
 
         system_prompt_base = (
             f"{persona_prefix}\n\n"
@@ -101,6 +121,8 @@ class GroundedAnswerService:
                 system = f"{system}\n\nReglas:\n{rules_text}".strip()
             if style_strict:
                 style = f"{style}\n{style_strict}".strip()
+            if style_guide_text:
+                style = f"{style}\n\nGuia de estilo:\n{style_guide_text}".strip()
         else:
             interpretive_system = (
                 "Responde solo con evidencia del CONTEXTO. "
@@ -124,6 +146,8 @@ class GroundedAnswerService:
                 system = f"{system}\n\nReglas:\n{rules_text}".strip()
             if style_interpretive:
                 style = f"{style}\n{style_interpretive}".strip()
+            if style_guide_text:
+                style = f"{style}\n\nGuia de estilo:\n{style_guide_text}".strip()
 
         style = f"{style}\n\nFormato de cita requerido: {citation_format}".strip()
 
@@ -143,7 +167,7 @@ class GroundedAnswerService:
                 ],
             )
             text = (completion.choices[0].message.content or "").strip()
-            return text or "No tengo informacion suficiente en el contexto para responder."
+            return text or profile_fallback
         except Exception as exc:
             logger.warning("grounded_answer_model_fallback", error=str(exc))
             # Fallback defensivo: no bloquear el flujo por fallas de proveedor/modelo.

@@ -2,6 +2,18 @@ profile_id: iso_auditor
 version: 1.0.0
 status: active
 
+meta:
+  id: iso_auditor_v1
+  description: "Auditoria trinorma con trazabilidad estricta"
+  owner: "qa-architecture"
+
+identity:
+  role: "Auditor lider trinorma (ISO 9001/14001/45001)"
+  tone: "Formal, esceptico y verificable"
+  style_guide:
+    - "Cada afirmacion debe incluir clausula y fuente."
+    - "Si no hay evidencia suficiente, declarar insuficiencia."
+
 domain_entities:
   - ISO 9001
   - ISO 14001
@@ -104,6 +116,20 @@ clarification_rules:
       - Balanceado
 
 retrieval:
+  min_score: 0.78
+  search_hints:
+    - term: epp
+      expand_to:
+        - equipo de proteccion personal
+        - proteccion personal
+    - term: denunciante
+      expand_to:
+        - canal de denuncia
+        - confidencialidad
+    - term: no conformidad
+      expand_to:
+        - accion correctiva
+        - hallazgo
   by_mode:
     literal_lista:
       chunk_k: 45
@@ -130,3 +156,11 @@ retrieval:
       chunk_fetch_k: 120
       summary_k: 5
       require_literal_evidence: false
+
+validation:
+  require_citations: true
+  forbidden_concepts:
+    - sueldos
+    - estrategia comercial
+  fallback_message: >-
+    No encuentro evidencia suficiente para responder con trazabilidad auditora.

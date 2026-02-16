@@ -1,134 +1,126 @@
 # CIRE PLATFORM: CONTEXTO Y ARQUITECTURA MAESTRA
 
-> **ADVERTENCIA PARA AGENTES DE IA:**
-> Este no es un proyecto de juguete. Es una plataforma industrial distribuida.
-> Lee este documento ANTES de sugerir cambios. Ignorar la separacion de responsabilidades (SoC) rompera el sistema.
+> ADVERTENCIA PARA AGENTES DE IA:
+> Esta plataforma usa separacion estricta de responsabilidades. No mezclar logica de negocio en core.
 
-## 1. Vision Global (The Big Picture)
+## 1. Vision Global
 
-CIRE no es una aplicacion monolitica. Es una **Linea de Ensamblaje de Conocimiento** para operar como plataforma multi-tenant en multiples verticales.
+CIRE opera bajo el paradigma:
 
-La filosofia vigente es:
+## Chasis Agentico (Nivel 3) + Cartuchos (Nivel 4)
 
-## **Chasis Agentico + Cartuchos de Experto**
+Capas:
 
-Tres capas estrictas y no negociables:
+1. Cliente thin: envia `query` + `tenant_id`.
+2. ORCH core agnostico: clasifica, planifica, reintenta, valida, sintetiza.
+3. Cartucho por tenant: inyecta identidad, reglas, retrieval y validacion.
+4. RAG engine: retrieval/indexacion agnostica, sin opinion de dominio.
 
-### Capa 1: Cliente (Thin Client)
-* **Rol:** Interfaz minima.
-* **Entrada:** `query` + `tenant_id` (+ metadatos de sesion).
-* **Responsabilidad:** UX/UI y transporte.
-* **Prohibido:** Embutir logica de IA, reglas de negocio o retrieval strategy.
+## 2. Estado Arquitectonico Actual (Febrero 2026)
 
-### Capa 2: Orquestador Centralizado (Core Universal - Nivel 3)
-* **Rol:** El **Chasis** metodologico.
-* **Inteligencia Nivel 3:** Sabe **como** investigar (planificar, descomponer, verificar faltantes, reintentar, autocorregir).
-* **Switching Yard:** Un ruteador ligero clasifica intencion (`saludo`, `simple`, `investigacion`) y decide si activar loop agentico.
-* **Responsabilidad:** Orquestacion, razonamiento agnostico, control de flujo, memoria conversacional, observabilidad, streaming.
-* **Prohibido:** Hardcodear dominios (`ISO`, `Leyes`, `Mineria`, etc.).
+### ORCH
 
-### Capa 3: Inyeccion Dinamica (Cartucho - Nivel 4)
-* **Rol:** El **Driver** experto por tenant.
-* **Inteligencia Nivel 4:** Aporta juicio especializado en runtime.
-* **Contenido:** system prompts de rol, reglas de validacion/prioridad normativa, politicas y definiciones de herramientas.
-* **Carga:** Se resuelve por `tenant_id` desde BD/cache.
-* **Prohibido:** Acoplar cartuchos al core como codigo fijo.
+Implementacion vigente en `/Users/mcalzadilla/cire/orch`:
 
----
+- Cartuchos v2 estrictos (sin legacy):
+  - `meta { id, description, owner }`
+  - `identity { role, tone, style_guide[] }`
+  - `router` (heuristicas)
+  - `retrieval { by_mode, search_hints[], min_score }`
+  - `validation { require_citations, forbidden_concepts[], fallback_message }`
+  - `synthesis`
+- Carga fail-fast al startup: si un YAML de `app/cartridges/*.yaml` no cumple esquema v2, la API no levanta.
+- Resolucion de perfil auditable por request:
+  - `source`: `db | header | tenant_map | tenant_yaml | base`
+  - `requested_profile_id`
+  - `applied_profile_id`
+  - `decision_reason`
+- Cascada obligatoria de cartucho:
+  1) DB (`tenant_configs`)
+  2) Header autorizado o tenant->profile map
+  3) `app/cartridges/{tenant_id}.yaml`
+  4) `app/cartridges/base.yaml`
+- Seguridad de override por header:
+  - whitelist por tenant
+  - log explicito cuando override es denegado
+  - fallback seguro con reason trazable
+- Observabilidad S2S activa:
+  - `X-Tenant-ID`, `X-Request-ID`, `X-Correlation-ID`, `X-Service-Secret`
+  - metadata de resolucion en trace y respuesta API
+- Retrieval profile-driven:
+  - `search_hints` aplicados a query/subqueries
+  - `min_score` aplicado al pipeline
+  - traza de expansiones y filtrado
+- Validacion declarativa profile-driven:
+  - enforcement de citas
+  - deteccion de conceptos prohibidos
+  - fallback message por cartucho cuando no hay evidencia
 
-## 2. Dominios Soberanos
+### RAG
 
-### A. CIRE-RAG (El Motor de Verdad)
-* **Rol:** Infraestructura agnostica de ingesta, indexacion y retrieval.
-* **Filosofia:** "Potencia bruta, Cero Opinion".
-* **Responsabilidad:** Documentos, chunks, embeddings, ranking hibrido, seguridad por tenant.
-* **Inmutable ante verticales:** No se adapta a caprichos de negocio; solo expone primitivas genericas.
-* **Stack:** Python (FastAPI), Supabase/Postgres (pgvector + RPC).
+Implementacion vigente en `/Users/mcalzadilla/cire/rag`:
 
-### B. CIRE-ORCH (El Cerebro Ejecutivo)
-* **Rol:** Microservicio Orquestador Universal.
-* **Filosofia:** "Metodo estable + juicio inyectable".
-* **Responsabilidad:** Traducir intencion, coordinar agentes, consumir RAG y sintetizar respuesta bajo reglas del cartucho.
-* **Limite:** No almacena documentos originales ni administra indices vectoriales.
-* **Stack:** Python (FastAPI), LangGraph/Agents, SDK cliente RAG.
+- RAG se mantiene agnostico a verticales.
+- No se incorporan reglas de negocio de cartuchos en el motor.
+- Mantiene contrato de retrieval y aislamiento por tenant.
 
----
+## 3. Flujo Canonico E2E
 
-## 3. Flujo Canonico de una Peticion
+1. Llega request con `query` + `tenant_id`.
+2. Se autoriza tenant para el usuario.
+3. Se resuelve cartucho por cascada (DB -> header/map -> tenant yaml -> base).
+4. Router clasifica intencion usando chasis + profile hints.
+5. Planner arma estrategia retrieval profile-driven.
+6. ORCH consulta RAG con headers S2S y contexto de traza.
+7. Se aplica validacion/auto-correccion si corresponde.
+8. Se emite clarificacion declarativa cuando hay ambiguedad.
+9. Se sintetiza con identidad/reglas/formato del cartucho.
+10. Respuesta incluye metadata de perfil y observabilidad.
 
-1. Llega `Request(query, tenant_id)`.
-2. **Router Nivel 3 ligero:** clasifica complejidad/intencion.
-3. **Loader de cartucho:** obtiene config experta del `tenant_id` (cache + fallback BD).
-4. **Reasoning Loop Nivel 3 pesado:** piensa con metodo agnostico y juzga con reglas Nivel 4 cargadas.
-5. **Retrieval:** consulta al `RAG Engine` externo e inmutable.
-6. **Synthesis:** responde aplicando restricciones y estilo del cartucho.
-7. **Observabilidad:** traza completa (`trace_id`) entre cliente, ORCH y RAG.
+## 4. Reglas de Oro
 
----
+1. No hardcodear verticales en core (`app/agent`, `app/api`, `app/core`, `app/security`).
+2. RAG no absorbe logica de negocio de un tenant.
+3. Politicas de dominio viven en cartuchos YAML versionados.
+4. Todo fallback debe ser seguro y trazable.
+5. Toda decision de tenancy/profile debe quedar auditada.
 
-## 4. Reglas de Oro para Desarrollo
+## 5. Handshake ORCH <-> RAG
 
-### Regla #1: El Core no sabe de negocio
-* El orquestador universal no debe contener terminos ni reglas de vertical.
-* Toda especializacion vive en cartuchos versionados por tenant.
+Headers obligatorios en S2S:
 
-### Regla #2: El RAG es sagrado e inmutable
-* No modificar `cire-rag` para resolver necesidades puntuales de un tenant.
-* Si ORCH requiere filtros nuevos, deben ser genericos (metadata/scope), no columnas ad hoc por vertical.
+- `X-Service-Secret`
+- `X-Tenant-ID`
+- `X-Request-ID` (cuando disponible)
+- `X-Correlation-ID` (cuando disponible)
+- `X-User-ID` en rutas que lo requieren
 
-### Regla #3: La BD manda en RAG
-* Logica critica de retrieval/seguridad/mutaciones atomicas vive en SQL/RPC.
-* Prohibido filtrar masivamente en Python lo que debe resolver Postgres.
-* RLS obligatorio y propagacion estricta de `tenant_id`.
+Si payload incluye `tenant_id`, debe ser consistente con `X-Tenant-ID`.
 
-### Regla #4: El ORCH es estratega, no router tonto
-* Evitar cadenas de `if/else` para decisiones de razonamiento complejo.
-* Usar patrones agenticos/estado para planificacion y autocorreccion.
+## 6. Contrato de Cartucho Privado en DB
 
-### Regla #5: Optimizacion industrial
-* **RAG:** HNSW, RPC, consultas eficientes.
-* **ORCH:** streaming temprano (TTFT), no bloquear hilo principal, fallbacks controlados.
+Tabla sugerida: `tenant_configs`
 
----
+Campos minimos:
 
-## 5. Handshake ORCH <-> RAG (S2S)
+- `tenant_id text not null`
+- `profile_id text null`
+- `profile_version text null`
+- `status text null`
+- `agent_profile jsonb not null` (schema v2)
+- `updated_at timestamptz not null default now()`
 
-La comunicacion ORCH-RAG es service-to-service con contexto de usuario:
+Reglas:
 
-1. **Auth:** ORCH usa `RAG_SERVICE_SECRET`.
-2. **Tenant Context:** `X-Tenant-ID` obligatorio en rutas S2S (salvo excepciones operativas).
-3. **Traceabilidad:** `Trace-ID` extremo a extremo.
-4. **Consistencia:** Si payload incluye `tenant_id`, debe coincidir con header.
+- seleccionar fila mas reciente
+- validar schema v2 antes de aplicar
+- si invalida: fallback seguro, sin romper request
+- registrar decision_reason en traza/logs
 
-### 5.1 Inventario HTTP RAG (v1)
+## 7. Notas Operativas
 
-Base URL: `http(s)://<rag-host>/api/v1`
-
-Endpoints disponibles:
-* Health: `GET /health`
-* Chat: `POST /chat/completions`, `POST /chat/feedback`
-* Documents: `POST /documents`, `GET /documents`, `GET /documents/{document_id}/status`, `DELETE /documents/{document_id}`
-* Management: `GET /management/tenants`, `GET /management/collections`, `GET /management/queue/status`, `GET /management/health`, `GET /management/retrieval/metrics`
-* Retrieval (v1): `POST /retrieval/validate-scope`, `POST /retrieval/hybrid`, `POST /retrieval/multi-query`, `POST /retrieval/explain`
-* Debug retrieval: `POST /debug/retrieval/chunks`, `POST /debug/retrieval/summaries`
-* Ingestion: `POST /ingestion/embed`, `POST /ingestion/ingest`, `POST /ingestion/institutional`, `GET /ingestion/documents`, `GET /ingestion/collections`, `GET /ingestion/queue/status`, `POST /ingestion/collections/cleanup`, `POST /ingestion/retry/{doc_id}`, `POST /ingestion/batches`, `POST /ingestion/batches/{batch_id}/files`, `POST /ingestion/batches/{batch_id}/seal`, `GET /ingestion/batches/{batch_id}/status`, `GET /ingestion/batches/{batch_id}/progress`, `GET /ingestion/batches/{batch_id}/events`, `GET /ingestion/batches/active`, `GET /ingestion/batches/{batch_id}/stream`
-
-Legacy retirado (no usar):
-* `POST /knowledge/retrieve`
-* `POST /retrieval/chunks`
-* `POST /retrieval/summaries`
-
----
-
-## 6. Estado Actual (Febrero 2026)
-
-* **RAG:** Estable, robusto y optimizado hacia RPC + performance.
-* **ORCH:** En transicion formal a chasis universal con inyeccion dinamica de cartuchos.
-* **Meta de arquitectura:** un solo core para todos los tenants; cero logica vertical hardcodeada.
-
----
-
-> **NOTA FINAL:**
-> Antes de escribir codigo, responde mentalmente:
-> *¿Esto pertenece al Motor (RAG), al Chasis (ORCH Core), o al Cartucho del tenant?*
-> Si dudas, detente y redefine la responsabilidad.
+- Este repositorio se considera greenfield para cartuchos v2: no mantener rutas legacy.
+- Antes de proponer cambios, ubicar responsabilidad correcta:
+  - Motor (RAG)
+  - Chasis (ORCH core)
+  - Cartucho (tenant/profile)

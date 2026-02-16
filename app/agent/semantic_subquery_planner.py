@@ -24,6 +24,46 @@ def _extract_json_object(text: str) -> str | None:
     return text[start : end + 1]
 
 
+def _apply_search_hints(
+    query: str,
+    search_hints: list[dict[str, Any]] | None = None,
+) -> tuple[str, list[dict[str, Any]]]:
+    text = str(query or "").strip()
+    if not text:
+        return text, []
+    hints = search_hints or []
+    lower_text = text.lower()
+    expanded_terms: list[str] = []
+    applied: list[dict[str, Any]] = []
+
+    for hint in hints:
+        if not isinstance(hint, dict):
+            continue
+        term = str(hint.get("term") or "").strip()
+        if not term:
+            continue
+        if term.lower() not in lower_text:
+            continue
+        expansions = hint.get("expand_to")
+        if not isinstance(expansions, list):
+            continue
+        additions = []
+        for item in expansions:
+            candidate = str(item or "").strip()
+            if not candidate:
+                continue
+            if candidate.lower() in lower_text or candidate in expanded_terms:
+                continue
+            expanded_terms.append(candidate)
+            additions.append(candidate)
+        if additions:
+            applied.append({"term": term, "expand_to": additions})
+
+    if not expanded_terms:
+        return text, []
+    return f"{text} {' '.join(expanded_terms)}".strip(), applied
+
+
 @dataclass
 class SemanticSubqueryPlanner:
     """LLM-based planner that proposes subqueries; kernel validates and enforces limits."""
@@ -46,6 +86,7 @@ class SemanticSubqueryPlanner:
         query: str,
         requested_standards: tuple[str, ...] = (),
         max_queries: int | None = None,
+        search_hints: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
         """Return a list of subquery dicts compatible with /retrieval/multi-query."""
 
@@ -60,8 +101,17 @@ class SemanticSubqueryPlanner:
 
         model = settings.ORCH_PLANNER_MODEL or settings.GROQ_MODEL_ORCHESTRATION
 
+        effective_query, applied_hints = _apply_search_hints(query, search_hints=search_hints)
         standards_text = (
             ", ".join(requested_standards) if requested_standards else "(no especificadas)"
+        )
+        hint_text = (
+            "\n".join(
+                f"- {item.get('term')}: {', '.join(item.get('expand_to') or [])}"
+                for item in applied_hints
+            )
+            if applied_hints
+            else "(sin expansiones)"
         )
         system = (
             "Eres un planificador de busqueda para un sistema RAG. "
@@ -82,8 +132,9 @@ class SemanticSubqueryPlanner:
             '- time_range, si lo usas, debe ser: {"field": "updated_at"|"created_at", "from": <iso8601>|null, "to": <iso8601>|null }.\n'
             "- Si hay alcances explicitos, crea al menos una subquery por alcance.\n"
             "- No inventes IDs de documentos ni tenants.\n\n"
-            f"PREGUNTA: {query}\n"
+            f"PREGUNTA: {effective_query}\n"
             f"NORMAS DETECTADAS: {standards_text}\n"
+            f"SEARCH_HINTS APLICADOS:\n{hint_text}\n"
         )
 
         async def call(messages: list[dict[str, str]]) -> str:

@@ -28,12 +28,26 @@ class _EmptyRetriever:
         return None
 
     async def retrieve_chunks(
-        self, query, tenant_id, collection_id, plan: RetrievalPlan, user_id=None
+        self,
+        query,
+        tenant_id,
+        collection_id,
+        plan: RetrievalPlan,
+        user_id=None,
+        request_id=None,
+        correlation_id=None,
     ):
         return []
 
     async def retrieve_summaries(
-        self, query, tenant_id, collection_id, plan: RetrievalPlan, user_id=None
+        self,
+        query,
+        tenant_id,
+        collection_id,
+        plan: RetrievalPlan,
+        user_id=None,
+        request_id=None,
+        correlation_id=None,
     ):
         return []
 

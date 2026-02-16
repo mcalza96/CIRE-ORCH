@@ -84,3 +84,5 @@ def test_answer_api_includes_standard_fields(client, mock_use_case):
     assert data["validation"]["accepted"] is False
     assert "clarification" in data
     assert data["clarification"]["question"] == "clarify?"
+    assert "agent_profile" in data
+    assert isinstance(data["agent_profile"].get("resolution"), dict)

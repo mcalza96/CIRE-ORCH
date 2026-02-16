@@ -1,3 +1,3 @@
-from app.cartridges.models import AgentProfile
+from app.cartridges.models import AgentProfile, ProfileResolution, ResolvedAgentProfile
 
-__all__ = ["AgentProfile"]
+__all__ = ["AgentProfile", "ProfileResolution", "ResolvedAgentProfile"]

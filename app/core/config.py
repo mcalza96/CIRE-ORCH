@@ -75,6 +75,18 @@ class Settings(BaseSettings):
     ORCH_TENANT_PROFILE_WHITELIST: str | None = None
     ORCH_AGENT_PROFILE_HEADER: str = "X-Agent-Profile"
 
+    # Optional DB-backed cartridge override (tenant private profiles)
+    ORCH_CARTRIDGE_DB_ENABLED: bool = False
+    ORCH_CARTRIDGE_DB_TABLE: str = "tenant_configs"
+    ORCH_CARTRIDGE_DB_TENANT_COLUMN: str = "tenant_id"
+    ORCH_CARTRIDGE_DB_PROFILE_COLUMN: str = "agent_profile"
+    ORCH_CARTRIDGE_DB_PROFILE_ID_COLUMN: str = "profile_id"
+    ORCH_CARTRIDGE_DB_VERSION_COLUMN: str = "profile_version"
+    ORCH_CARTRIDGE_DB_STATUS_COLUMN: str = "status"
+    ORCH_CARTRIDGE_DB_UPDATED_COLUMN: str = "updated_at"
+    ORCH_CARTRIDGE_DB_TIMEOUT_SECONDS: float = 1.8
+    ORCH_CARTRIDGE_DB_CACHE_TTL_SECONDS: int = 60
+
     QA_LITERAL_SEMANTIC_FALLBACK_ENABLED: bool = True
     QA_LITERAL_SEMANTIC_MIN_KEYWORD_OVERLAP: int = 2
     QA_LITERAL_SEMANTIC_MIN_SIMILARITY: float = 0.3

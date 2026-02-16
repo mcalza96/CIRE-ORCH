@@ -78,14 +78,30 @@ def _build_use_case() -> HandleQuestionUseCase:
     )
 
 
-def _s2s_headers(tenant_id: str) -> dict[str, str]:
-    return {
+def _s2s_headers(
+    tenant_id: str,
+    *,
+    request_id: str | None = None,
+    correlation_id: str | None = None,
+) -> dict[str, str]:
+    headers = {
         "X-Service-Secret": str(settings.RAG_SERVICE_SECRET or ""),
         "X-Tenant-ID": tenant_id,
     }
+    if request_id:
+        headers["X-Request-ID"] = request_id
+        headers["X-Trace-ID"] = request_id
+    if correlation_id:
+        headers["X-Correlation-ID"] = correlation_id
+    return headers
 
 
-async def _fetch_collections_from_rag(tenant_id: str) -> list[CollectionItem]:
+async def _fetch_collections_from_rag(
+    tenant_id: str,
+    *,
+    request_id: str | None = None,
+    correlation_id: str | None = None,
+) -> list[CollectionItem]:
     selector = RagBackendSelector(
         local_url=str(settings.RAG_ENGINE_LOCAL_URL or "http://localhost:8000"),
         docker_url=str(settings.RAG_ENGINE_DOCKER_URL or "http://localhost:8000"),
@@ -99,7 +115,15 @@ async def _fetch_collections_from_rag(tenant_id: str) -> list[CollectionItem]:
     url = f"{base_url.rstrip('/')}/api/v1/ingestion/collections"
     params = {"tenant_id": tenant_id}
     async with httpx.AsyncClient(timeout=httpx.Timeout(6.0, connect=2.0)) as client:
-        response = await client.get(url, params=params, headers=_s2s_headers(tenant_id))
+        response = await client.get(
+            url,
+            params=params,
+            headers=_s2s_headers(
+                tenant_id,
+                request_id=request_id,
+                correlation_id=correlation_id,
+            ),
+        )
         response.raise_for_status()
         payload = response.json()
     raw_items = payload if isinstance(payload, list) else payload.get("items", [])
@@ -127,7 +151,15 @@ async def answer_with_orchestrator(
         authorized_tenant = await authorize_requested_tenant(
             http_request, current_user, request.tenant_id
         )
-        agent_profile = resolve_agent_profile(tenant_id=authorized_tenant, request=http_request)
+        req_id = str(
+            http_request.headers.get("X-Request-ID") or http_request.headers.get("X-Trace-ID") or ""
+        ).strip()
+        corr_id = str(http_request.headers.get("X-Correlation-ID") or "").strip()
+
+        resolved_profile = await resolve_agent_profile(
+            tenant_id=authorized_tenant, request=http_request
+        )
+        agent_profile = resolved_profile.profile
         scope_metrics_store.record_request(authorized_tenant)
 
         result = await use_case.execute(
@@ -138,6 +170,9 @@ async def answer_with_orchestrator(
                 collection_id=request.collection_id,
                 scope_label=f"tenant={authorized_tenant}",
                 agent_profile=agent_profile,
+                profile_resolution=resolved_profile.resolution.model_dump(),
+                request_id=req_id or None,
+                correlation_id=corr_id or None,
             )
         )
 
@@ -167,6 +202,8 @@ async def answer_with_orchestrator(
             clarification_present=clarification_present,
             agent_profile_id=agent_profile.profile_id,
             agent_profile_version=agent_profile.version,
+            agent_profile_source=resolved_profile.resolution.source,
+            agent_profile_resolution_reason=resolved_profile.resolution.decision_reason,
         )
         if len(context_chunks) == 0:
             reason = "scope_validation_blocked" if blocked else "retrieval_empty"
@@ -185,6 +222,7 @@ async def answer_with_orchestrator(
                 "profile_id": agent_profile.profile_id,
                 "version": agent_profile.version,
                 "status": agent_profile.status,
+                "resolution": resolved_profile.resolution.model_dump(),
             },
             "citations": citations,
             "context_chunks": context_chunks,
@@ -264,7 +302,15 @@ async def list_authorized_collections(
 ) -> CollectionListResponse:
     authorized_tenant = await authorize_requested_tenant(http_request, current_user, tenant_id)
     try:
-        items = await _fetch_collections_from_rag(authorized_tenant)
+        req_id = str(
+            http_request.headers.get("X-Request-ID") or http_request.headers.get("X-Trace-ID") or ""
+        ).strip()
+        corr_id = str(http_request.headers.get("X-Correlation-ID") or "").strip()
+        items = await _fetch_collections_from_rag(
+            authorized_tenant,
+            request_id=req_id or None,
+            correlation_id=corr_id or None,
+        )
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code if exc.response is not None else 502
         logger.warning(
@@ -333,7 +379,15 @@ async def validate_scope_proxy(
         "collection_id": request.collection_id,
         "filters": request.filters,
     }
-    headers = _s2s_headers(authorized_tenant)
+    req_id = str(
+        http_request.headers.get("X-Request-ID") or http_request.headers.get("X-Trace-ID") or ""
+    ).strip()
+    corr_id = str(http_request.headers.get("X-Correlation-ID") or "").strip()
+    headers = _s2s_headers(
+        authorized_tenant,
+        request_id=req_id or None,
+        correlation_id=corr_id or None,
+    )
     headers["X-User-ID"] = current_user.user_id
     async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=3.0)) as client:
         resp = await client.post(url, json=payload, headers=headers)
@@ -370,7 +424,15 @@ async def explain_retrieval_proxy(
         "fetch_k": int(request.fetch_k),
         "filters": request.filters,
     }
-    headers = _s2s_headers(authorized_tenant)
+    req_id = str(
+        http_request.headers.get("X-Request-ID") or http_request.headers.get("X-Trace-ID") or ""
+    ).strip()
+    corr_id = str(http_request.headers.get("X-Correlation-ID") or "").strip()
+    headers = _s2s_headers(
+        authorized_tenant,
+        request_id=req_id or None,
+        correlation_id=corr_id or None,
+    )
     headers["X-User-ID"] = current_user.user_id
     async with httpx.AsyncClient(timeout=httpx.Timeout(12.0, connect=3.0)) as client:
         resp = await client.post(url, json=payload, headers=headers)

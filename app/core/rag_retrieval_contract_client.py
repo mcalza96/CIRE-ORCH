@@ -45,6 +45,8 @@ class RagRetrievalContractClient:
         query: str,
         tenant_id: str,
         user_id: str | None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
         collection_id: str | None = None,
         filters: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -62,6 +64,8 @@ class RagRetrievalContractClient:
                 endpoint="validate_scope",
                 tenant_id=tenant_id,
                 user_id=user_id,
+                request_id=request_id,
+                correlation_id=correlation_id,
             )
             retrieval_metrics_store.record_success("validate_scope")
             return data
@@ -75,6 +79,8 @@ class RagRetrievalContractClient:
         query: str,
         tenant_id: str,
         user_id: str | None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
         collection_id: str | None = None,
         k: int = 12,
         fetch_k: int = 60,
@@ -100,6 +106,8 @@ class RagRetrievalContractClient:
                 endpoint="hybrid",
                 tenant_id=tenant_id,
                 user_id=user_id,
+                request_id=request_id,
+                correlation_id=correlation_id,
             )
             retrieval_metrics_store.record_success("hybrid")
             return data
@@ -112,6 +120,8 @@ class RagRetrievalContractClient:
         *,
         tenant_id: str,
         user_id: str | None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
         collection_id: str | None,
         queries: list[dict[str, Any]],
         merge: dict[str, Any] | None = None,
@@ -153,6 +163,8 @@ class RagRetrievalContractClient:
                 endpoint="multi_query",
                 tenant_id=tenant_id,
                 user_id=user_id,
+                request_id=request_id,
+                correlation_id=correlation_id,
             )
             retrieval_metrics_store.record_success("multi_query")
             return data
@@ -166,6 +178,8 @@ class RagRetrievalContractClient:
         query: str,
         tenant_id: str,
         user_id: str | None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
         collection_id: str | None = None,
         top_n: int = 10,
         k: int = 12,
@@ -193,6 +207,8 @@ class RagRetrievalContractClient:
                 endpoint="explain",
                 tenant_id=tenant_id,
                 user_id=user_id,
+                request_id=request_id,
+                correlation_id=correlation_id,
             )
             retrieval_metrics_store.record_success("explain")
             return data
@@ -208,6 +224,8 @@ class RagRetrievalContractClient:
         endpoint: str,
         tenant_id: str,
         user_id: str | None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> dict[str, Any]:
         selector = self.backend_selector
         assert selector is not None
@@ -221,6 +239,8 @@ class RagRetrievalContractClient:
                 payload=payload,
                 tenant_id=tenant_id,
                 user_id=user_id,
+                request_id=request_id,
+                correlation_id=correlation_id,
             )
         except httpx.HTTPStatusError as exc:
             # If contract is not deployed yet, allow caller to fall back to legacy.
@@ -257,6 +277,8 @@ class RagRetrievalContractClient:
                 payload=payload,
                 tenant_id=tenant_id,
                 user_id=user_id,
+                request_id=request_id,
+                correlation_id=correlation_id,
             )
             selector.set_backend(alternate_backend)
             return response
@@ -269,17 +291,22 @@ class RagRetrievalContractClient:
         payload: dict[str, Any],
         tenant_id: str,
         user_id: str | None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> dict[str, Any]:
         url = base_url.rstrip("/") + path
-        trace_id = str(uuid4())
+        trace_id = str(request_id or correlation_id or uuid4())
+        corr_id = str(correlation_id or request_id or trace_id)
         headers: dict[str, str] = {
             "X-Service-Secret": settings.RAG_SERVICE_SECRET or "",
             "X-Tenant-ID": tenant_id,
             "Content-Type": "application/json",
             # RAG correlation middleware accepts either header.
             "X-Trace-ID": trace_id,
-            "X-Correlation-ID": trace_id,
+            "X-Correlation-ID": corr_id,
         }
+        if request_id:
+            headers["X-Request-ID"] = str(request_id)
         if user_id:
             headers["X-User-ID"] = user_id
         async with httpx.AsyncClient(timeout=self.timeout_seconds, headers=headers) as client:

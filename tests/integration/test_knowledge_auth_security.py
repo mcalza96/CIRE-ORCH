@@ -139,7 +139,8 @@ def test_collections_endpoint_returns_items_for_authorized_tenant(monkeypatch):
         tenant_ids=["tenant-a"],
     )
 
-    async def _fake_fetch_collections(_tenant_id):
+    async def _fake_fetch_collections(_tenant_id, **kwargs):
+        del kwargs
         return [
             knowledge_routes.CollectionItem(id="c1", name="ISO", collection_key="iso"),
             knowledge_routes.CollectionItem(id="c2", name="45001", collection_key="iso45001"),
@@ -165,7 +166,8 @@ def test_collections_endpoint_surfaces_upstream_auth_failure(monkeypatch):
         tenant_ids=["tenant-a"],
     )
 
-    async def _fake_fetch_collections(_tenant_id):
+    async def _fake_fetch_collections(_tenant_id, **kwargs):
+        del kwargs
         request = httpx.Request("GET", "http://rag:8000/api/v1/ingestion/collections")
         response = httpx.Response(401, request=request)
         raise httpx.HTTPStatusError("unauthorized", request=request, response=response)

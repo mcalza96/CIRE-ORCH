@@ -11,6 +11,47 @@ from app.agent.policies import extract_requested_scopes
 _CLAUSE_RE = re.compile(r"\b\d+(?:\.\d+)+\b")
 
 
+def apply_search_hints(
+    query: str,
+    profile: AgentProfile | None = None,
+) -> tuple[str, dict[str, Any]]:
+    text = str(query or "").strip()
+    if not text or profile is None or not profile.retrieval.search_hints:
+        return text, {"applied": [], "expanded_terms": []}
+
+    lower_text = text.lower()
+    expanded_terms: list[str] = []
+    applied: list[dict[str, Any]] = []
+
+    for hint in profile.retrieval.search_hints:
+        term = str(hint.term or "").strip()
+        if not term:
+            continue
+        term_lower = term.lower()
+        if term_lower not in lower_text:
+            continue
+        additions = [
+            item
+            for item in (str(v or "").strip() for v in hint.expand_to)
+            if item and item.lower() not in lower_text and item not in expanded_terms
+        ]
+        if not additions:
+            continue
+        expanded_terms.extend(additions)
+        applied.append(
+            {
+                "term": term,
+                "expand_to": additions,
+            }
+        )
+
+    if not expanded_terms:
+        return text, {"applied": [], "expanded_terms": []}
+
+    expanded_query = f"{text} {' '.join(expanded_terms)}".strip()
+    return expanded_query, {"applied": applied, "expanded_terms": expanded_terms}
+
+
 def extract_clause_refs(text: str, profile: AgentProfile | None = None) -> list[str]:
     patterns = profile.router.reference_patterns if profile is not None else []
     compiled: list[re.Pattern[str]] = []
@@ -147,14 +188,15 @@ def build_initial_scope_filters(
     query: str,
     profile: AgentProfile | None = None,
 ) -> dict[str, Any] | None:
-    requested = tuple(plan_requested) or extract_requested_scopes(query, profile=profile)
+    effective_query, _ = apply_search_hints(query, profile=profile)
+    requested = tuple(plan_requested) or extract_requested_scopes(effective_query, profile=profile)
     filters: dict[str, Any] = {}
     if requested:
         filters["source_standards"] = list(requested)
 
     # Only narrow to clause_id for strict literal extraction; interpretive modes keep recall.
     if mode in {"literal_normativa", "literal_lista"}:
-        clause_refs = extract_clause_refs(query, profile=profile)
+        clause_refs = extract_clause_refs(effective_query, profile=profile)
         if clause_refs:
             filters["metadata"] = {"clause_id": clause_refs[0], "clause_refs": clause_refs}
 
@@ -168,12 +210,13 @@ def build_deterministic_subqueries(
     max_queries: int = 6,
     profile: AgentProfile | None = None,
 ) -> list[dict[str, Any]]:
-    clause_refs = extract_clause_refs(query, profile=profile)
+    effective_query, _ = apply_search_hints(query, profile=profile)
+    clause_refs = extract_clause_refs(effective_query, profile=profile)
     out: list[dict[str, Any]] = []
 
     # Per-standard subqueries (bounded).
     for standard in requested_standards[:3]:
-        clause = _clause_near_standard(query, standard)
+        clause = _clause_near_standard(effective_query, standard)
         key = _standard_key(standard).lower() or "scope"
         qtext = f"{standard} {clause or ''} " + " ".join(clause_refs[:3])
         qtext = " ".join(part for part in qtext.split() if part).strip()
@@ -201,7 +244,7 @@ def build_deterministic_subqueries(
         out.append(
             {
                 "id": "bridge_contexto",
-                "query": f"{query} impacto documental evidencia registros cumplimiento riesgos",
+                "query": f"{effective_query} impacto documental evidencia registros cumplimiento riesgos",
                 "k": None,
                 "fetch_k": None,
                 "filters": shared_filters,
@@ -212,7 +255,7 @@ def build_deterministic_subqueries(
         out.append(
             {
                 "id": "step_back",
-                "query": f"principios generales y requisitos clave relacionados: {query}",
+                "query": f"principios generales y requisitos clave relacionados: {effective_query}",
                 "k": None,
                 "fetch_k": None,
                 "filters": shared_filters,

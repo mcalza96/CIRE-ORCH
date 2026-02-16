@@ -29,6 +29,11 @@ class RetrievalModeConfig(BaseModel):
     require_literal_evidence: bool = False
 
 
+class SearchHint(BaseModel):
+    term: str
+    expand_to: list[str] = Field(default_factory=list)
+
+
 class RetrievalPolicy(BaseModel):
     by_mode: dict[str, RetrievalModeConfig] = Field(
         default_factory=lambda: {
@@ -64,6 +69,8 @@ class RetrievalPolicy(BaseModel):
             ),
         }
     )
+    search_hints: list[SearchHint] = Field(default_factory=list)
+    min_score: float = Field(default=0.75, ge=0.0, le=1.0)
 
 
 class SynthesisPolicy(BaseModel):
@@ -102,10 +109,37 @@ class SynthesisPolicy(BaseModel):
     )
 
 
+class ProfileMeta(BaseModel):
+    id: str = "base_v1"
+    description: str = ""
+    owner: str = "orchestrator"
+
+
+class IdentityPolicy(BaseModel):
+    role: str = "Analista tecnico"
+    tone: str = "Formal y basado en evidencia"
+    style_guide: list[str] = Field(default_factory=list)
+
+
+class ValidationPolicy(BaseModel):
+    require_citations: bool = True
+    forbidden_concepts: list[str] = Field(default_factory=list)
+    fallback_message: str = "No tengo informacion suficiente en el contexto para responder."
+
+
+class ProfileResolution(BaseModel):
+    source: Literal["db", "header", "tenant_map", "tenant_yaml", "base"]
+    requested_profile_id: str | None = None
+    applied_profile_id: str
+    decision_reason: str
+
+
 class AgentProfile(BaseModel):
     profile_id: str
     version: str = "1.0.0"
     status: Literal["draft", "active"] = "active"
+    meta: ProfileMeta = Field(default_factory=ProfileMeta)
+    identity: IdentityPolicy = Field(default_factory=IdentityPolicy)
 
     domain_entities: list[str] = Field(default_factory=list)
     intent_examples: dict[str, list[str]] = Field(default_factory=dict)
@@ -113,7 +147,13 @@ class AgentProfile(BaseModel):
 
     router: RouterHeuristics = Field(default_factory=RouterHeuristics)
     retrieval: RetrievalPolicy = Field(default_factory=RetrievalPolicy)
+    validation: ValidationPolicy = Field(default_factory=ValidationPolicy)
     synthesis: SynthesisPolicy = Field(default_factory=SynthesisPolicy)
+
+
+class ResolvedAgentProfile(BaseModel):
+    profile: AgentProfile
+    resolution: ProfileResolution
 
 
 AgentProfile.model_rebuild()

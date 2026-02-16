@@ -2,6 +2,18 @@ profile_id: base
 version: 1.0.0
 status: active
 
+meta:
+  id: base_v1
+  description: "Perfil base agnostico para preguntas con evidencia"
+  owner: "orchestrator-core"
+
+identity:
+  role: "Analista tecnico agnostico"
+  tone: "Formal, preciso y basado en evidencia"
+  style_guide:
+    - "Usa listas planas para hallazgos concretos."
+    - "Indica explicitamente cuando una afirmacion es inferencia."
+
 domain_entities:
   - evidencia
   - fuente
@@ -39,6 +51,8 @@ router:
 clarification_rules: []
 
 retrieval:
+  min_score: 0.75
+  search_hints: []
   by_mode:
     literal_lista:
       chunk_k: 45
@@ -65,3 +79,8 @@ retrieval:
       chunk_fetch_k: 120
       summary_k: 5
       require_literal_evidence: false
+
+validation:
+  require_citations: true
+  forbidden_concepts: []
+  fallback_message: "No tengo informacion suficiente en el contexto para responder."

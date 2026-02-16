@@ -110,7 +110,7 @@ def extract_requested_scopes(query: str, profile: AgentProfile | None = None) ->
             # Handle both ScopePattern objects and raw strings
             regex = p.regex if hasattr(p, "regex") else str(p)
             label = p.label if hasattr(p, "label") else None
-            
+
             try:
                 if re.search(regex, text, flags=re.IGNORECASE):
                     if label:
@@ -129,24 +129,10 @@ def extract_requested_scopes(query: str, profile: AgentProfile | None = None) ->
         for scope_label, hints in profile.router.scope_hints.items():
             if any(h.lower() in lower_text for h in hints) and scope_label not in found:
                 found.add(scope_label.strip())
-        
+
         for entity in profile.domain_entities:
             if len(entity) >= 4 and entity.lower() in lower_text and entity not in found:
                 found.add(entity.strip())
-
-    # Agnostic fallback for legacy/common standards
-    if not found and not patterns:
-        legacy_patterns = [r"\biso\s*[-:]?\s*(\d{4,5})\b", r"\b(9001|14001|45001)\b"]
-        for lp in legacy_patterns:
-            matches = re.findall(lp, lower_text)
-            for m in matches:
-                if isinstance(m, tuple):
-                    m = " ".join(filter(None, m))
-                val = str(m).strip().upper()
-                if val.isdigit() and len(val) >= 4:
-                    found.add(f"ISO {val}")
-                else:
-                    found.add(val)
 
     return tuple(sorted(list(found)))
 
@@ -180,7 +166,7 @@ def suggest_scope_candidates(query: str, profile: AgentProfile | None = None) ->
     # to find additional candidates that might not have explicit hints but match patterns.
     pattern_based_candidates = extract_requested_standards(query, profile=profile)
     for candidate in pattern_based_candidates:
-        if candidate not in ranked: # Avoid duplicates if already added by hints
+        if candidate not in ranked:  # Avoid duplicates if already added by hints
             ranked.append(candidate)
 
     if ranked:

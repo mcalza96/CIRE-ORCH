@@ -11,6 +11,7 @@ from app.agent.grounded_answer_service import GroundedAnswerService
 from app.agent.models import AnswerDraft, EvidenceItem, RetrievalDiagnostics, RetrievalPlan
 from app.cartridges.models import AgentProfile
 from app.agent.retrieval_planner import (
+    apply_search_hints,
     build_deterministic_subqueries,
     decide_multihop_fallback,
     extract_clause_refs,
@@ -40,6 +41,8 @@ class RagEngineRetrieverAdapter:
     last_retrieval_diagnostics: RetrievalDiagnostics | None = None
     _validated_filters: dict[str, Any] | None = None
     _validated_scope_payload: dict[str, Any] | None = None
+    _profile_context: AgentProfile | None = None
+    _profile_resolution_context: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if self.backend_selector is None:
@@ -61,6 +64,58 @@ class RagEngineRetrieverAdapter:
                 backend_selector=self.backend_selector,
             )
 
+    def set_profile_context(
+        self,
+        *,
+        profile: AgentProfile | None,
+        profile_resolution: dict[str, Any] | None = None,
+    ) -> None:
+        self._profile_context = profile
+        self._profile_resolution_context = profile_resolution if isinstance(profile_resolution, dict) else None
+
+    def _profile_min_score(self) -> float | None:
+        if self._profile_context is None:
+            return None
+        try:
+            return float(self._profile_context.retrieval.min_score)
+        except Exception:
+            return None
+
+    def _filter_items_by_min_score(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        trace_target: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        threshold = self._profile_min_score()
+        if threshold is None:
+            return items
+
+        kept: list[dict[str, Any]] = []
+        dropped = 0
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            score_raw = item.get("score")
+            if score_raw is None:
+                score_raw = item.get("similarity")
+            if score_raw is None:
+                kept.append(item)
+                continue
+            score = float(score_raw or 0.0)
+            if score >= threshold:
+                kept.append(item)
+            else:
+                dropped += 1
+
+        if isinstance(trace_target, dict):
+            trace_target["min_score_filter"] = {
+                "threshold": threshold,
+                "kept": len(kept),
+                "dropped": dropped,
+            }
+        return kept
+
     async def validate_scope(
         self,
         *,
@@ -69,6 +124,8 @@ class RagEngineRetrieverAdapter:
         collection_id: str | None,
         plan: RetrievalPlan,
         user_id: str | None = None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
         filters: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if str(settings.ORCH_RETRIEVAL_CONTRACT or "").lower() != "advanced":
@@ -90,6 +147,8 @@ class RagEngineRetrieverAdapter:
                 tenant_id=tenant_id,
                 collection_id=collection_id,
                 user_id=user_id,
+                request_id=request_id,
+                correlation_id=correlation_id,
                 filters=filters,
             )
         except RagContractNotSupportedError:
@@ -123,6 +182,8 @@ class RagEngineRetrieverAdapter:
         collection_id: str | None,
         plan: RetrievalPlan,
         user_id: str | None = None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> list[EvidenceItem]:
         if str(settings.ORCH_RETRIEVAL_CONTRACT or "").lower() == "advanced":
             try:
@@ -132,6 +193,8 @@ class RagEngineRetrieverAdapter:
                     collection_id=collection_id,
                     plan=plan,
                     user_id=user_id,
+                    request_id=request_id,
+                    correlation_id=correlation_id,
                 )
             except RagContractNotSupportedError:
                 logger.warning(
@@ -142,7 +205,10 @@ class RagEngineRetrieverAdapter:
                     contract="legacy",
                     strategy="legacy_fallback",
                     partial=False,
-                    trace={"warning": "advanced_contract_404_fallback_legacy"},
+                    trace={
+                        "warning": "advanced_contract_404_fallback_legacy",
+                        "agent_profile_resolution": dict(self._profile_resolution_context or {}),
+                    },
                     scope_validation=self._validated_scope_payload or {},
                 )
                 # Continue into legacy call below.
@@ -158,6 +224,10 @@ class RagEngineRetrieverAdapter:
         context_headers = {"X-Tenant-ID": tenant_id}
         if user_id:
             context_headers["X-User-ID"] = user_id
+        if request_id:
+            context_headers["X-Request-ID"] = request_id
+        if correlation_id:
+            context_headers["X-Correlation-ID"] = correlation_id
         try:
             data = await self._post_json(
                 "/api/v1/debug/retrieval/chunks",
@@ -170,6 +240,8 @@ class RagEngineRetrieverAdapter:
             raise
         retrieval_metrics_store.record_success("chunks")
         items = data.get("items") if isinstance(data, dict) else []
+        if isinstance(items, list):
+            items = self._filter_items_by_min_score([it for it in items if isinstance(it, dict)])
         return self._to_evidence(items)
 
     async def retrieve_summaries(
@@ -179,6 +251,8 @@ class RagEngineRetrieverAdapter:
         collection_id: str | None,
         plan: RetrievalPlan,
         user_id: str | None = None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> list[EvidenceItem]:
         if str(settings.ORCH_RETRIEVAL_CONTRACT or "").lower() == "advanced":
             # Advanced contract does not expose summaries. Optionally hit the debug endpoint
@@ -198,6 +272,10 @@ class RagEngineRetrieverAdapter:
         context_headers = {"X-Tenant-ID": tenant_id}
         if user_id:
             context_headers["X-User-ID"] = user_id
+        if request_id:
+            context_headers["X-Request-ID"] = request_id
+        if correlation_id:
+            context_headers["X-Correlation-ID"] = correlation_id
         try:
             data = await self._post_json(
                 "/api/v1/debug/retrieval/summaries",
@@ -217,6 +295,8 @@ class RagEngineRetrieverAdapter:
             )
             return []
         items = data.get("items") if isinstance(data, dict) else []
+        if isinstance(items, list):
+            items = self._filter_items_by_min_score([it for it in items if isinstance(it, dict)])
         return self._to_evidence(items)
 
     async def _retrieve_advanced(
@@ -227,6 +307,8 @@ class RagEngineRetrieverAdapter:
         collection_id: str | None,
         plan: RetrievalPlan,
         user_id: str | None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> list[EvidenceItem]:
         assert self.contract_client is not None
 
@@ -242,7 +324,8 @@ class RagEngineRetrieverAdapter:
         k = max(1, min(int(plan.chunk_k), 24 if plan.mode == "comparativa" else 18))
         fetch_k = max(1, int(plan.chunk_fetch_k))
 
-        clause_refs = extract_clause_refs(query)
+        expanded_query, hint_trace = apply_search_hints(query, profile=self._profile_context)
+        clause_refs = extract_clause_refs(expanded_query, profile=self._profile_context)
         multihop_hint = len(plan.requested_standards) >= 2 or len(clause_refs) >= 2
 
         def _layer_stats(raw_items: list[dict[str, Any]]) -> dict[str, Any]:
@@ -315,7 +398,7 @@ class RagEngineRetrieverAdapter:
             # Build one focused subquery per missing scope (agnostic: treat scope labels as strings).
             focused: list[dict[str, Any]] = []
             for idx, scope in enumerate(missing, start=1):
-                qtext = " ".join(part for part in [scope, *clause_refs[:3], query] if part).strip()
+                qtext = " ".join(part for part in [scope, *clause_refs[:3], expanded_query] if part).strip()
                 focused.append(
                     {
                         "id": f"scope_repair_{idx}",
@@ -332,6 +415,8 @@ class RagEngineRetrieverAdapter:
                 tenant_id=tenant_id,
                 collection_id=collection_id,
                 user_id=user_id,
+                request_id=request_id,
+                correlation_id=correlation_id,
                 queries=focused,
                 merge=merge,
             )
@@ -369,7 +454,10 @@ class RagEngineRetrieverAdapter:
                     step_back_queries.append(
                         {
                             "id": f"scope_step_back_{idx}",
-                            "query": f"principios generales y requisitos clave relacionados con: {query}",
+                            "query": (
+                                "principios generales y requisitos clave relacionados con: "
+                                f"{expanded_query}"
+                            ),
                             "k": None,
                             "fetch_k": None,
                             "filters": {"source_standard": scope},
@@ -380,6 +468,8 @@ class RagEngineRetrieverAdapter:
                     tenant_id=tenant_id,
                     collection_id=collection_id,
                     user_id=user_id,
+                    request_id=request_id,
+                    correlation_id=correlation_id,
                     queries=step_back_queries,
                     merge=merge,
                 )
@@ -407,15 +497,21 @@ class RagEngineRetrieverAdapter:
 
         async def build_subqueries() -> list[dict[str, Any]]:
             subqueries_local = build_deterministic_subqueries(
-                query=query,
+                query=expanded_query,
                 requested_standards=plan.requested_standards,
+                profile=self._profile_context,
             )
             if settings.ORCH_SEMANTIC_PLANNER:
                 planner = SemanticSubqueryPlanner()
                 planned = await planner.plan(
-                    query=query,
+                    query=expanded_query,
                     requested_standards=plan.requested_standards,
                     max_queries=settings.ORCH_PLANNER_MAX_QUERIES,
+                    search_hints=(
+                        [item.model_dump() for item in self._profile_context.retrieval.search_hints]
+                        if self._profile_context is not None
+                        else None
+                    ),
                 )
                 if planned:
                     return planned
@@ -436,6 +532,8 @@ class RagEngineRetrieverAdapter:
                 tenant_id=tenant_id,
                 collection_id=collection_id,
                 user_id=user_id,
+                request_id=request_id,
+                correlation_id=correlation_id,
                 queries=subqueries,
                 merge=merge,
             )
@@ -457,12 +555,24 @@ class RagEngineRetrieverAdapter:
             if isinstance(mq_items, list) and len(mq_items) >= max(
                 1, int(settings.ORCH_MULTI_QUERY_MIN_ITEMS or 6)
             ):
+                mq_items = self._filter_items_by_min_score(
+                    [it for it in mq_items if isinstance(it, dict)],
+                    trace_target=diag_trace,
+                )
                 diag_trace.update(_layer_stats([it for it in mq_items if isinstance(it, dict)]))
+                if hint_trace.get("applied"):
+                    diag_trace["search_hint_expansions"] = hint_trace
+                if isinstance(self._profile_resolution_context, dict):
+                    diag_trace["agent_profile_resolution"] = dict(self._profile_resolution_context)
                 # Coverage gate (agnostic) before returning.
                 mq_items = await _coverage_repair(
                     items=[it for it in mq_items if isinstance(it, dict)],
                     base_trace=diag_trace,
                     reason="multi_query_primary",
+                )
+                mq_items = self._filter_items_by_min_score(
+                    [it for it in mq_items if isinstance(it, dict)],
+                    trace_target=diag_trace,
                 )
 
                 self.last_retrieval_diagnostics = RetrievalDiagnostics(
@@ -477,7 +587,7 @@ class RagEngineRetrieverAdapter:
             if settings.ORCH_MULTI_QUERY_EVALUATOR and isinstance(mq_items, list) and mq_items:
                 evaluator = RetrievalSufficiencyEvaluator()
                 decision = await evaluator.evaluate(
-                    query=query,
+                    query=expanded_query,
                     requested_standards=plan.requested_standards,
                     items=[it for it in mq_items if isinstance(it, dict)],
                     min_items=int(settings.ORCH_MULTI_QUERY_MIN_ITEMS or 6),
@@ -490,6 +600,10 @@ class RagEngineRetrieverAdapter:
                         items=[it for it in mq_items if isinstance(it, dict)],
                         base_trace=diag_trace,
                         reason="multi_query_primary_evaluator",
+                    )
+                    mq_items = self._filter_items_by_min_score(
+                        [it for it in mq_items if isinstance(it, dict)],
+                        trace_target=diag_trace,
                     )
                     self.last_retrieval_diagnostics = RetrievalDiagnostics(
                         contract="advanced",
@@ -504,7 +618,7 @@ class RagEngineRetrieverAdapter:
             if settings.ORCH_MULTI_QUERY_REFINE:
                 step_back = {
                     "id": "step_back",
-                    "query": f"principios generales y requisitos clave relacionados: {query}",
+                    "query": f"principios generales y requisitos clave relacionados: {expanded_query}",
                     "k": None,
                     "fetch_k": None,
                     "filters": {"source_standards": list(plan.requested_standards)}
@@ -519,6 +633,8 @@ class RagEngineRetrieverAdapter:
                     tenant_id=tenant_id,
                     collection_id=collection_id,
                     user_id=user_id,
+                    request_id=request_id,
+                    correlation_id=correlation_id,
                     queries=refined,
                     merge=merge,
                 )
@@ -527,6 +643,10 @@ class RagEngineRetrieverAdapter:
                 if isinstance(mq2_items, list) and len(mq2_items) >= max(
                     1, int(settings.ORCH_MULTI_QUERY_MIN_ITEMS or 6)
                 ):
+                    mq2_items = self._filter_items_by_min_score(
+                        [it for it in mq2_items if isinstance(it, dict)],
+                        trace_target=diag_trace,
+                    )
                     diag_trace["refined"] = True
                     diag_trace["refine_reason"] = "insufficient_primary_multi_query"
                     diag_trace["timings_ms"] = dict(timings_ms)
@@ -537,6 +657,10 @@ class RagEngineRetrieverAdapter:
                         items=[it for it in mq2_items if isinstance(it, dict)],
                         base_trace=diag_trace,
                         reason="multi_query_refined",
+                    )
+                    mq2_items = self._filter_items_by_min_score(
+                        [it for it in mq2_items if isinstance(it, dict)],
+                        trace_target=diag_trace,
                     )
                     self.last_retrieval_diagnostics = RetrievalDiagnostics(
                         contract="advanced",
@@ -549,10 +673,12 @@ class RagEngineRetrieverAdapter:
 
         t_h = time.perf_counter()
         hybrid_payload = await self.contract_client.hybrid(
-            query=query,
+            query=expanded_query,
             tenant_id=tenant_id,
             collection_id=collection_id,
             user_id=user_id,
+            request_id=request_id,
+            correlation_id=correlation_id,
             k=k,
             fetch_k=fetch_k,
             filters=filters,
@@ -566,6 +692,14 @@ class RagEngineRetrieverAdapter:
             items = []
         if not isinstance(trace, dict):
             trace = {}
+        items = self._filter_items_by_min_score(
+            [it for it in items if isinstance(it, dict)],
+            trace_target=trace,
+        )
+        if hint_trace.get("applied"):
+            trace["search_hint_expansions"] = hint_trace
+        if isinstance(self._profile_resolution_context, dict):
+            trace["agent_profile_resolution"] = dict(self._profile_resolution_context)
 
         # Decide multihop fallback if configured.
         if (
@@ -583,7 +717,7 @@ class RagEngineRetrieverAdapter:
                     rows.append(row)
 
             decision = decide_multihop_fallback(
-                query=query,
+                query=expanded_query,
                 requested_standards=plan.requested_standards,
                 items=rows,
                 hybrid_trace=trace,
@@ -597,6 +731,8 @@ class RagEngineRetrieverAdapter:
                     tenant_id=tenant_id,
                     collection_id=collection_id,
                     user_id=user_id,
+                    request_id=request_id,
+                    correlation_id=correlation_id,
                     queries=subqueries,
                     merge=merge,
                 )
@@ -616,7 +752,15 @@ class RagEngineRetrieverAdapter:
                     "subqueries": subq if isinstance(subq, list) else [],
                     "timings_ms": dict(timings_ms),
                 }
+                mq_items = self._filter_items_by_min_score(
+                    [it for it in mq_items if isinstance(it, dict)],
+                    trace_target=diag_trace,
+                )
                 diag_trace["rag_features"] = _features_from_hybrid_trace(trace)
+                if hint_trace.get("applied"):
+                    diag_trace["search_hint_expansions"] = hint_trace
+                if isinstance(self._profile_resolution_context, dict):
+                    diag_trace["agent_profile_resolution"] = dict(self._profile_resolution_context)
                 if isinstance(mq_items, list):
                     diag_trace.update(_layer_stats([it for it in mq_items if isinstance(it, dict)]))
                 self.last_retrieval_diagnostics = RetrievalDiagnostics(
@@ -630,6 +774,10 @@ class RagEngineRetrieverAdapter:
                     items=[it for it in mq_items if isinstance(it, dict)],
                     base_trace=diag_trace,
                     reason="multi_query_fallback",
+                )
+                mq_items2 = self._filter_items_by_min_score(
+                    [it for it in mq_items2 if isinstance(it, dict)],
+                    trace_target=diag_trace,
                 )
                 return self._to_evidence(mq_items2)
 
@@ -647,12 +795,24 @@ class RagEngineRetrieverAdapter:
             self.last_retrieval_diagnostics.trace["rag_features"] = _features_from_hybrid_trace(
                 trace
             )
+            if hint_trace.get("applied"):
+                self.last_retrieval_diagnostics.trace["search_hint_expansions"] = hint_trace
+            if isinstance(self._profile_resolution_context, dict):
+                self.last_retrieval_diagnostics.trace["agent_profile_resolution"] = dict(
+                    self._profile_resolution_context
+                )
         items2 = await _coverage_repair(
             items=[it for it in items if isinstance(it, dict)],
             base_trace=self.last_retrieval_diagnostics.trace
             if isinstance(self.last_retrieval_diagnostics.trace, dict)
             else {},
             reason="hybrid",
+        )
+        items2 = self._filter_items_by_min_score(
+            [it for it in items2 if isinstance(it, dict)],
+            trace_target=self.last_retrieval_diagnostics.trace
+            if isinstance(self.last_retrieval_diagnostics.trace, dict)
+            else {},
         )
         return self._to_evidence(items2)
 
