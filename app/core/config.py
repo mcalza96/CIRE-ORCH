@@ -43,7 +43,9 @@ class Settings(BaseSettings):
     ORCH_MULTI_QUERY_PRIMARY: bool = False
     ORCH_MULTI_QUERY_REFINE: bool = False
     ORCH_MULTI_QUERY_MIN_ITEMS: int = 6
+    ORCH_MULTI_QUERY_FALLBACK_MAX_QUERIES: int = 3
     ORCH_MULTI_QUERY_EVALUATOR: bool = False
+    EARLY_EXIT_COVERAGE_ENABLED: bool = True
     ORCH_EVALUATOR_MODEL: str | None = None
 
     # Agnostic coverage gate: ensure multi-scope queries retrieve evidence per requested scope.
@@ -56,6 +58,10 @@ class Settings(BaseSettings):
     ORCH_LITERAL_LOCK_ENABLED: bool = True
     ORCH_MIN_SCORE_BACKSTOP_ENABLED: bool = True
     ORCH_MIN_SCORE_BACKSTOP_TOP_N: int = 6
+    ORCH_LITERAL_REF_MIN_COVERAGE_RATIO: float = 0.7
+    STRICT_LITERAL_CLAUSE_VALIDATION_ONLY: bool = True
+    COMPOUND_QUERY_SPLIT_ENABLED: bool = True
+    COMPOUND_QUERY_MAX_PARTS: int = 3
 
     # Raptor summaries (optional). Advanced contract does not include summaries,
     # so we can call the debug summaries endpoint in a controlled way.
@@ -70,6 +76,8 @@ class Settings(BaseSettings):
     # Level-4-ish internal retries driven by classifier + validation.
     ORCH_MODE_AUTORETRY_ENABLED: bool = True
     ORCH_MODE_AUTORETRY_MAX_ATTEMPTS: int = 2
+    ORCH_GRAPH_MAX_RETRIES: int = 1
+    ORCH_GRAPH_MIN_AVG_SCORE: float = 0.12
 
     # Human-in-the-loop fallback when confidence low and internal retry not enough.
     ORCH_MODE_HITL_ENABLED: bool = False

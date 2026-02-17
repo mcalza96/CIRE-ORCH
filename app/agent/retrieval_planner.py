@@ -256,7 +256,15 @@ def build_initial_scope_filters(
     # Do not derive hard clause filters from search-hint expansions.
     if mode in {"literal_normativa", "literal_lista"}:
         clause_refs = extract_clause_refs(raw_query, profile=profile)
-        if clause_refs:
+        # If the user asked multiple questions in one turn, avoid over-constraining
+        # retrieval to a single clause (e.g. "9.3 ..." + a second question).
+        split_parts = [
+            part
+            for part in re.split(r"\?+|\n+", raw_query)
+            if isinstance(part, str) and len(" ".join(part.split()).strip()) >= 18
+        ]
+        is_compound_query = len(split_parts) >= 2
+        if clause_refs and not is_compound_query:
             filters["metadata"] = {"clause_id": clause_refs[0]}
 
     return filters or None

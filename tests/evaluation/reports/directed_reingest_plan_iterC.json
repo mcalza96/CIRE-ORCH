@@ -1,0 +1,272 @@
+{
+  "source_report": "orch/tests/evaluation/reports/iso_auditor_benchmark_iterC-local-golden_20260217T122720Z.json",
+  "source_dataset": "orch/tests/evaluation/iso_auditor_smoke.json",
+  "target_cases": {
+    "smoke_literal_001": {
+      "query": "Que exige textualmente la clausula 9.3 de la ISO 9001 sobre la revision por la direccion?",
+      "standards": [
+        "ISO 9001"
+      ],
+      "clauses": [
+        "9.3"
+      ],
+      "reasons": [
+        "coverage_gap"
+      ],
+      "status_code": 200,
+      "coverage_ok": false,
+      "validation_accepted": true,
+      "has_citation_marker": true,
+      "validation_issues": []
+    },
+    "smoke_literal_002": {
+      "query": "Cita textualmente los requisitos de la ISO 9001 que vinculan los resultados de auditorias previas con la planificacion del nuevo programa de auditoria (9.2) y como esto debe ser tratado como entrada para la revision por la direccion (9.3).",
+      "standards": [
+        "ISO 9001"
+      ],
+      "clauses": [
+        "9.2",
+        "9.3"
+      ],
+      "reasons": [
+        "coverage_gap"
+      ],
+      "status_code": 200,
+      "coverage_ok": false,
+      "validation_accepted": true,
+      "has_citation_marker": true,
+      "validation_issues": []
+    },
+    "smoke_lista_001": {
+      "query": "Enumera en una lista separada los controles requeridos para la informacion documentada en la ISO 45001, distinguiendo entre 7.5.2 y 7.5.3.",
+      "standards": [
+        "ISO 45001"
+      ],
+      "clauses": [
+        "7.5.2",
+        "7.5.3"
+      ],
+      "reasons": [
+        "coverage_gap"
+      ],
+      "status_code": 200,
+      "coverage_ok": false,
+      "validation_accepted": true,
+      "has_citation_marker": true,
+      "validation_issues": []
+    },
+    "smoke_comparativa_001": {
+      "query": "Compara como la ISO 9001 aborda la gestion del cambio en 6.3 frente a la ISO 45001 en 8.1.3 e identifica la diferencia clave.",
+      "standards": [
+        "ISO 45001",
+        "ISO 9001"
+      ],
+      "clauses": [
+        "6.3",
+        "8.1.3"
+      ],
+      "reasons": [
+        "coverage_gap"
+      ],
+      "status_code": 200,
+      "coverage_ok": false,
+      "validation_accepted": true,
+      "has_citation_marker": true,
+      "validation_issues": []
+    },
+    "smoke_explicativa_001": {
+      "query": "Analice la relacion tecnica entre la evaluacion de la eficacia de las acciones para abordar riesgos (6.1) y los resultados de seguimiento y medicion (9.1) en la ISO 9001.",
+      "standards": [
+        "ISO 9001"
+      ],
+      "clauses": [
+        "6.1",
+        "9.1"
+      ],
+      "reasons": [
+        "coverage_gap"
+      ],
+      "status_code": 200,
+      "coverage_ok": false,
+      "validation_accepted": true,
+      "has_citation_marker": true,
+      "validation_issues": []
+    },
+    "smoke_policy_2of3_001": {
+      "query": "Que exigen textualmente las normas ISO 9001, ISO 14001 e ISO 45001 sobre la politica de gestion?",
+      "standards": [
+        "ISO 14001",
+        "ISO 45001",
+        "ISO 9001"
+      ],
+      "clauses": [],
+      "reasons": [
+        "missing_citation_marker"
+      ],
+      "status_code": 200,
+      "coverage_ok": true,
+      "validation_accepted": true,
+      "has_citation_marker": false,
+      "validation_issues": []
+    },
+    "golden_user_regression_001": {
+      "query": "Que exige textualmente la clausula 9.3 de la ISO 9001 sobre la revision por la direccion? Enumera una lista de las entradas requeridas para la planificacion y las salidas esperadas en la ISO 14001.",
+      "standards": [
+        "ISO 14001",
+        "ISO 9001"
+      ],
+      "clauses": [
+        "9.3"
+      ],
+      "reasons": [
+        "coverage_gap"
+      ],
+      "status_code": 200,
+      "coverage_ok": false,
+      "validation_accepted": true,
+      "has_citation_marker": true,
+      "validation_issues": []
+    },
+    "golden_user_regression_002": {
+      "query": "Enumera en una lista separada los controles requeridos para la informacion documentada en la ISO 45001, distinguiendo explicitamente entre las actividades de creacion y actualizacion (7.5.2) versus las actividades de control y preservacion (7.5.3)",
+      "standards": [
+        "ISO 45001"
+      ],
+      "clauses": [
+        "7.5.2",
+        "7.5.3"
+      ],
+      "reasons": [
+        "coverage_gap"
+      ],
+      "status_code": 200,
+      "coverage_ok": false,
+      "validation_accepted": true,
+      "has_citation_marker": true,
+      "validation_issues": []
+    },
+    "golden_user_regression_003": {
+      "query": "Compara como la ISO 9001 aborda la gestion del cambio a nivel de planificacion del sistema (6.3) frente a como la ISO 45001 exige gestionar los cambios temporales y permanentes en la operacion (8.1.3). Identifica la diferencia clave en el enfoque.",
+      "standards": [
+        "ISO 45001",
+        "ISO 9001"
+      ],
+      "clauses": [
+        "6.3",
+        "8.1.3"
+      ],
+      "reasons": [
+        "coverage_gap"
+      ],
+      "status_code": 200,
+      "coverage_ok": false,
+      "validation_accepted": true,
+      "has_citation_marker": true,
+      "validation_issues": []
+    },
+    "golden_user_regression_004": {
+      "query": "Analice la relacion tecnica entre la evaluacion de la eficacia de las acciones para abordar riesgos (6.1) y los resultados de seguimiento y medicion (9.1) en la ISO 9001. Que implica un desempeno bajo en 9.1 para la actualizacion de la evaluacion de riesgos?",
+      "standards": [
+        "ISO 9001"
+      ],
+      "clauses": [
+        "6.1",
+        "9.1"
+      ],
+      "reasons": [
+        "coverage_gap"
+      ],
+      "status_code": 200,
+      "coverage_ok": false,
+      "validation_accepted": true,
+      "has_citation_marker": true,
+      "validation_issues": []
+    },
+    "golden_user_regression_005": {
+      "query": "Que exigen textualmente las normas ISO 9001, ISO 14001 e ISO 45001 sobre la competencia (7.2) y la toma de conciencia (7.3) para trabajadores externos y contratistas?",
+      "standards": [
+        "ISO 14001",
+        "ISO 45001",
+        "ISO 9001"
+      ],
+      "clauses": [
+        "7.2",
+        "7.3"
+      ],
+      "reasons": [
+        "coverage_gap",
+        "missing_citation_marker"
+      ],
+      "status_code": 200,
+      "coverage_ok": false,
+      "validation_accepted": true,
+      "has_citation_marker": false,
+      "validation_issues": []
+    }
+  },
+  "by_standard": {
+    "ISO 9001": {
+      "queries": 9,
+      "clauses": [
+        "6.1",
+        "6.3",
+        "7.2",
+        "7.3",
+        "8.1.3",
+        "9.1",
+        "9.2",
+        "9.3"
+      ],
+      "coverage_gap": 8,
+      "validation_rejected": 0,
+      "missing_citation_marker": 2,
+      "http_error": 0
+    },
+    "ISO 45001": {
+      "queries": 6,
+      "clauses": [
+        "6.3",
+        "7.2",
+        "7.3",
+        "7.5.2",
+        "7.5.3",
+        "8.1.3"
+      ],
+      "coverage_gap": 5,
+      "validation_rejected": 0,
+      "missing_citation_marker": 2,
+      "http_error": 0
+    },
+    "ISO 14001": {
+      "queries": 3,
+      "clauses": [
+        "7.2",
+        "7.3",
+        "9.3"
+      ],
+      "coverage_gap": 2,
+      "validation_rejected": 0,
+      "missing_citation_marker": 2,
+      "http_error": 0
+    }
+  },
+  "priority": [
+    {
+      "standard": "ISO 9001",
+      "priority_score": 54
+    },
+    {
+      "standard": "ISO 45001",
+      "priority_score": 36
+    },
+    {
+      "standard": "ISO 14001",
+      "priority_score": 18
+    }
+  ],
+  "unresolved_cases": [],
+  "notes": [
+    "Use this file to drive directed reingestion of missing clauses per standard.",
+    "Prioritize standards by priority score, then missing clauses."
+  ]
+}

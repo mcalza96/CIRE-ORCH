@@ -5,6 +5,7 @@ pydantic
 pydantic-settings
 httpx
 openai
+langgraph
 python-dotenv
 pytest
 ruff

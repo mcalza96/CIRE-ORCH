@@ -1,0 +1,133 @@
+{
+  "generated_at": "2026-02-17T11:57:42.273990+00:00",
+  "variant_label": "smoke-local",
+  "dataset": "tests/evaluation/iso_auditor_smoke.json",
+  "base_url": "http://localhost:8001",
+  "tenant_id": "b18a053c-1787-4a43-ac97-60c459f455b8",
+  "collection_id": "48a5c920-59f1-4498-9683-727339463ad2",
+  "total_cases": 6,
+  "metrics": {
+    "citation_marker_rate": 83.33,
+    "standard_coverage_rate": 16.67,
+    "literal_mode_retention_rate": 100.0,
+    "answerable_rate": 66.67,
+    "false_positive_partial_rate": 100.0,
+    "latency_p95_ms": 5919.86
+  },
+  "thresholds": {
+    "citation_marker_rate": 98.0,
+    "standard_coverage_rate": 90.0,
+    "literal_mode_retention_rate": 95.0
+  },
+  "checks": {
+    "citation_marker_rate": false,
+    "standard_coverage_rate": false,
+    "literal_mode_retention_rate": true
+  },
+  "validation_issue_counts": {
+    "Literal clause mismatch: no evidence chunk contains the requested clause reference.": 1,
+    "Answer does not include explicit source markers (C#/R#).": 1
+  },
+  "failed_cases": [],
+  "cases": [
+    {
+      "id": "smoke_literal_001",
+      "category": "literal",
+      "status_code": 200,
+      "mode": "literal_normativa",
+      "final_mode": "literal_normativa",
+      "has_citation_marker": true,
+      "coverage_ok": false,
+      "literal_mode_retained": true,
+      "answerable": true,
+      "false_positive_partial": true,
+      "latency_ms": 6574.53,
+      "error": null,
+      "validation_accepted": true,
+      "validation_issues": []
+    },
+    {
+      "id": "smoke_literal_002",
+      "category": "literal",
+      "status_code": 200,
+      "mode": "literal_normativa",
+      "final_mode": "literal_normativa",
+      "has_citation_marker": true,
+      "coverage_ok": false,
+      "literal_mode_retained": true,
+      "answerable": true,
+      "false_positive_partial": true,
+      "latency_ms": 3301.17,
+      "error": null,
+      "validation_accepted": true,
+      "validation_issues": []
+    },
+    {
+      "id": "smoke_lista_001",
+      "category": "literal",
+      "status_code": 200,
+      "mode": "literal_lista",
+      "final_mode": "literal_lista",
+      "has_citation_marker": true,
+      "coverage_ok": false,
+      "literal_mode_retained": true,
+      "answerable": true,
+      "false_positive_partial": false,
+      "latency_ms": 3240.83,
+      "error": null,
+      "validation_accepted": true,
+      "validation_issues": []
+    },
+    {
+      "id": "smoke_comparativa_001",
+      "category": "comparativa",
+      "status_code": 200,
+      "mode": "comparativa",
+      "final_mode": "comparativa",
+      "has_citation_marker": true,
+      "coverage_ok": false,
+      "literal_mode_retained": true,
+      "answerable": false,
+      "false_positive_partial": false,
+      "latency_ms": 2955.81,
+      "error": null,
+      "validation_accepted": false,
+      "validation_issues": [
+        "Literal clause mismatch: no evidence chunk contains the requested clause reference.",
+        "Answer does not include explicit source markers (C#/R#)."
+      ]
+    },
+    {
+      "id": "smoke_explicativa_001",
+      "category": "explicativa",
+      "status_code": 200,
+      "mode": "explicativa",
+      "final_mode": "explicativa",
+      "has_citation_marker": true,
+      "coverage_ok": false,
+      "literal_mode_retained": true,
+      "answerable": true,
+      "false_positive_partial": false,
+      "latency_ms": 3282.4,
+      "error": null,
+      "validation_accepted": true,
+      "validation_issues": []
+    },
+    {
+      "id": "smoke_policy_2of3_001",
+      "category": "comparativa",
+      "status_code": 200,
+      "mode": "comparativa",
+      "final_mode": "comparativa",
+      "has_citation_marker": false,
+      "coverage_ok": true,
+      "literal_mode_retained": true,
+      "answerable": false,
+      "false_positive_partial": false,
+      "latency_ms": 0.0,
+      "error": null,
+      "validation_accepted": true,
+      "validation_issues": []
+    }
+  ]
+}

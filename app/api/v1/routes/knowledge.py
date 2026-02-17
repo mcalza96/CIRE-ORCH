@@ -1,3 +1,4 @@
+import re
 from typing import Any, Dict, Optional
 
 import httpx
@@ -24,6 +25,65 @@ from app.security.tenant_authorizer import (
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(tags=["knowledge"])
+
+
+def _compact_text(text: str, *, limit: int = 200) -> str:
+    raw = " ".join(str(text or "").split())
+    if len(raw) <= limit:
+        return raw
+    return raw[:limit].rstrip() + "..."
+
+
+def _build_citation_details(answer_text: str, evidence: list[Any]) -> list[dict[str, Any]]:
+    used_markers = {
+        marker.upper()
+        for marker in re.findall(r"\b[CR]\d+\b", str(answer_text or ""), flags=re.IGNORECASE)
+    }
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in evidence:
+        source = str(getattr(item, "source", "") or "").strip()
+        if not source:
+            continue
+        key = source.upper()
+        if key in seen:
+            continue
+        seen.add(key)
+
+        score = getattr(item, "score", None)
+        content = str(getattr(item, "content", "") or "")
+        metadata = getattr(item, "metadata", None)
+        row = metadata.get("row") if isinstance(metadata, dict) else None
+        row_meta_raw = row.get("metadata") if isinstance(row, dict) else None
+        row_meta: dict[str, Any] = row_meta_raw if isinstance(row_meta_raw, dict) else {}
+
+        standard = ""
+        for field in ("source_standard", "standard", "scope"):
+            value = str(row_meta.get(field) or "").strip()
+            if value:
+                standard = value
+                break
+
+        clause = ""
+        for field in ("clause_id", "clause_ref", "clause", "clause_anchor"):
+            value = str(row_meta.get(field) or "").strip()
+            if value:
+                clause = value
+                break
+
+        out.append(
+            {
+                "id": source,
+                "standard": standard,
+                "clause": clause,
+                "score": float(score) if isinstance(score, (int, float)) else None,
+                "snippet": _compact_text(content, limit=220),
+                "used_in_answer": key in used_markers,
+            }
+        )
+
+    out.sort(key=lambda item: (not bool(item.get("used_in_answer")), str(item.get("id") or "")))
+    return out
 
 
 def _classify_orchestrator_error(exc: Exception) -> str:
@@ -195,19 +255,19 @@ async def answer_with_orchestrator(
         agent_profile = resolved_profile.profile
         scope_metrics_store.record_request(authorized_tenant)
 
-        result = await use_case.execute(
-            HandleQuestionCommand(
-                query=request.query,
-                tenant_id=authorized_tenant,
-                user_id=current_user.user_id,
-                collection_id=request.collection_id,
-                scope_label=f"tenant={authorized_tenant}",
-                agent_profile=agent_profile,
-                profile_resolution=resolved_profile.resolution.model_dump(),
-                request_id=req_id or None,
-                correlation_id=corr_id or None,
-            )
+        command = HandleQuestionCommand(
+            query=request.query,
+            tenant_id=authorized_tenant,
+            user_id=current_user.user_id,
+            collection_id=request.collection_id,
+            scope_label=f"tenant={authorized_tenant}",
+            agent_profile=agent_profile,
+            profile_resolution=resolved_profile.resolution.model_dump(),
+            request_id=req_id or None,
+            correlation_id=corr_id or None,
         )
+
+        result = await use_case.execute(command)
 
         if result.clarification:
             scope_metrics_store.record_clarification(authorized_tenant)
@@ -221,6 +281,7 @@ async def answer_with_orchestrator(
 
         context_chunks = [item.content for item in result.answer.evidence]
         citations = [item.source for item in result.answer.evidence]
+        citations_detailed = _build_citation_details(result.answer.text, result.answer.evidence)
         validation_accepted = bool(result.validation.accepted)
         clarification_present = bool(result.clarification)
         logger.info(
@@ -258,6 +319,7 @@ async def answer_with_orchestrator(
                 "resolution": resolved_profile.resolution.model_dump(),
             },
             "citations": citations,
+            "citations_detailed": citations_detailed,
             "context_chunks": context_chunks,
             "requested_scopes": list(result.plan.requested_standards),
             "retrieval_plan": {

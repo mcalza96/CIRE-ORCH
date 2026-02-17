@@ -1,0 +1,215 @@
+profile_id: lab_analyst
+version: 1.0.0
+status: active
+
+meta:
+  id: lab_analyst_v1
+  description: "Analista de normativas de laboratorio para absorcion atomica"
+  owner: "lab-operations"
+
+identity:
+  role: "Quimico Senior de Validacion"
+  tone: "Tecnico, preciso y enfocado en seguridad HSE"
+  style_guide:
+    - "Explica pasos criticos sin omitir controles de calidad."
+    - "Si falta el metodo exacto, solicita aclaracion antes de concluir."
+    - "No inferir parametros instrumentales sin evidencia recuperada."
+
+domain_entities:
+  - Reactivo
+  - Alicuota
+  - Curva de Calibracion
+  - Blanco
+  - Estandar
+  - Digestion
+  - nm (longitud de onda)
+
+synthesis:
+  system_persona: >-
+    Eres un quimico senior de validacion para laboratorio ambiental con foco en
+    tecnicas de absorcion atomica. Responde con rigor tecnico, trazabilidad
+    documental y advertencias HSE cuando corresponda.
+  citation_format: C#/R#
+  strict_subject_label: Metodo/Control
+  strict_reference_label: Fuente (C#/R#)
+  synthesis_rules:
+    - Prioriza pasos secuenciales de preparacion y digestion tal como aparecen en el metodo.
+    - Para calculos de insumos, explicita formula de escalado y supuestos de lote.
+    - Si se mencionan acidos (ej. HNO3, HCl, H2SO4, HF o perclorico), incluir advertencia de EPP, campana y gestion de residuos.
+    - Si no hay evidencia suficiente del procedimiento o del calculo, declaralo y pide dato faltante.
+  strict_style:
+    - "Mantener separacion explicita: procedimiento | criterio QA | seguridad HSE."
+    - "En calculos de BOM usar tabla Markdown exacta: | Reactivo | Cantidad Unitaria | Cantidad Lote (n=X) |."
+    - "No inventar concentraciones, volumenes ni longitudes de onda."
+  interpretive_style:
+    - En escalado por lote, mostrar como se compone n_total = muestras + blancos + controles + curva.
+    - Si algun factor de control no viene en el metodo recuperado, marcarlo como supuesto.
+
+router:
+  literal_list_hints:
+    - reactivos
+    - insumos
+    - bom
+    - cuanto uso
+    - cuanto preparar
+    - cantidades
+    - lote
+    - preparar para
+  literal_normative_hints:
+    - criterio de aceptacion
+    - aceptacion
+    - r2
+    - blanco
+    - blancos
+    - limite de deteccion
+    - limite de cuantificacion
+    - recuperacion
+    - control de calidad
+  comparative_hints:
+    - compar
+    - difer
+    - vs
+    - hidruros vs horno grafito
+    - metodo alternativo
+  interpretive_hints:
+    - pasos
+    - etapa
+    - procedimiento
+    - como se hace
+    - preparacion de muestra
+    - digest
+    - corrida analitica
+  conflict_markers:
+    - incompatibilidad de matriz
+    - interferencia
+    - fuera de control
+  evidence_markers:
+    - evidencia
+    - trazabilidad
+    - bitacora
+    - registro
+    - control de calidad
+  scope_hints:
+    SM 3114:
+      - sm 3114
+      - standard methods 3114
+      - generacion de hidruros
+      - hidruros
+    EPA 200.8:
+      - epa 200.8
+      - icp-ms
+      - digestion para metales traza
+    ASTM:
+      - astm
+      - astm method
+      - astm d
+  scope_patterns:
+    - label: SM 3114
+      regex: "\\b(?:sm|standard\\s+methods?)\\s*[-:]?\\s*3114(?:[a-z])?\\b"
+    - label: EPA 200.8
+      regex: "\\bepa\\s*[-:]?\\s*200\\.?8\\b"
+    - label: ASTM
+      regex: "\\bastm\\s*[-:]?\\s*[a-z]?\\d{3,5}(?:\\.?\\d+)?\\b|\\bastm\\b"
+    - label: Horno grafito
+      regex: "\\bhorno\\s+de\\s+grafito\\b|\\bgfaas\\b"
+    - label: Generacion de hidruros
+      regex: "\\bgeneracion\\s+de\\s+hidruros\\b|\\bhidruros\\b|\\bhgaas\\b"
+  reference_patterns:
+    - "\\bsm\\s*[-:]?\\s*\\d{3,4}(?:\\.[a-z])?\\b"
+    - "\\bepa\\s*[-:]?\\s*\\d{3}\\.\\d\\b"
+    - "\\bastm\\s*[-:]?\\s*[a-z]?\\d{3,5}(?:\\.?\\d+)?\\b"
+    - "\\b\\d{3}\\.\\d\\s*nm\\b"
+
+clarification_rules:
+  - rule_id: arsenico_scope_metodo
+    all_markers: [arsenico, __low_confidence__]
+    any_markers: [__mode__=explicativa, __mode__=literal_lista, __mode__=literal_normativa]
+    question_template: >-
+      Para arsenico necesito acotar el metodo antes de calcular o detallar pasos.
+      Deseas trabajar con horno de grafito, generacion de hidruros (SM 3114) u otro metodo?
+    options:
+      - Horno de grafito
+      - Generacion de hidruros (SM 3114)
+      - Otro metodo
+
+retrieval:
+  min_score: 0.76
+  search_hints:
+    - term: arsenico
+      expand_to:
+        - As
+        - SM 3114
+        - generacion de hidruros
+        - horno de grafito
+        - limite de deteccion
+    - term: arseniato
+      expand_to:
+        - arsenico
+        - arsenito
+    - term: digestion
+      expand_to:
+        - preparacion de muestra
+        - acido nitrico
+        - calentamiento
+        - aforo
+    - term: curva de calibracion
+      expand_to:
+        - estandares
+        - punto de curva
+        - blanco de calibracion
+    - term: lote
+      expand_to:
+        - numero de muestras
+        - blancos
+        - controles
+        - replicas
+  by_mode:
+    procedural_execution:
+      chunk_k: 60
+      chunk_fetch_k: 280
+      summary_k: 4
+      require_literal_evidence: true
+    resource_calculation:
+      chunk_k: 55
+      chunk_fetch_k: 260
+      summary_k: 4
+      require_literal_evidence: true
+    qa_validation:
+      chunk_k: 45
+      chunk_fetch_k: 220
+      summary_k: 3
+      require_literal_evidence: true
+    literal_lista:
+      chunk_k: 55
+      chunk_fetch_k: 260
+      summary_k: 4
+      require_literal_evidence: true
+    literal_normativa:
+      chunk_k: 45
+      chunk_fetch_k: 220
+      summary_k: 3
+      require_literal_evidence: true
+    comparativa:
+      chunk_k: 36
+      chunk_fetch_k: 150
+      summary_k: 5
+      require_literal_evidence: false
+    ambigua_scope:
+      chunk_k: 0
+      chunk_fetch_k: 0
+      summary_k: 0
+      require_literal_evidence: true
+    explicativa:
+      chunk_k: 60
+      chunk_fetch_k: 280
+      summary_k: 4
+      require_literal_evidence: true
+
+validation:
+  require_citations: true
+  forbidden_concepts:
+    - diagnostico medico
+    - tratamiento clinico
+  fallback_message: >-
+    No encuentro evidencia metodologica suficiente para responder con trazabilidad
+    de laboratorio.

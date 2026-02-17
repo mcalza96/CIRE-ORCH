@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -412,6 +413,13 @@ RESPUESTA:
 class LiteralEvidenceValidator:
     def validate(self, draft: AnswerDraft, plan: RetrievalPlan, query: str) -> ValidationResult:
         issues: list[str] = []
+        literal_modes = {"literal_normativa", "literal_lista"}
+        strict_literal_clause_check = bool(
+            getattr(settings, "STRICT_LITERAL_CLAUSE_VALIDATION_ONLY", True)
+        )
+        enforce_clause_refs = bool(plan.require_literal_evidence) and (
+            (plan.mode in literal_modes) if strict_literal_clause_check else True
+        )
         if plan.require_literal_evidence and not draft.evidence:
             issues.append("No retrieval evidence available for literal answer mode.")
 
@@ -437,8 +445,8 @@ class LiteralEvidenceValidator:
         if requested and draft.evidence:
             mismatched = 0
             total_with_scope = 0
-            query_clause_refs = _extract_clause_refs(query)
-            clause_hits = 0
+            query_clause_refs = sorted(_extract_clause_refs(query)) if enforce_clause_refs else []
+            matched_clause_refs: set[str] = set()
             for ev in draft.evidence:
                 row = ev.metadata.get("row") if isinstance(ev.metadata, dict) else {}
                 if not isinstance(row, dict):
@@ -453,22 +461,58 @@ class LiteralEvidenceValidator:
                 if query_clause_refs:
                     content = str(row.get("content") or "")
                     meta_refs = _extract_metadata_clause_refs(row)
-                    if any(
-                        re.search(rf"\b{re.escape(ref)}(?:\.\d+)*\b", content)
-                        for ref in query_clause_refs
-                    ) or any(
-                        _clause_ref_matches(ref, meta_ref)
-                        for ref in query_clause_refs
-                        for meta_ref in meta_refs
-                    ):
-                        clause_hits += 1
+                    for ref in query_clause_refs:
+                        in_content = bool(re.search(rf"\b{re.escape(ref)}(?:\.\d+)*\b", content))
+                        in_meta = any(_clause_ref_matches(ref, meta_ref) for meta_ref in meta_refs)
+                        if in_content or in_meta:
+                            matched_clause_refs.add(ref)
 
             if total_with_scope > 0 and mismatched > 0:
                 issues.append(
                     "Scope mismatch detected: evidence includes sources outside requested standard scope."
                 )
 
-            if query_clause_refs and clause_hits == 0:
+            if query_clause_refs:
+                requested_count = len(query_clause_refs)
+                matched_count = len(matched_clause_refs)
+                semantic_hits = 0
+                if matched_count == 0:
+                    for ev in draft.evidence:
+                        row = ev.metadata.get("row") if isinstance(ev.metadata, dict) else {}
+                        if not isinstance(row, dict):
+                            continue
+                        if _semantic_clause_match(
+                            query=query, row=row, requested_upper=requested_upper
+                        ):
+                            semantic_hits += 1
+                if requested_count <= 2:
+                    required_matches = requested_count
+                else:
+                    required_matches = max(
+                        2,
+                        int(
+                            math.ceil(
+                                requested_count
+                                * float(
+                                    getattr(settings, "ORCH_LITERAL_REF_MIN_COVERAGE_RATIO", 0.7)
+                                )
+                            )
+                        ),
+                    )
+
+                # Operational policy: in literal modes allow grounded partial inference
+                # when semantic evidence exists, instead of blocking with null answer.
+                if matched_count < required_matches and semantic_hits == 0:
+                    coverage_ratio = (
+                        round(matched_count / requested_count, 3) if requested_count else 0.0
+                    )
+                    issues.append(
+                        "Literal clause coverage insufficient: "
+                        f"matched {matched_count}/{requested_count} refs "
+                        f"(required {required_matches}, ratio={coverage_ratio})."
+                    )
+
+            if query_clause_refs and not matched_clause_refs:
                 semantic_hits = 0
                 for ev in draft.evidence:
                     row = ev.metadata.get("row") if isinstance(ev.metadata, dict) else {}

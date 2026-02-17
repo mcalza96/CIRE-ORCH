@@ -89,3 +89,52 @@ def test_literal_clause_mismatch_when_semantic_fallback_disabled() -> None:
 
     assert result.accepted is False
     assert any("Literal clause mismatch" in issue for issue in result.issues)
+
+
+def test_literal_clause_coverage_requires_all_for_two_refs() -> None:
+    validator = LiteralEvidenceValidator()
+    plan = _build_plan()
+    query = "Cita 6.1 y 9.1 de ISO 9001"
+    row = {
+        "content": "[CLAUSE_ID: 6.1] texto de la clausula 6.1",
+        "metadata": {"source_standard": "ISO 9001", "clause_id": "6.1"},
+    }
+    draft = AnswerDraft(
+        text="Hallazgo con evidencia. Fuente(C1)",
+        mode=plan.mode,
+        evidence=[EvidenceItem(source="C1", content=row["content"], metadata={"row": row})],
+    )
+
+    result = validator.validate(draft=draft, plan=plan, query=query)
+
+    assert result.accepted is False
+    assert any("Literal clause coverage insufficient" in issue for issue in result.issues)
+
+
+def test_literal_clause_coverage_allows_partial_for_three_plus_refs() -> None:
+    validator = LiteralEvidenceValidator()
+    plan = _build_plan()
+    query = "Cita 6.1, 9.1 y 9.2 de ISO 9001"
+    rows = [
+        {
+            "content": "[CLAUSE_ID: 6.1] texto",
+            "metadata": {"source_standard": "ISO 9001", "clause_id": "6.1"},
+        },
+        {
+            "content": "[CLAUSE_ID: 9.1] texto",
+            "metadata": {"source_standard": "ISO 9001", "clause_id": "9.1"},
+        },
+    ]
+    draft = AnswerDraft(
+        text="Hallazgo con evidencia. Fuente(C1) Fuente(C2)",
+        mode=plan.mode,
+        evidence=[
+            EvidenceItem(source="C1", content=rows[0]["content"], metadata={"row": rows[0]}),
+            EvidenceItem(source="C2", content=rows[1]["content"], metadata={"row": rows[1]}),
+        ],
+    )
+
+    result = validator.validate(draft=draft, plan=plan, query=query)
+
+    assert result.accepted is True
+    assert not any("Literal clause coverage insufficient" in issue for issue in result.issues)

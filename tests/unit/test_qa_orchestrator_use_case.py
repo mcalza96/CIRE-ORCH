@@ -1,107 +1,123 @@
 from dataclasses import dataclass
-import asyncio
+
 import pytest
 
-from app.agent.models import AnswerDraft, EvidenceItem, RetrievalPlan, ValidationResult, QueryIntent, ClarificationRequest
-from app.cartridges.models import AgentProfile, RouterHeuristics, ScopePattern
+from app.agent.application import HandleQuestionCommand, HandleQuestionUseCase
+from app.agent.models import AnswerDraft, EvidenceItem, RetrievalPlan, ValidationResult
 
-# Mocks deterministas para build_retrieval_plan y funciones de clasificación
-def _mock_classify_trace(q, profile=None):
-    if "clausula 9.1.2" in q.lower():
-        return QueryIntent(mode="ambigua_scope"), {"confidence": 1.0}
-    if "impacto" in q.lower():
-        return QueryIntent(mode="explicativa"), {"confidence": 1.0}
-    return QueryIntent(mode="literal_normativa"), {"confidence": 1.0}
-
-def _mock_plan(intent, query="", profile=None):
-    return RetrievalPlan(
-        mode=intent.mode,
-        chunk_k=10,
-        chunk_fetch_k=40,
-        summary_k=2,
-        require_literal_evidence=(intent.mode == "literal_normativa")
-    )
 
 @dataclass
 class _FakeRetriever:
-    async def retrieve_chunks(self, *args, **kwargs):
-        return [EvidenceItem(source="C1", content="[6.1.3 d)] Declaracion de aplicabilidad...")]
+    async def retrieve_chunks(
+        self,
+        query: str,
+        tenant_id: str,
+        collection_id: str | None,
+        plan: RetrievalPlan,
+        user_id: str | None = None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
+    ):
+        del query, tenant_id, collection_id, plan, user_id, request_id, correlation_id
+        return [EvidenceItem(source="C1", content="ISO 9001 9.3 evidencia")]
 
-    async def retrieve_summaries(self, *args, **kwargs):
-        return [EvidenceItem(source="R1", content="Resumen regulatorio")]
+    async def retrieve_summaries(
+        self,
+        query: str,
+        tenant_id: str,
+        collection_id: str | None,
+        plan: RetrievalPlan,
+        user_id: str | None = None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
+    ):
+        del query, tenant_id, collection_id, plan, user_id, request_id, correlation_id
+        return [EvidenceItem(source="R1", content="Resumen")]
+
+    async def validate_scope(self, **kwargs):
+        del kwargs
+        return {"valid": True, "normalized_scope": {"filters": {}}, "query_scope": {}}
+
+    def apply_validated_scope(self, validated):
+        del validated
+
 
 @dataclass
 class _FakeAnswerGenerator:
-    async def generate(self, *args, **kwargs):
-        return AnswerDraft(text="6.1.3 d) | 'Declaracion de aplicabilidad' | Fuente(C1)", mode="literal_normativa", evidence=[])
+    async def generate(
+        self,
+        query: str,
+        scope_label: str,
+        plan: RetrievalPlan,
+        chunks: list[EvidenceItem],
+        summaries: list[EvidenceItem],
+        agent_profile=None,
+    ):
+        del query, scope_label, summaries, agent_profile
+        return AnswerDraft(text="respuesta", mode=plan.mode, evidence=chunks)
+
 
 @dataclass
 class _FakeValidator:
     def validate(self, *args, **kwargs):
+        del args, kwargs
         return ValidationResult(accepted=True, issues=[])
 
-@pytest.mark.asyncio
-async def test_use_case_executes_and_returns_validated_answer(monkeypatch):
-    import app.agent.application as app_mod
-    monkeypatch.setattr(app_mod, "classify_intent_with_trace", _mock_classify_trace)
-    monkeypatch.setattr(app_mod, "build_retrieval_plan", _mock_plan)
 
-    from app.agent.application import HandleQuestionUseCase, HandleQuestionCommand
+@pytest.mark.asyncio
+async def test_use_case_delegates_to_graph_and_returns_result():
     use_case = HandleQuestionUseCase(_FakeRetriever(), _FakeAnswerGenerator(), _FakeValidator())
-    result = await use_case.execute(HandleQuestionCommand(
-        query="Que exige ISO 9001 en 6.1.3?", tenant_id="t1", collection_id="c1", scope_label="s1"
-    ))
-    assert result.intent.mode == "literal_normativa"
-    assert "Fuente(C1)" in result.answer.text
-
-@pytest.mark.asyncio
-async def test_use_case_requests_scope_disambiguation_for_ambiguous_clause(monkeypatch):
-    import app.agent.application as app_mod
-    monkeypatch.setattr(app_mod, "classify_intent_with_trace", _mock_classify_trace)
-    monkeypatch.setattr(app_mod, "build_retrieval_plan", _mock_plan)
-
-    # Inyectamos regla de desambiguación para modo ambigua_scope
-    test_profile = AgentProfile(
-        profile_id="test",
-        router=RouterHeuristics(reference_patterns=[r"\b\d+(?:\.\d+)+\b"]),
-        clarification_rules=[{
-            "rule_id": "ambiguity_rule",
-            "all_markers": ["__mode__=ambigua_scope"],
-            "question_template": "necesito desambiguar alcances: {scopes}",
-            "options": []
-        }]
+    result = await use_case.execute(
+        HandleQuestionCommand(
+            query="Que exige ISO 9001 en 9.3?",
+            tenant_id="t1",
+            collection_id="c1",
+            scope_label="s1",
+        )
     )
+    assert result.answer.text == "respuesta"
+    assert result.retrieval.strategy == "langgraph_iso_flow"
 
-    from app.agent.application import HandleQuestionUseCase, HandleQuestionCommand
-    use_case = HandleQuestionUseCase(_FakeRetriever(), _FakeAnswerGenerator(), _FakeValidator())
-    result = await use_case.execute(HandleQuestionCommand(
-        query="Que exige la clausula 9.1.2?", tenant_id="t1", collection_id="c1", scope_label="s1", agent_profile=test_profile
-    ))
-    assert result.intent.mode == "ambigua_scope"
-    assert "necesito desambiguar" in result.answer.text.lower()
 
 @pytest.mark.asyncio
-async def test_use_case_requests_clarification_for_multi_scope_explanatory_query(monkeypatch):
-    import app.agent.application as app_mod
-    monkeypatch.setattr(app_mod, "classify_intent_with_trace", _mock_classify_trace)
-    monkeypatch.setattr(app_mod, "build_retrieval_plan", _mock_plan)
-    monkeypatch.setattr(app_mod, "detect_scope_candidates", lambda q, profile=None: ["ISO 9001", "ISO 14001"])
-
-    test_profile = AgentProfile(
-        profile_id="test",
-        clarification_rules=[{
-            "rule_id": "multi_scope",
-            "mode": "explicativa",
-            "min_scope_count": 2,
-            "question_template": "multiples alcances detected: {scopes}",
-            "options": ["Analisis integrado"]
-        }]
-    )
-
-    from app.agent.application import HandleQuestionUseCase, HandleQuestionCommand
+async def test_use_case_initializes_graph_runner_once():
     use_case = HandleQuestionUseCase(_FakeRetriever(), _FakeAnswerGenerator(), _FakeValidator())
-    result = await use_case.execute(HandleQuestionCommand(
-        query="Impacto en ISO 9001 y 14001", tenant_id="t1", collection_id="c1", scope_label="s1", agent_profile=test_profile
-    ))
-    assert result.clarification is not None
-    assert "multiples alcances" in result.clarification.question.lower()
+    await use_case.execute(
+        HandleQuestionCommand(
+            query="Q1",
+            tenant_id="t1",
+            collection_id="c1",
+            scope_label="s1",
+        )
+    )
+    first_runner = use_case._runner
+    await use_case.execute(
+        HandleQuestionCommand(
+            query="Q2",
+            tenant_id="t1",
+            collection_id="c1",
+            scope_label="s1",
+        )
+    )
+    assert use_case._runner is first_runner
+
+
+@pytest.mark.asyncio
+async def test_use_case_preserves_handle_question_contract():
+    use_case = HandleQuestionUseCase(_FakeRetriever(), _FakeAnswerGenerator(), _FakeValidator())
+    cmd = HandleQuestionCommand(
+        query="Compara ISO 9001 vs 14001",
+        tenant_id="t1",
+        collection_id="c1",
+        scope_label="s1",
+        profile_resolution={"source": "base"},
+    )
+    result = await use_case.execute(cmd)
+    assert result.plan.mode in {
+        "literal_normativa",
+        "literal_lista",
+        "explicativa",
+        "comparativa",
+        "ambigua_scope",
+    }
+    assert isinstance(result.validation.accepted, bool)

@@ -2,7 +2,7 @@
   "meta": {
     "profile_id": "iso_auditor",
     "description": "Benchmark P2 para calibracion de min_score/search_hints",
-    "total_cases": 120,
+    "total_cases": 121,
     "distribution": {
       "literal": 40,
       "comparativa": 40,
@@ -10,6 +10,20 @@
     }
   },
   "cases": [
+    {
+      "id": "comparativa_policy_2_of_3_001",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "\u00bfQu\u00e9 exigen textualmente la ISO 9001, ISO 14001 e ISO 45001 sobre la pol\u00edtica de gesti\u00f3n?",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false,
+      "min_covered_standards": 2
+    },
     {
       "id": "literal_001",
       "category": "literal",

@@ -637,7 +637,7 @@ class RagEngineRetrieverAdapter:
             base_trace["missing_scopes"] = list(final_missing)
             return merged
 
-        async def build_subqueries() -> list[dict[str, Any]]:
+        async def build_subqueries(*, purpose: str = "primary") -> list[dict[str, Any]]:
             subqueries_local = build_deterministic_subqueries(
                 query=query,
                 requested_standards=plan.requested_standards,
@@ -645,6 +645,12 @@ class RagEngineRetrieverAdapter:
                 include_semantic_tail=semantic_tail_enabled,
                 profile=self._profile_context,
             )
+            fallback_max = max(
+                2,
+                int(getattr(settings, "ORCH_MULTI_QUERY_FALLBACK_MAX_QUERIES", 3) or 3),
+            )
+            if purpose == "fallback" and len(subqueries_local) > fallback_max:
+                subqueries_local = subqueries_local[:fallback_max]
             if settings.ORCH_SEMANTIC_PLANNER:
                 planner = SemanticSubqueryPlanner()
                 planned = await planner.plan(
@@ -658,6 +664,8 @@ class RagEngineRetrieverAdapter:
                     ),
                 )
                 if planned:
+                    if purpose == "fallback" and len(planned) > fallback_max:
+                        return planned[:fallback_max]
                     return planned
             return subqueries_local
 
@@ -670,7 +678,7 @@ class RagEngineRetrieverAdapter:
             and plan.mode in {"comparativa", "explicativa", "literal_normativa", "literal_lista"}
         ):
             merge = {"strategy": "rrf", "rrf_k": 60, "top_k": min(16, max(12, k))}
-            subqueries = await build_subqueries()
+            subqueries = await build_subqueries(purpose="primary")
             t0 = time.perf_counter()
             mq_payload = await contract_client.multi_query(
                 tenant_id=tenant_id,
@@ -856,6 +864,43 @@ class RagEngineRetrieverAdapter:
             and multihop_hint
             and plan.mode in {"comparativa", "explicativa", "literal_normativa", "literal_lista"}
         ):
+            if (
+                bool(getattr(settings, "EARLY_EXIT_COVERAGE_ENABLED", True))
+                and len(plan.requested_standards) >= 2
+            ):
+                missing_before_fallback = _missing_scopes(items, plan.requested_standards)
+                if not missing_before_fallback:
+                    if isinstance(trace, dict):
+                        trace["multi_query_fallback_skipped"] = "coverage_already_satisfied"
+                        trace["multi_query_fallback_missing_scopes"] = []
+                    self.last_retrieval_diagnostics = RetrievalDiagnostics(
+                        contract="advanced",
+                        strategy="hybrid",
+                        partial=False,
+                        trace={
+                            "hybrid_trace": trace,
+                            "timings_ms": dict(timings_ms),
+                            "deterministic_subquery_semantic_tail": semantic_tail_enabled,
+                            "multi_query_fallback_skipped": "coverage_already_satisfied",
+                        },
+                        scope_validation=self._validated_scope_payload or {},
+                    )
+                    items2 = await _coverage_repair(
+                        items=[it for it in items if isinstance(it, dict)],
+                        base_trace=self.last_retrieval_diagnostics.trace
+                        if isinstance(self.last_retrieval_diagnostics.trace, dict)
+                        else {},
+                        reason="hybrid",
+                    )
+                    items2 = self._filter_items_by_min_score(
+                        [it for it in items2 if isinstance(it, dict)],
+                        trace_target=self.last_retrieval_diagnostics.trace
+                        if isinstance(self.last_retrieval_diagnostics.trace, dict)
+                        else {},
+                    )
+                    items2 = _reduce_structural_noise(items2)
+                    return self._to_evidence(items2)
+
             rows: list[dict[str, Any]] = []
             for it in items[: max(1, min(12, len(items)))]:
                 if not isinstance(it, dict):
@@ -873,7 +918,8 @@ class RagEngineRetrieverAdapter:
                 top_k=12,
             )
             if decision.needs_fallback:
-                subqueries = await build_subqueries()
+                missing_before_fallback = _missing_scopes(items, plan.requested_standards)
+                subqueries = await build_subqueries(purpose="fallback")
                 merge = {"strategy": "rrf", "rrf_k": 60, "top_k": min(16, max(12, k))}
                 t_mq = time.perf_counter()
                 mq_payload = await contract_client.multi_query(
@@ -908,6 +954,26 @@ class RagEngineRetrieverAdapter:
                     trace_target=diag_trace,
                 )
                 mq_items = _reduce_structural_noise(mq_items)
+                missing_after_fallback = _missing_scopes(
+                    [it for it in mq_items if isinstance(it, dict)],
+                    plan.requested_standards,
+                )
+                if (
+                    bool(getattr(settings, "EARLY_EXIT_COVERAGE_ENABLED", True))
+                    and len(plan.requested_standards) >= 2
+                ):
+                    if len(missing_after_fallback) >= len(missing_before_fallback):
+                        diag_trace["multi_query_fallback_early_exit"] = "no_coverage_improvement"
+                        diag_trace["missing_scopes_before"] = list(missing_before_fallback)
+                        diag_trace["missing_scopes_after"] = list(missing_after_fallback)
+                        self.last_retrieval_diagnostics = RetrievalDiagnostics(
+                            contract="advanced",
+                            strategy="multi_query",
+                            partial=partial,
+                            trace=diag_trace,
+                            scope_validation=self._validated_scope_payload or {},
+                        )
+                        return self._to_evidence(mq_items)
                 diag_trace["rag_features"] = _features_from_hybrid_trace(trace)
                 if hint_trace.get("applied"):
                     diag_trace["search_hint_expansions"] = hint_trace
@@ -1311,6 +1377,13 @@ class GroundedAnswerAdapter:
             max_chunks=max_ctx,
         )
 
+        if not ordered_items and plan.mode == "comparativa" and len(plan.requested_standards) >= 2:
+            lines = [
+                f"**{scope}**: No encontrado explicitamente en el contexto recuperado."
+                for scope in plan.requested_standards
+            ]
+            text = "\n\n".join(lines)
+
         # Guardrail: if the answer ties multiple scopes together but evidence has no explicit bridge,
         # enforce transparent language (inference vs direct citation).
         requested_scopes = list(plan.requested_standards or ())
@@ -1374,4 +1447,28 @@ class GroundedAnswerAdapter:
                 rendered = _render_literal_rows(preferred, max_rows=max_rows)
                 if rendered:
                     text = rendered
+        else:
+            low_text = (text or "").strip().lower()
+            looks_fallback = low_text.startswith(
+                "no encontrado explicitamente"
+            ) or low_text.startswith("no encuentro evidencia suficiente")
+            if looks_fallback and ordered_items:
+                rendered = _render_literal_rows(ordered_items, max_rows=3)
+                if rendered:
+                    text = rendered
+
+        # Transversal citation contract: when evidence exists, ensure explicit markers C#/R#.
+        if [*chunks, *summaries] and not re.search(r"\b[CR]\d+\b", text or ""):
+            sources: list[str] = []
+            seen: set[str] = set()
+            for item in [*summaries, *chunks]:
+                src = (item.source or "").strip()
+                if not src or src in seen:
+                    continue
+                seen.add(src)
+                sources.append(src)
+            if sources:
+                suffix = "Referencias revisadas: " + ", ".join(sources)
+                text = (text or "").rstrip()
+                text = f"{text}\n\n{suffix}" if text else suffix
         return AnswerDraft(text=text, mode=plan.mode, evidence=[*chunks, *summaries])

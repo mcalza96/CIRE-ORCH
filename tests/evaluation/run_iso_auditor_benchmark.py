@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 DEFAULT_DATASET = Path(__file__).with_name("iso_auditor_benchmark.json")
 DEFAULT_REPORTS_DIR = Path(__file__).with_name("reports")
 CITATION_RE = re.compile(r"\b[CR]\d+\b", flags=re.IGNORECASE)
+CLAUSE_REF_RE = re.compile(r"\b\d+(?:\.\d+)+\b")
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,8 @@ class CaseResult:
     final_mode: str
     has_citation_marker: bool
     coverage_ok: bool
+    coverage_strict_ok: bool
+    coverage_partial_honest_ok: bool
     literal_mode_retained: bool
     answerable: bool
     false_positive_partial: bool
@@ -87,16 +90,35 @@ def _coverage_ok(
     return True
 
 
+def _covered_scope_count(
+    expected_standards: list[str],
+    missing_scopes: list[str],
+    answer: str,
+) -> int:
+    expected = [str(item).strip().upper() for item in expected_standards if str(item).strip()]
+    if not expected:
+        return 0
+    missing = {str(item).strip().upper() for item in missing_scopes if str(item).strip()}
+    blob = str(answer or "").upper()
+    covered = 0
+    for scope in expected:
+        numeric = "".join(ch for ch in scope if ch.isdigit())
+        in_answer = scope in blob or (bool(numeric) and numeric in blob)
+        if in_answer and scope not in missing:
+            covered += 1
+    return covered
+
+
 def _evaluate_case(case: dict[str, Any], status_code: int, payload: dict[str, Any]) -> CaseResult:
     category = str(case.get("category") or "").strip().lower()
     expected_mode = str(case.get("expected_mode") or "").strip()
     expected_standards = [
-        str(item).strip()
-        for item in (case.get("expected_standards") or [])
-        if str(item).strip()
+        str(item).strip() for item in (case.get("expected_standards") or []) if str(item).strip()
     ]
     require_citations = bool(case.get("require_citations", True))
     require_full_coverage = bool(case.get("require_full_coverage", False))
+    min_covered_standards = int(case.get("min_covered_standards", 0) or 0)
+    min_covered_refs = int(case.get("min_covered_refs", 0) or 0)
 
     if status_code != 200:
         return CaseResult(
@@ -107,6 +129,8 @@ def _evaluate_case(case: dict[str, Any], status_code: int, payload: dict[str, An
             final_mode="",
             has_citation_marker=False,
             coverage_ok=False,
+            coverage_strict_ok=False,
+            coverage_partial_honest_ok=False,
             literal_mode_retained=False,
             answerable=False,
             false_positive_partial=False,
@@ -117,31 +141,57 @@ def _evaluate_case(case: dict[str, Any], status_code: int, payload: dict[str, An
 
     answer = str(payload.get("answer") or "")
     mode = str(payload.get("mode") or "").strip()
-    retrieval_plan = payload.get("retrieval_plan") if isinstance(payload.get("retrieval_plan"), dict) else {}
+    retrieval_plan_raw = payload.get("retrieval_plan")
+    retrieval_plan: dict[str, Any] = (
+        retrieval_plan_raw if isinstance(retrieval_plan_raw, dict) else {}
+    )
     final_mode = str(retrieval_plan.get("final_mode") or mode).strip()
-    missing_scopes = (
-        retrieval_plan.get("missing_scopes")
-        if isinstance(retrieval_plan.get("missing_scopes"), list)
+    missing_scopes_raw = retrieval_plan.get("missing_scopes")
+    missing_scopes: list[str] = (
+        [str(item).strip() for item in missing_scopes_raw if str(item).strip()]
+        if isinstance(missing_scopes_raw, list)
         else []
     )
     citations = payload.get("citations") if isinstance(payload.get("citations"), list) else []
     context_chunks = (
         payload.get("context_chunks") if isinstance(payload.get("context_chunks"), list) else []
     )
-    validation = payload.get("validation") if isinstance(payload.get("validation"), dict) else {}
+    validation_raw = payload.get("validation")
+    validation: dict[str, Any] = validation_raw if isinstance(validation_raw, dict) else {}
     accepted = bool(validation.get("accepted", True))
 
     has_citation_marker = bool(citations) or bool(CITATION_RE.search(answer))
     if not require_citations:
         has_citation_marker = True
 
-    coverage_ok = _coverage_ok(expected_standards, list(missing_scopes), answer)
+    coverage_strict_ok = _coverage_ok(expected_standards, list(missing_scopes), answer)
+    coverage_ok = coverage_strict_ok
+    covered_scope_count = _covered_scope_count(expected_standards, list(missing_scopes), answer)
+    if min_covered_standards > 0:
+        coverage_ok = covered_scope_count >= min_covered_standards
+
+    if min_covered_refs > 0:
+        query_refs = sorted(set(CLAUSE_REF_RE.findall(str(case.get("query") or ""))))
+        answer_refs = set(CLAUSE_REF_RE.findall(answer))
+        covered_refs = sum(
+            1 for ref in query_refs if any(r == ref or r.startswith(f"{ref}.") for r in answer_refs)
+        )
+        coverage_ok = coverage_ok and covered_refs >= min_covered_refs
+    lower_answer = str(answer or "").lower()
+    declares_gaps = "no encontrado explicitamente" in lower_answer
+    coverage_partial_honest_ok = bool(
+        coverage_ok
+        or (
+            not require_full_coverage
+            and min_covered_standards > 0
+            and covered_scope_count >= min_covered_standards
+            and declares_gaps
+        )
+    )
     literal_mode_retained = _mode_retained(category, final_mode, expected_mode)
     answerable = bool(accepted and context_chunks and has_citation_marker)
     false_positive_partial = bool(
-        require_full_coverage
-        and accepted
-        and (not coverage_ok or not has_citation_marker)
+        require_full_coverage and accepted and (not coverage_ok or not has_citation_marker)
     )
 
     return CaseResult(
@@ -152,6 +202,8 @@ def _evaluate_case(case: dict[str, Any], status_code: int, payload: dict[str, An
         final_mode=final_mode,
         has_citation_marker=has_citation_marker,
         coverage_ok=coverage_ok,
+        coverage_strict_ok=coverage_strict_ok,
+        coverage_partial_honest_ok=coverage_partial_honest_ok,
         literal_mode_retained=literal_mode_retained,
         answerable=answerable,
         false_positive_partial=false_positive_partial,
@@ -255,30 +307,56 @@ async def main() -> int:
                 {
                     "id": evaluated.case_id,
                     "category": evaluated.category,
+                    "query": str(case.get("query") or ""),
+                    "expected_standards": [
+                        str(item).strip()
+                        for item in (case.get("expected_standards") or [])
+                        if str(item).strip()
+                    ],
+                    "require_full_coverage": bool(case.get("require_full_coverage", False)),
+                    "min_covered_standards": int(case.get("min_covered_standards", 0) or 0),
+                    "min_covered_refs": int(case.get("min_covered_refs", 0) or 0),
                     "status_code": evaluated.status_code,
                     "mode": evaluated.mode,
                     "final_mode": evaluated.final_mode,
                     "has_citation_marker": evaluated.has_citation_marker,
                     "coverage_ok": evaluated.coverage_ok,
+                    "coverage_strict_ok": evaluated.coverage_strict_ok,
+                    "coverage_partial_honest_ok": evaluated.coverage_partial_honest_ok,
                     "literal_mode_retained": evaluated.literal_mode_retained,
                     "answerable": evaluated.answerable,
                     "false_positive_partial": evaluated.false_positive_partial,
                     "latency_ms": evaluated.latency_ms,
                     "error": evaluated.error,
+                    "validation_accepted": (
+                        bool(payload.get("validation", {}).get("accepted", True))
+                        if isinstance(payload.get("validation"), dict)
+                        else None
+                    ),
+                    "validation_issues": (
+                        [str(item) for item in payload.get("validation", {}).get("issues", [])]
+                        if isinstance(payload.get("validation"), dict)
+                        and isinstance(payload.get("validation", {}).get("issues"), list)
+                        else []
+                    ),
                 }
             )
 
     total = len(results)
     literal_rows = [r for r in results if r.category == "literal"]
     coverage_rows = [r for r in results if r.expected_mode and r.coverage_ok is not None]
-    require_full = [
-        c for c in cases if bool(c.get("require_full_coverage", False))
-    ]
+    require_full = [c for c in cases if bool(c.get("require_full_coverage", False))]
     require_full_ids = {str(item.get("id") or "") for item in require_full}
     require_full_results = [r for r in results if r.case_id in require_full_ids]
 
     citation_marker_rate = _rate(sum(r.has_citation_marker for r in results), total)
     standard_coverage_rate = _rate(sum(r.coverage_ok for r in coverage_rows), len(coverage_rows))
+    coverage_strict_rate = _rate(
+        sum(r.coverage_strict_ok for r in coverage_rows), len(coverage_rows)
+    )
+    coverage_partial_honest_rate = _rate(
+        sum(r.coverage_partial_honest_ok for r in coverage_rows), len(coverage_rows)
+    )
     literal_mode_retention_rate = _rate(
         sum(r.literal_mode_retained for r in literal_rows), len(literal_rows)
     )
@@ -300,6 +378,14 @@ async def main() -> int:
         >= thresholds["literal_mode_retention_rate"],
     }
 
+    issue_counts: dict[str, int] = {}
+    for row in raw_rows:
+        for issue in row.get("validation_issues", []) or []:
+            key = str(issue).strip()
+            if not key:
+                continue
+            issue_counts[key] = issue_counts.get(key, 0) + 1
+
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "variant_label": args.variant_label,
@@ -311,6 +397,8 @@ async def main() -> int:
         "metrics": {
             "citation_marker_rate": citation_marker_rate,
             "standard_coverage_rate": standard_coverage_rate,
+            "coverage_strict_rate": coverage_strict_rate,
+            "coverage_partial_honest_rate": coverage_partial_honest_rate,
             "literal_mode_retention_rate": literal_mode_retention_rate,
             "answerable_rate": answerable_rate,
             "false_positive_partial_rate": false_positive_partial_rate,
@@ -318,6 +406,7 @@ async def main() -> int:
         },
         "thresholds": thresholds,
         "checks": checks,
+        "validation_issue_counts": issue_counts,
         "failed_cases": [row for row in raw_rows if row["status_code"] != 200],
         "cases": raw_rows,
     }
@@ -327,7 +416,12 @@ async def main() -> int:
     out_path = DEFAULT_REPORTS_DIR / f"iso_auditor_benchmark_{args.variant_label}_{stamp}.json"
     out_path.write_text(json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8")
 
-    print(json.dumps({"report": str(out_path), "metrics": report["metrics"], "checks": checks}, ensure_ascii=True))
+    print(
+        json.dumps(
+            {"report": str(out_path), "metrics": report["metrics"], "checks": checks},
+            ensure_ascii=True,
+        )
+    )
 
     if args.fail_on_thresholds and not all(checks.values()):
         return 2

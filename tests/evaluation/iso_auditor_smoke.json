@@ -1,0 +1,122 @@
+{
+  "meta": {
+    "profile_id": "iso_auditor",
+    "description": "Smoke suite enfocada en robustez literal/comparativa y cobertura minima",
+    "total_cases": 11
+  },
+  "cases": [
+    {
+      "id": "smoke_literal_001",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Que exige textualmente la clausula 9.3 de la ISO 9001 sobre la revision por la direccion?",
+      "expected_standards": ["ISO 9001"],
+      "require_citations": true,
+      "require_full_coverage": true,
+      "min_covered_refs": 1
+    },
+    {
+      "id": "smoke_literal_002",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Cita textualmente los requisitos de la ISO 9001 que vinculan los resultados de auditorias previas con la planificacion del nuevo programa de auditoria (9.2) y como esto debe ser tratado como entrada para la revision por la direccion (9.3).",
+      "expected_standards": ["ISO 9001"],
+      "require_citations": true,
+      "require_full_coverage": true,
+      "min_covered_refs": 2
+    },
+    {
+      "id": "smoke_lista_001",
+      "category": "literal",
+      "expected_mode": "literal_lista",
+      "query": "Enumera en una lista separada los controles requeridos para la informacion documentada en la ISO 45001, distinguiendo entre 7.5.2 y 7.5.3.",
+      "expected_standards": ["ISO 45001"],
+      "require_citations": true,
+      "require_full_coverage": false,
+      "min_covered_refs": 2
+    },
+    {
+      "id": "smoke_comparativa_001",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Compara como la ISO 9001 aborda la gestion del cambio en 6.3 frente a la ISO 45001 en 8.1.3 e identifica la diferencia clave.",
+      "expected_standards": ["ISO 9001", "ISO 45001"],
+      "require_citations": true,
+      "require_full_coverage": false,
+      "min_covered_standards": 1
+    },
+    {
+      "id": "smoke_explicativa_001",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Analice la relacion tecnica entre la evaluacion de la eficacia de las acciones para abordar riesgos (6.1) y los resultados de seguimiento y medicion (9.1) en la ISO 9001.",
+      "expected_standards": ["ISO 9001"],
+      "require_citations": true,
+      "require_full_coverage": false,
+      "min_covered_refs": 1
+    },
+    {
+      "id": "smoke_policy_2of3_001",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Que exigen textualmente las normas ISO 9001, ISO 14001 e ISO 45001 sobre la politica de gestion?",
+      "expected_standards": ["ISO 9001", "ISO 14001", "ISO 45001"],
+      "require_citations": true,
+      "require_full_coverage": false,
+      "min_covered_standards": 2
+    },
+    {
+      "id": "golden_user_regression_001",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Que exige textualmente la clausula 9.3 de la ISO 9001 sobre la revision por la direccion? Enumera una lista de las entradas requeridas para la planificacion y las salidas esperadas en la ISO 14001.",
+      "expected_standards": ["ISO 9001", "ISO 14001"],
+      "require_citations": true,
+      "require_full_coverage": false,
+      "min_covered_standards": 2,
+      "min_covered_refs": 2
+    },
+    {
+      "id": "golden_user_regression_002",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Enumera en una lista separada los controles requeridos para la informacion documentada en la ISO 45001, distinguiendo explicitamente entre las actividades de creacion y actualizacion (7.5.2) versus las actividades de control y preservacion (7.5.3)",
+      "expected_standards": ["ISO 45001"],
+      "require_citations": true,
+      "require_full_coverage": false,
+      "min_covered_refs": 2
+    },
+    {
+      "id": "golden_user_regression_003",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Compara como la ISO 9001 aborda la gestion del cambio a nivel de planificacion del sistema (6.3) frente a como la ISO 45001 exige gestionar los cambios temporales y permanentes en la operacion (8.1.3). Identifica la diferencia clave en el enfoque.",
+      "expected_standards": ["ISO 9001", "ISO 45001"],
+      "require_citations": true,
+      "require_full_coverage": false,
+      "min_covered_standards": 1,
+      "min_covered_refs": 1
+    },
+    {
+      "id": "golden_user_regression_004",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Analice la relacion tecnica entre la evaluacion de la eficacia de las acciones para abordar riesgos (6.1) y los resultados de seguimiento y medicion (9.1) en la ISO 9001. Que implica un desempeno bajo en 9.1 para la actualizacion de la evaluacion de riesgos?",
+      "expected_standards": ["ISO 9001"],
+      "require_citations": true,
+      "require_full_coverage": false,
+      "min_covered_refs": 1
+    },
+    {
+      "id": "golden_user_regression_005",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Que exigen textualmente las normas ISO 9001, ISO 14001 e ISO 45001 sobre la competencia (7.2) y la toma de conciencia (7.3) para trabajadores externos y contratistas?",
+      "expected_standards": ["ISO 9001", "ISO 14001", "ISO 45001"],
+      "require_citations": true,
+      "require_full_coverage": false,
+      "min_covered_standards": 2,
+      "min_covered_refs": 2
+    }
+  ]
+}

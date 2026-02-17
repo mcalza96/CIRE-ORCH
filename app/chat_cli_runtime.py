@@ -111,8 +111,7 @@ def _rewrite_query_with_clarification(original_query: str, clarification_answer:
     elif lowered in {"cobertura completa", "exigir cobertura completa"}:
         coverage_tag = "__coverage__=full "
     return (
-        f"{original_query}\n\n__clarified_scope__=true {coverage_tag}"
-        f"Aclaracion de alcance: {text}."
+        f"{original_query}\n\n__clarified_scope__=true {coverage_tag}Aclaracion de alcance: {text}."
     )
 
 
@@ -390,7 +389,9 @@ def _print_trace(last_result: dict[str, Any]) -> None:
         coverage_preference = str(trace.get("coverage_preference") or "").strip()
         if coverage_preference:
             print(f"   coverage_preference={coverage_preference}")
-        missing_scopes = trace.get("missing_scopes") if isinstance(trace.get("missing_scopes"), list) else []
+        missing_scopes = (
+            trace.get("missing_scopes") if isinstance(trace.get("missing_scopes"), list) else []
+        )
         if missing_scopes:
             print("   missing_scopes=" + ", ".join(str(x) for x in missing_scopes))
         layer_counts = (
@@ -479,7 +480,25 @@ def _print_answer(data: dict[str, Any]) -> None:
     print("=" * 60)
     print(answer or "(sin respuesta)")
     if citations:
-        print("\n📚 Citas: " + ", ".join(str(item) for item in citations[:10]))
+        print("\n📚 Citas: " + ", ".join(str(item) for item in citations))
+    citation_details = (
+        data.get("citations_detailed") if isinstance(data.get("citations_detailed"), list) else []
+    )
+    if citation_details:
+        print("\n📚 Evidencias detalladas")
+        for raw in citation_details:
+            if not isinstance(raw, dict):
+                continue
+            cid = str(raw.get("id") or "").strip() or "?"
+            standard = str(raw.get("standard") or "").strip() or "N/A"
+            clause = str(raw.get("clause") or "").strip() or "N/A"
+            snippet = str(raw.get("snippet") or "").strip()
+            used = bool(raw.get("used_in_answer", False))
+            marker = "*" if used else "-"
+            line = f"{marker} {cid} | {standard} | clausula {clause}"
+            if snippet:
+                line += f' | "{snippet}"'
+            print(line)
     if not accepted and issues:
         print("⚠️ Validacion: " + "; ".join(str(issue) for issue in issues))
     if not citations and not (context_chunks := data.get("context_chunks")):
@@ -500,20 +519,16 @@ def _extract_retrieval_warnings(data: dict[str, Any]) -> list[str]:
     warning = str(trace.get("warning") or "").strip()
     if warning:
         out.append(warning)
-    for raw in (trace.get("warnings") if isinstance(trace.get("warnings"), list) else []):
+    for raw in trace.get("warnings") if isinstance(trace.get("warnings"), list) else []:
+        text = str(raw or "").strip()
+        if text:
+            out.append(text)
+    for raw in trace.get("warning_codes") if isinstance(trace.get("warning_codes"), list) else []:
         text = str(raw or "").strip()
         if text:
             out.append(text)
     for raw in (
-        trace.get("warning_codes") if isinstance(trace.get("warning_codes"), list) else []
-    ):
-        text = str(raw or "").strip()
-        if text:
-            out.append(text)
-    for raw in (
-        hybrid_trace.get("warnings")
-        if isinstance(hybrid_trace.get("warnings"), list)
-        else []
+        hybrid_trace.get("warnings") if isinstance(hybrid_trace.get("warnings"), list) else []
     ):
         text = str(raw or "").strip()
         if text:
@@ -614,9 +629,7 @@ def _print_obs_answer(result: dict[str, Any], latency_ms: float) -> None:
     accepted = bool(validation.get("accepted", True))
     retrieval = result.get("retrieval") if isinstance(result.get("retrieval"), dict) else {}
     retrieval_plan = (
-        result.get("retrieval_plan")
-        if isinstance(result.get("retrieval_plan"), dict)
-        else {}
+        result.get("retrieval_plan") if isinstance(result.get("retrieval_plan"), dict) else {}
     )
     strategy = str(retrieval.get("strategy") or "unknown")
     contract = str(retrieval.get("contract") or "unknown")

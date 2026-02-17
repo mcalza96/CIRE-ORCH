@@ -90,3 +90,39 @@ def test_build_deterministic_subqueries_ignores_hint_generated_clause_refs() -> 
     scope_query = subqueries[0]
     metadata = scope_query.get("filters", {}).get("metadata", {})
     assert "clause_id" not in metadata
+
+
+def test_build_initial_scope_filters_does_not_lock_clause_for_compound_query() -> None:
+    profile = AgentProfile(profile_id="test-compound")
+    profile.router.reference_patterns = [r"\b\d+(?:\.\d+)+\b"]
+
+    filters = build_initial_scope_filters(
+        plan_requested=("ISO 9001", "ISO 14001"),
+        mode="literal_normativa",
+        query=(
+            "Que exige textualmente la clausula 9.3 de la ISO 9001? "
+            "Enumera entradas y salidas esperadas de ISO 14001"
+        ),
+        profile=profile,
+    )
+
+    assert isinstance(filters, dict)
+    assert "metadata" not in filters
+
+
+def test_policy_management_hint_expands_to_cross_standard_terms() -> None:
+    profile = AgentProfile(profile_id="test-policy")
+    profile.retrieval.search_hints = [
+        SearchHint(
+            term="politica de gestion",
+            expand_to=["política de la calidad", "política ambiental", "política de sst"],
+        )
+    ]
+
+    expanded, trace = apply_search_hints(
+        "que exigen textualmente sobre politica de gestion", profile=profile
+    )
+    assert trace.get("applied") is True
+    assert "política de la calidad" in expanded
+    assert "política ambiental" in expanded
+    assert "política de sst" in expanded

@@ -188,6 +188,26 @@ retrieval:
         - política ambiental
         - política de sst
         - compromiso de la política
+    - term: politica
+      expand_to:
+        - política de la calidad
+        - política ambiental
+        - política de la seguridad y salud en el trabajo
+        - debe establecer la política
+        - debe comunicar la política
+        - debe mantener la política
+    - term: politica de calidad
+      expand_to:
+        - 5.2 politica de la calidad
+        - comunicada, entendida y aplicada
+    - term: política ambiental
+      expand_to:
+        - 5.2 política ambiental
+        - protección del medio ambiente
+    - term: politica de sst
+      expand_to:
+        - 5.2 política de la seguridad y salud en el trabajo
+        - compromiso de eliminar peligros
   by_mode:
     literal_lista:
       chunk_k: 45
