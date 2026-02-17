@@ -121,9 +121,8 @@ clarification_rules:
       - Forense de trazabilidad
       - Balanceado
   - rule_id: cobertura_trinorma_completa
-    mode: literal_normativa
     min_scope_count: 3
-    any_markers: [textualmente, literal, c#/r#, que exige, trazabilidad]
+    any_markers: [textualmente, literal, c#/r#, que exige, qué exige, trazabilidad]
     question_template: >-
       Detecte una consulta literal trinorma ({scopes}). ¿Deseas exigir cobertura completa
       ISO 9001/14001/45001 o aceptar respuesta parcial?
@@ -167,10 +166,28 @@ retrieval:
       expand_to:
         - objeto y campo de aplicacion
         - principios de gestion de la calidad
+        - enfoque a procesos
+        - ciclo phva
+        - pensamiento basado en riesgos
     - term: introducción
       expand_to:
         - objeto y campo de aplicación
         - principios de gestión de la calidad
+        - enfoque a procesos
+        - ciclo phva
+        - pensamiento basado en riesgos
+    - term: politica de gestion
+      expand_to:
+        - política de la calidad
+        - política ambiental
+        - política de sst
+        - compromiso de la política
+    - term: política de gestión
+      expand_to:
+        - política de la calidad
+        - política ambiental
+        - política de sst
+        - compromiso de la política
   by_mode:
     literal_lista:
       chunk_k: 45

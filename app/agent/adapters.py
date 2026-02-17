@@ -43,6 +43,14 @@ def _extract_clause_refs(query: str) -> set[str]:
     return set(re.findall(r"\b\d+(?:\.\d+)+\b", (query or "")))
 
 
+def _clause_ref_matches(requested: str, candidate: str) -> bool:
+    req = str(requested or "").strip()
+    cand = str(candidate or "").strip()
+    if not req or not cand:
+        return False
+    return cand == req or cand.startswith(f"{req}.")
+
+
 def _extract_metadata_clause_refs(row: dict[str, Any]) -> set[str]:
     meta_raw = row.get("metadata")
     meta: dict[str, Any] = meta_raw if isinstance(meta_raw, dict) else {}
@@ -55,6 +63,10 @@ def _extract_metadata_clause_refs(row: dict[str, Any]) -> set[str]:
     clause_anchor = str(meta.get("clause_anchor") or "").strip()
     if clause_anchor:
         refs.add(clause_anchor)
+    for key in ("clause_id", "clause_ref", "clause"):
+        value = str(meta.get(key) or "").strip()
+        if value:
+            refs.add(value)
     return refs
 
 
@@ -198,7 +210,7 @@ class RetrievalToolsAdapter:
             ]
 
         filtered_by_scope = [r for r in rows if _row_matches_standards(r, requested_standards)]
-        if strict_scope and settings.SCOPE_STRICT_FILTERING:
+        if strict_scope and bool(getattr(settings, "SCOPE_STRICT_FILTERING", False)):
             rows = filtered_by_scope
         elif strict_scope and filtered_by_scope:
             rows = filtered_by_scope
@@ -262,7 +274,7 @@ class RetrievalToolsAdapter:
             rows = filtered
 
         filtered_by_scope = [r for r in rows if _row_matches_standards(r, requested_standards)]
-        if strict_scope and settings.SCOPE_STRICT_FILTERING:
+        if strict_scope and bool(getattr(settings, "SCOPE_STRICT_FILTERING", False)):
             rows = filtered_by_scope
         elif strict_scope and filtered_by_scope:
             rows = filtered_by_scope
@@ -441,8 +453,13 @@ class LiteralEvidenceValidator:
                 if query_clause_refs:
                     content = str(row.get("content") or "")
                     meta_refs = _extract_metadata_clause_refs(row)
-                    if any(ref in content for ref in query_clause_refs) or any(
-                        ref in meta_refs for ref in query_clause_refs
+                    if any(
+                        re.search(rf"\b{re.escape(ref)}(?:\.\d+)*\b", content)
+                        for ref in query_clause_refs
+                    ) or any(
+                        _clause_ref_matches(ref, meta_ref)
+                        for ref in query_clause_refs
+                        for meta_ref in meta_refs
                     ):
                         clause_hits += 1
 

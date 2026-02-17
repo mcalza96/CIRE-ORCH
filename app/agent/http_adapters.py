@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+import re
 
 import httpx
 import structlog
@@ -113,8 +114,10 @@ class RagEngineRetrieverAdapter:
                 scored_dropped.append((score, item))
 
         backstop_applied = False
-        if not kept and dropped > 0 and bool(settings.ORCH_MIN_SCORE_BACKSTOP_ENABLED):
-            top_n = max(1, int(settings.ORCH_MIN_SCORE_BACKSTOP_TOP_N or 6))
+        backstop_enabled = bool(getattr(settings, "ORCH_MIN_SCORE_BACKSTOP_ENABLED", False))
+        backstop_top_n = max(1, int(getattr(settings, "ORCH_MIN_SCORE_BACKSTOP_TOP_N", 6) or 6))
+        if not kept and dropped > 0 and backstop_enabled:
+            top_n = backstop_top_n
             scored_dropped.sort(key=lambda pair: pair[0], reverse=True)
             kept = [item for _, item in scored_dropped[:top_n]]
             backstop_applied = bool(kept)
@@ -125,11 +128,7 @@ class RagEngineRetrieverAdapter:
                 "kept": len(kept),
                 "dropped": dropped,
                 "backstop_applied": backstop_applied,
-                "backstop_top_n": (
-                    max(1, int(settings.ORCH_MIN_SCORE_BACKSTOP_TOP_N or 6))
-                    if backstop_applied
-                    else 0
-                ),
+                "backstop_top_n": (backstop_top_n if backstop_applied else 0),
             }
         return kept
 
@@ -328,6 +327,7 @@ class RagEngineRetrieverAdapter:
         correlation_id: str | None = None,
     ) -> list[EvidenceItem]:
         assert self.contract_client is not None
+        contract_client = self.contract_client
 
         filters = self._validated_filters
         # If caller did not pre-validate, keep behavior robust with a light default filter.
@@ -344,19 +344,24 @@ class RagEngineRetrieverAdapter:
         expanded_query, hint_trace = apply_search_hints(query, profile=self._profile_context)
         clause_refs = extract_clause_refs(query, profile=self._profile_context)
         multihop_hint = len(plan.requested_standards) >= 2 or len(clause_refs) >= 2
-        semantic_tail_enabled = bool(settings.ORCH_DETERMINISTIC_SUBQUERY_SEMANTIC_TAIL)
+        semantic_tail_enabled = bool(
+            getattr(settings, "ORCH_DETERMINISTIC_SUBQUERY_SEMANTIC_TAIL", False)
+        )
 
         def _layer_stats(raw_items: list[dict[str, Any]]) -> dict[str, Any]:
             counts: dict[str, int] = {}
             raptor = 0
             for it in raw_items:
-                meta = it.get("metadata") if isinstance(it.get("metadata"), dict) else {}
-                row = meta.get("row") if isinstance(meta.get("row"), dict) else None
+                meta_raw = it.get("metadata")
+                meta: dict[str, Any] = meta_raw if isinstance(meta_raw, dict) else {}
+                row_raw = meta.get("row")
+                row = row_raw if isinstance(row_raw, dict) else None
                 if not isinstance(row, dict):
                     continue
                 layer = str(row.get("source_layer") or "").strip() or "unknown"
                 counts[layer] = counts.get(layer, 0) + 1
-                row_meta = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+                row_meta_raw = row.get("metadata")
+                row_meta: dict[str, Any] = row_meta_raw if isinstance(row_meta_raw, dict) else {}
                 if bool(row_meta.get("is_raptor_summary", False)):
                     raptor += 1
             return {"layer_counts": counts, "raptor_summary_count": raptor}
@@ -389,8 +394,10 @@ class RagEngineRetrieverAdapter:
             top_n = max(1, int(settings.ORCH_COVERAGE_GATE_TOP_N or 12))
             present: set[str] = set()
             for it in items[:top_n]:
-                meta = it.get("metadata") if isinstance(it.get("metadata"), dict) else {}
-                row = meta.get("row") if isinstance(meta.get("row"), dict) else None
+                meta_raw = it.get("metadata")
+                meta: dict[str, Any] = meta_raw if isinstance(meta_raw, dict) else {}
+                row_raw = meta.get("row")
+                row = row_raw if isinstance(row_raw, dict) else None
                 if not isinstance(row, dict):
                     continue
                 scope = _extract_row_scope(row)
@@ -398,6 +405,109 @@ class RagEngineRetrieverAdapter:
                     present.add(scope)
             req_upper = [s.upper() for s in requested if s]
             return [s for s in req_upper if s not in present]
+
+        def _looks_structural_toc(item: dict[str, Any]) -> bool:
+            content = str(item.get("content") or "").strip().lower()
+            if not content:
+                return True
+            meta_raw = item.get("metadata")
+            meta: dict[str, Any] = meta_raw if isinstance(meta_raw, dict) else {}
+            row_raw = meta.get("row")
+            row: dict[str, Any] = row_raw if isinstance(row_raw, dict) else {}
+            row_meta_raw = row.get("metadata")
+            row_meta: dict[str, Any] = row_meta_raw if isinstance(row_meta_raw, dict) else {}
+            title = str(row_meta.get("title") or "").lower()
+            hay = f"{title}\n{content}"
+            if any(token in hay for token in ("indice", "índice", "tabla de contenido")):
+                return True
+            lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
+            if len(lines) >= 3:
+                short_lines = [ln for ln in lines[:8] if len(ln) <= 80]
+                dotted_or_page = sum(
+                    1 for ln in short_lines if "..." in ln or ln.rstrip().split(" ")[-1].isdigit()
+                )
+                if dotted_or_page >= 3:
+                    return True
+            return False
+
+        def _looks_editorial_front_matter(item: dict[str, Any]) -> bool:
+            content = str(item.get("content") or "").strip().lower()
+            meta_raw = item.get("metadata")
+            meta: dict[str, Any] = meta_raw if isinstance(meta_raw, dict) else {}
+            row_raw = meta.get("row")
+            row: dict[str, Any] = row_raw if isinstance(row_raw, dict) else {}
+            row_meta_raw = row.get("metadata")
+            row_meta: dict[str, Any] = row_meta_raw if isinstance(row_meta_raw, dict) else {}
+            title = str(row_meta.get("title") or "").strip().lower()
+            heading = (
+                str(row_meta.get("heading") or row_meta.get("section_title") or "").strip().lower()
+            )
+            source_type = str(row.get("source_type") or "").strip().lower()
+
+            hay = "\n".join(part for part in [title, heading, content[:600]] if part)
+            if any(
+                token in hay
+                for token in (
+                    "prologo",
+                    "prólogo",
+                    "preface",
+                    "foreword",
+                    "copyright",
+                    "isbn",
+                    "ics",
+                    "committee",
+                    "comite",
+                    "comité",
+                    "translation",
+                    "traduccion",
+                    "traducción",
+                    "quinta edicion",
+                    "fifth edition",
+                    "anula y sustituye",
+                    "iso/tc",
+                    "secretaria central",
+                    "published in switzerland",
+                )
+            ):
+                return True
+
+            if source_type in {"front_matter", "preface", "metadata"}:
+                return True
+
+            shortish = 20 <= len(content) <= 520
+            institutional_markers = sum(
+                1
+                for token in ("tc", "sc", "committee", "comite", "sttf", "copyright", "edition")
+                if token in hay
+            )
+            return shortish and institutional_markers >= 2
+
+        def _reduce_structural_noise(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            q = str(query or "").lower()
+            if any(token in q for token in ("indice", "índice", "tabla de contenido")):
+                return items
+            if any(token in q for token in ("prologo", "prólogo", "preface", "foreword")):
+                return items
+
+            toc_items: list[dict[str, Any]] = []
+            editorial_items: list[dict[str, Any]] = []
+            body_items: list[dict[str, Any]] = []
+            for item in items:
+                if _looks_structural_toc(item):
+                    toc_items.append(item)
+                    continue
+                if _looks_editorial_front_matter(item):
+                    editorial_items.append(item)
+                    continue
+                body_items.append(item)
+
+            if not body_items:
+                return items
+            if not toc_items and not editorial_items:
+                return items
+
+            # Keep the best body evidence first, then a tiny structural tail for transparency.
+            return body_items + editorial_items[:1] + toc_items[:1]
 
         async def _coverage_repair(
             *,
@@ -432,7 +542,7 @@ class RagEngineRetrieverAdapter:
 
             merge = {"strategy": "rrf", "rrf_k": 60, "top_k": min(18, max(12, k))}
             t_cov = time.perf_counter()
-            cov_payload = await self.contract_client.multi_query(
+            cov_payload = await contract_client.multi_query(
                 tenant_id=tenant_id,
                 collection_id=collection_id,
                 user_id=user_id,
@@ -492,7 +602,7 @@ class RagEngineRetrieverAdapter:
                         }
                     )
                 t_sb = time.perf_counter()
-                sb_payload = await self.contract_client.multi_query(
+                sb_payload = await contract_client.multi_query(
                     tenant_id=tenant_id,
                     collection_id=collection_id,
                     user_id=user_id,
@@ -529,7 +639,7 @@ class RagEngineRetrieverAdapter:
 
         async def build_subqueries() -> list[dict[str, Any]]:
             subqueries_local = build_deterministic_subqueries(
-                query=expanded_query,
+                query=query,
                 requested_standards=plan.requested_standards,
                 mode=plan.mode,
                 include_semantic_tail=semantic_tail_enabled,
@@ -538,7 +648,7 @@ class RagEngineRetrieverAdapter:
             if settings.ORCH_SEMANTIC_PLANNER:
                 planner = SemanticSubqueryPlanner()
                 planned = await planner.plan(
-                    query=expanded_query,
+                    query=query,
                     requested_standards=plan.requested_standards,
                     max_queries=settings.ORCH_PLANNER_MAX_QUERIES,
                     search_hints=(
@@ -562,7 +672,7 @@ class RagEngineRetrieverAdapter:
             merge = {"strategy": "rrf", "rrf_k": 60, "top_k": min(16, max(12, k))}
             subqueries = await build_subqueries()
             t0 = time.perf_counter()
-            mq_payload = await self.contract_client.multi_query(
+            mq_payload = await contract_client.multi_query(
                 tenant_id=tenant_id,
                 collection_id=collection_id,
                 user_id=user_id,
@@ -594,6 +704,7 @@ class RagEngineRetrieverAdapter:
                     [it for it in mq_items if isinstance(it, dict)],
                     trace_target=diag_trace,
                 )
+                mq_items = _reduce_structural_noise(mq_items)
                 diag_trace.update(_layer_stats([it for it in mq_items if isinstance(it, dict)]))
                 if hint_trace.get("applied"):
                     diag_trace["search_hint_expansions"] = hint_trace
@@ -609,6 +720,7 @@ class RagEngineRetrieverAdapter:
                     [it for it in mq_items if isinstance(it, dict)],
                     trace_target=diag_trace,
                 )
+                mq_items = _reduce_structural_noise(mq_items)
 
                 self.last_retrieval_diagnostics = RetrievalDiagnostics(
                     contract="advanced",
@@ -622,7 +734,7 @@ class RagEngineRetrieverAdapter:
             if settings.ORCH_MULTI_QUERY_EVALUATOR and isinstance(mq_items, list) and mq_items:
                 evaluator = RetrievalSufficiencyEvaluator()
                 decision = await evaluator.evaluate(
-                    query=expanded_query,
+                    query=query,
                     requested_standards=plan.requested_standards,
                     items=[it for it in mq_items if isinstance(it, dict)],
                     min_items=int(settings.ORCH_MULTI_QUERY_MIN_ITEMS or 6),
@@ -640,6 +752,7 @@ class RagEngineRetrieverAdapter:
                         [it for it in mq_items if isinstance(it, dict)],
                         trace_target=diag_trace,
                     )
+                    mq_items = _reduce_structural_noise(mq_items)
                     self.last_retrieval_diagnostics = RetrievalDiagnostics(
                         contract="advanced",
                         strategy="multi_query_primary_evaluator",
@@ -664,7 +777,7 @@ class RagEngineRetrieverAdapter:
                     : max(1, int(settings.ORCH_PLANNER_MAX_QUERIES or 5))
                 ]
                 t1 = time.perf_counter()
-                mq2 = await self.contract_client.multi_query(
+                mq2 = await contract_client.multi_query(
                     tenant_id=tenant_id,
                     collection_id=collection_id,
                     user_id=user_id,
@@ -682,6 +795,7 @@ class RagEngineRetrieverAdapter:
                         [it for it in mq2_items if isinstance(it, dict)],
                         trace_target=diag_trace,
                     )
+                    mq2_items = _reduce_structural_noise(mq2_items)
                     diag_trace["refined"] = True
                     diag_trace["refine_reason"] = "insufficient_primary_multi_query"
                     diag_trace["timings_ms"] = dict(timings_ms)
@@ -707,7 +821,7 @@ class RagEngineRetrieverAdapter:
                     return self._to_evidence(mq2_items)
 
         t_h = time.perf_counter()
-        hybrid_payload = await self.contract_client.hybrid(
+        hybrid_payload = await contract_client.hybrid(
             query=expanded_query,
             tenant_id=tenant_id,
             collection_id=collection_id,
@@ -752,7 +866,7 @@ class RagEngineRetrieverAdapter:
                     rows.append(row)
 
             decision = decide_multihop_fallback(
-                query=expanded_query,
+                query=query,
                 requested_standards=plan.requested_standards,
                 items=rows,
                 hybrid_trace=trace,
@@ -762,7 +876,7 @@ class RagEngineRetrieverAdapter:
                 subqueries = await build_subqueries()
                 merge = {"strategy": "rrf", "rrf_k": 60, "top_k": min(16, max(12, k))}
                 t_mq = time.perf_counter()
-                mq_payload = await self.contract_client.multi_query(
+                mq_payload = await contract_client.multi_query(
                     tenant_id=tenant_id,
                     collection_id=collection_id,
                     user_id=user_id,
@@ -772,7 +886,8 @@ class RagEngineRetrieverAdapter:
                     merge=merge,
                 )
                 timings_ms["multi_query_fallback"] = round((time.perf_counter() - t_mq) * 1000, 2)
-                mq_items = mq_payload.get("items") if isinstance(mq_payload, dict) else []
+                mq_items_raw = mq_payload.get("items") if isinstance(mq_payload, dict) else []
+                mq_items = mq_items_raw if isinstance(mq_items_raw, list) else []
                 mq_trace = mq_payload.get("trace") if isinstance(mq_payload, dict) else {}
                 partial = (
                     bool(mq_payload.get("partial", False))
@@ -792,6 +907,7 @@ class RagEngineRetrieverAdapter:
                     [it for it in mq_items if isinstance(it, dict)],
                     trace_target=diag_trace,
                 )
+                mq_items = _reduce_structural_noise(mq_items)
                 diag_trace["rag_features"] = _features_from_hybrid_trace(trace)
                 if hint_trace.get("applied"):
                     diag_trace["search_hint_expansions"] = hint_trace
@@ -815,6 +931,7 @@ class RagEngineRetrieverAdapter:
                     [it for it in mq_items2 if isinstance(it, dict)],
                     trace_target=diag_trace,
                 )
+                mq_items2 = _reduce_structural_noise(mq_items2)
                 return self._to_evidence(mq_items2)
 
         self.last_retrieval_diagnostics = RetrievalDiagnostics(
@@ -854,6 +971,7 @@ class RagEngineRetrieverAdapter:
             if isinstance(self.last_retrieval_diagnostics.trace, dict)
             else {},
         )
+        items2 = _reduce_structural_noise(items2)
         return self._to_evidence(items2)
 
     async def _post_json(
@@ -1017,6 +1135,56 @@ class GroundedAnswerAdapter:
                     present.add(label)
             return present
 
+        def _extract_clause_refs(text: str) -> list[str]:
+            seen: set[str] = set()
+            ordered: list[str] = []
+            for match in re.findall(r"\b\d+(?:\.\d+)+\b", text or ""):
+                value = str(match).strip()
+                if not value or value in seen:
+                    continue
+                seen.add(value)
+                ordered.append(value)
+            return ordered
+
+        def _clause_match(requested: str, candidate: str) -> bool:
+            req = str(requested or "").strip()
+            cand = str(candidate or "").strip()
+            if not req or not cand:
+                return False
+            return cand == req or cand.startswith(f"{req}.")
+
+        def _row_matches_clause(item: EvidenceItem, clause_refs: list[str]) -> bool:
+            if not clause_refs:
+                return False
+            row = item.metadata.get("row") if isinstance(item.metadata, dict) else None
+            if not isinstance(row, dict):
+                return False
+            content = str(row.get("content") or "")
+            meta_raw = row.get("metadata")
+            meta: dict[str, Any] = meta_raw if isinstance(meta_raw, dict) else {}
+            values: list[str] = []
+            for key in ("clause_id", "clause_ref", "clause", "clause_anchor"):
+                val = str(meta.get(key) or "").strip()
+                if val:
+                    values.append(val)
+            refs_raw = meta.get("clause_refs")
+            if isinstance(refs_raw, list):
+                values.extend(
+                    str(v).strip() for v in refs_raw if isinstance(v, str) and str(v).strip()
+                )
+            for ref in clause_refs:
+                if re.search(rf"\b{re.escape(ref)}(?:\.\d+)*\b", content):
+                    return True
+                if any(_clause_match(ref, candidate) for candidate in values):
+                    return True
+            return False
+
+        def _snippet(text: str, limit: int = 240) -> str:
+            raw = " ".join((text or "").split())
+            if len(raw) <= limit:
+                return raw
+            return raw[:limit].rstrip() + "..."
+
         def _safe_parse_iso8601(value: Any) -> float | None:
             from datetime import datetime
 
@@ -1064,8 +1232,20 @@ class GroundedAnswerAdapter:
         else:
             max_ctx = 18
 
+        clause_refs = _extract_clause_refs(query)
+        clause_items = [item for item in ordered_items if _row_matches_clause(item, clause_refs)]
+        literal_min_items = 2 if plan.require_literal_evidence and len(clause_items) >= 2 else 1
+
+        query_for_generation = query
+        if plan.require_literal_evidence and literal_min_items > 1:
+            query_for_generation = (
+                query
+                + "\n\n[INSTRUCCION INTERNA] Si hay evidencia suficiente, responde con al menos 2 "
+                "afirmaciones literales distintas de la misma clausula, cada una con su fuente C#/R#."
+            )
+
         text = await self.service.generate_answer(
-            query=query,
+            query=query_for_generation,
             context_chunks=labeled,
             agent_profile=agent_profile,
             mode=plan.mode,
@@ -1107,8 +1287,6 @@ class GroundedAnswerAdapter:
         if plan.require_literal_evidence:
             # Defense-in-depth: if the provider ignores instructions and returns no markers,
             # append the reviewed references so the validator can trace the answer.
-            import re
-
             if not re.search(r"\b[CR]\d+\b", text or ""):
                 sources: list[str] = []
                 seen: set[str] = set()
@@ -1122,4 +1300,12 @@ class GroundedAnswerAdapter:
                     suffix = "Referencias revisadas: " + ", ".join(sources)
                     text = (text or "").rstrip()
                     text = f"{text}\n\n{suffix}" if text else suffix
+
+            # Ensure literal outputs include at least two grounded rows when available.
+            markers = set(re.findall(r"\b[CR]\d+\b", text or ""))
+            if literal_min_items > 1 and len(markers) < 2 and len(clause_items) >= 2:
+                rows: list[str] = []
+                for idx, item in enumerate(clause_items[:2], start=1):
+                    rows.append(f"{idx}) {_snippet(item.content)} | Fuente: {item.source}")
+                text = "\n".join(rows)
         return AnswerDraft(text=text, mode=plan.mode, evidence=[*chunks, *summaries])

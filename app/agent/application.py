@@ -287,6 +287,19 @@ class HandleQuestionUseCase:
                 payload.update(extra)
             return payload
 
+        def _looks_profile_fallback_answer(text: str) -> bool:
+            answer_text = str(text or "").strip().lower()
+            if not answer_text:
+                return True
+            profile_fallback = (
+                str(cmd.agent_profile.validation.fallback_message).strip().lower()
+                if cmd.agent_profile is not None and cmd.agent_profile.validation.fallback_message
+                else ""
+            )
+            if profile_fallback and answer_text.startswith(profile_fallback):
+                return True
+            return answer_text.startswith("no encontrado explicitamente en el contexto recuperado")
+
         def _coverage_preference(text: str) -> str:
             lowered = (text or "").lower()
             if "__coverage__=partial" in lowered:
@@ -329,9 +342,10 @@ class HandleQuestionUseCase:
         coverage_preference = _coverage_preference(normalized_query)
         allow_partial_coverage = coverage_preference == "partial"
 
-        if hasattr(self._retriever, "set_profile_context"):
+        set_profile_context = getattr(self._retriever, "set_profile_context", None)
+        if callable(set_profile_context):
             try:
-                self._retriever.set_profile_context(
+                set_profile_context(
                     profile=cmd.agent_profile,
                     profile_resolution=cmd.profile_resolution,
                 )
@@ -393,6 +407,14 @@ class HandleQuestionUseCase:
                         mode=suggestion.mode,
                         rationale=f"advisor override: {suggestion.rationale}".strip(),
                     )
+
+        if (
+            bool(settings.ORCH_COVERAGE_AUTO_PARTIAL_COMPARATIVA)
+            and coverage_preference == "unspecified"
+            and intent.mode == "comparativa"
+        ):
+            allow_partial_coverage = True
+            coverage_preference = "auto_partial_comparativa"
 
         plan = build_retrieval_plan(intent, query=cmd.query, profile=cmd.agent_profile)
         detected_scopes = detect_scope_candidates(cmd.query, profile=cmd.agent_profile)
@@ -664,6 +686,36 @@ class HandleQuestionUseCase:
 
             return chunks, summaries, retrieval
 
+        async def _generate_answer_safe(
+            *,
+            query: str,
+            scope_label: str,
+            plan: RetrievalPlan,
+            chunks: list[EvidenceItem],
+            summaries: list[EvidenceItem],
+            agent_profile: AgentProfile | None,
+        ) -> AnswerDraft:
+            try:
+                return await self._answer_generator.generate(
+                    query=query,
+                    scope_label=scope_label,
+                    plan=plan,
+                    chunks=chunks,
+                    summaries=summaries,
+                    agent_profile=agent_profile,
+                )
+            except Exception as exc:
+                logger.error(
+                    "orchestrator_answer_generation_failed",
+                    error=str(exc),
+                    mode=plan.mode,
+                    tenant_id=cmd.tenant_id,
+                    request_id=cmd.request_id,
+                    correlation_id=cmd.correlation_id,
+                    exc_info=True,
+                )
+                raise RuntimeError(f"ORCH_ANSWER_GENERATION_FAILED: {exc}") from exc
+
         # Level 4-ish internal correction loop: a small, bounded retry with working memory.
         attempts_trace: list[dict[str, Any]] = []
 
@@ -707,9 +759,7 @@ class HandleQuestionUseCase:
 
         evidence_all = [*chunks, *summaries]
         trace_missing = (
-            retrieval.trace.get("missing_scopes")
-            if isinstance(retrieval.trace, dict)
-            else None
+            retrieval.trace.get("missing_scopes") if isinstance(retrieval.trace, dict) else None
         )
         missing_scopes = _missing_scopes_from_evidence(
             evidence_all,
@@ -717,9 +767,7 @@ class HandleQuestionUseCase:
         )
         if isinstance(trace_missing, list):
             normalized_trace_missing = [
-                str(item).strip().upper()
-                for item in trace_missing
-                if str(item).strip()
+                str(item).strip().upper() for item in trace_missing if str(item).strip()
             ]
             missing_scopes = list(dict.fromkeys([*missing_scopes, *normalized_trace_missing]))
 
@@ -859,7 +907,7 @@ class HandleQuestionUseCase:
         ):
             # ... keep existing structural ambiguity logic if needed ...
             pass
-        answer = await self._answer_generator.generate(
+        answer = await _generate_answer_safe(
             query=cmd.query,
             scope_label=cmd.scope_label,
             plan=current_plan,
@@ -868,6 +916,23 @@ class HandleQuestionUseCase:
             agent_profile=cmd.agent_profile,
         )
         validation = _validate_with_profile_policy(answer, current_plan)
+
+        if validation.accepted and answer.evidence and _looks_profile_fallback_answer(answer.text):
+            answer2 = await _generate_answer_safe(
+                query=(
+                    cmd.query + "\n\n[INSTRUCCION INTERNA] Hay evidencia recuperada util. "
+                    "Evita respuesta de fallback. Sintetiza los hallazgos con citas C#/R# "
+                    "usando solo el contexto disponible."
+                ),
+                scope_label=cmd.scope_label,
+                plan=current_plan,
+                chunks=chunks,
+                summaries=summaries,
+                agent_profile=cmd.agent_profile,
+            )
+            validation2 = _validate_with_profile_policy(answer2, current_plan)
+            if validation2.accepted:
+                answer, validation = answer2, validation2
 
         attempts_trace.append(
             {
@@ -948,7 +1013,7 @@ class HandleQuestionUseCase:
                 ]
                 if filtered_evidence and (chunks2 or summaries2):
                     action = "filter_evidence_to_scope_and_regenerate"
-                    answer2 = await self._answer_generator.generate(
+                    answer2 = await _generate_answer_safe(
                         query=cmd.query
                         + "\n\n[INSTRUCCION INTERNA] No menciones normas fuera del alcance solicitado. "
                         + (
@@ -1002,7 +1067,7 @@ class HandleQuestionUseCase:
                     requested_standards=current_plan.requested_standards,
                 )
                 chunks2, summaries2, retrieval2 = await _run_retrieval(attempt_plan=boosted)
-                answer2 = await self._answer_generator.generate(
+                answer2 = await _generate_answer_safe(
                     query=cmd.query,
                     scope_label=cmd.scope_label,
                     plan=boosted,
@@ -1040,7 +1105,7 @@ class HandleQuestionUseCase:
             elif missing_citations:
                 # Try a stricter re-generation without changing retrieval.
                 action = "regenerate_with_strict_citation_instruction"
-                answer2 = await self._answer_generator.generate(
+                answer2 = await _generate_answer_safe(
                     query=cmd.query
                     + "\n\n[INSTRUCCION INTERNA] Incluye marcadores C#/R# en cada afirmacion clave.",
                     scope_label=cmd.scope_label,

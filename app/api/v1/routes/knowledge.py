@@ -26,6 +26,19 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(tags=["knowledge"])
 
 
+def _classify_orchestrator_error(exc: Exception) -> str:
+    text = str(exc or "").strip().lower()
+    if "orch_answer_generation_failed" in text:
+        return "ORCH_ANSWER_GENERATION_FAILED"
+    if "rag retrieval failed" in text:
+        return "ORCH_RETRIEVAL_FAILED"
+    if isinstance(exc, TimeoutError):
+        return "ORCH_TIMEOUT"
+    if isinstance(exc, ValueError):
+        return "ORCH_INVALID_INPUT"
+    return "ORCH_UNHANDLED_ERROR"
+
+
 class OrchestratorQuestionRequest(BaseModel):
     query: str
     tenant_id: Optional[str] = None
@@ -306,8 +319,28 @@ async def answer_with_orchestrator(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("orchestrator_answer_failed", error=str(exc), exc_info=True)
-        raise HTTPException(status_code=500, detail="Orchestrator answer failed")
+        req_id = str(
+            http_request.headers.get("X-Request-ID") or http_request.headers.get("X-Trace-ID") or ""
+        ).strip()
+        corr_id = str(http_request.headers.get("X-Correlation-ID") or "").strip()
+        error_code = _classify_orchestrator_error(exc)
+        logger.error(
+            "orchestrator_answer_failed",
+            error_code=error_code,
+            error=str(exc),
+            request_id=req_id or None,
+            correlation_id=corr_id or None,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": error_code,
+                "message": "Orchestrator answer failed",
+                "request_id": req_id or None,
+                "correlation_id": corr_id or None,
+            },
+        )
 
 
 @router.get("/tenants", response_model=TenantListResponse)
@@ -419,7 +452,9 @@ async def put_tenant_profile_override(
     request: TenantProfileUpdateRequest,
     current_user: UserContext = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    authorized_tenant = await authorize_requested_tenant(http_request, current_user, request.tenant_id)
+    authorized_tenant = await authorize_requested_tenant(
+        http_request, current_user, request.tenant_id
+    )
     loader = get_cartridge_loader()
     if not loader.dev_profile_assignments_enabled():
         logger.warning(

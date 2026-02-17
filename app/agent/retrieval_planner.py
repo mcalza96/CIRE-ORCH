@@ -11,6 +11,14 @@ from app.agent.policies import extract_requested_scopes
 _CLAUSE_RE = re.compile(r"\b\d+(?:\.\d+)+\b")
 
 
+def _clause_ref_matches(requested: str, candidate: str) -> bool:
+    req = str(requested or "").strip()
+    cand = str(candidate or "").strip()
+    if not req or not cand:
+        return False
+    return cand == req or cand.startswith(f"{req}.")
+
+
 def apply_search_hints(
     query: str,
     profile: AgentProfile | None = None,
@@ -30,11 +38,17 @@ def apply_search_hints(
         term_lower = term.lower()
         if term_lower not in lower_text:
             continue
-        additions = [
-            item
-            for item in (str(v or "").strip() for v in hint.expand_to)
-            if item and item.lower() not in lower_text and item not in expanded_terms
-        ]
+        additions: list[str] = []
+        for item in (str(v or "").strip() for v in hint.expand_to):
+            if not item:
+                continue
+            if item.lower() in lower_text or item in expanded_terms:
+                continue
+            # Avoid injecting numeric clause refs from semantic hints.
+            # Clause filters must come from explicit user text.
+            if _CLAUSE_RE.fullmatch(item):
+                continue
+            additions.append(item)
         if not additions:
             continue
         expanded_terms.extend(additions)
@@ -149,18 +163,22 @@ def _row_standard(row: dict[str, Any]) -> str | None:
 
 
 def _row_mentions_clause(row: dict[str, Any], clause: str) -> bool:
+    clause_norm = str(clause or "").strip()
+    if not clause_norm:
+        return False
     content = str(row.get("content") or "")
-    if clause and clause in content:
+    clause_re = re.compile(rf"\b{re.escape(clause_norm)}(?:\.\d+)*\b")
+    if clause_re.search(content):
         return True
     meta = row.get("metadata")
     if isinstance(meta, dict):
         for key in ("clause_id", "clause_ref", "clause"):
             value = meta.get(key)
-            if isinstance(value, str) and value.strip() == clause:
+            if isinstance(value, str) and _clause_ref_matches(clause_norm, value):
                 return True
         refs = meta.get("clause_refs")
         if isinstance(refs, list) and any(
-            isinstance(item, str) and item.strip() == clause for item in refs
+            isinstance(item, str) and _clause_ref_matches(clause_norm, item) for item in refs
         ):
             return True
     return False
