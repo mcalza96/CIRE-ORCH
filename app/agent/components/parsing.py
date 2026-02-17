@@ -25,7 +25,13 @@ def extract_row_standard(item: EvidenceItem) -> str:
     return ""
 
 
-def build_retry_focus_query(*, query: str, plan: RetrievalPlan, reason: str) -> str:
+def build_retry_focus_query(
+    *,
+    query: str,
+    plan: RetrievalPlan,
+    reason: str,
+    graph_gaps: list[str] | None = None,
+) -> str:
     clause_refs = re.findall(r"\b\d+(?:\.\d+)+\b", query or "")
     standards = [scope for scope in plan.requested_standards if scope]
     hints: list[str] = []
@@ -34,4 +40,8 @@ def build_retry_focus_query(*, query: str, plan: RetrievalPlan, reason: str) -> 
     if clause_refs:
         hints.append("clausulas=" + ", ".join(clause_refs[:4]))
     hints.append(f"motivo_retry={reason}")
-    return f"{query}\n\n[RETRY_FOCUS] {' | '.join(hints)}"
+    retry_block = f"[RETRY_FOCUS] {' | '.join(hints)}"
+    gaps = [str(item).strip() for item in (graph_gaps or []) if str(item).strip()]
+    if gaps:
+        retry_block += "\n[GRAPH_GAPS] " + " | ".join(gaps[:4])
+    return f"{query}\n\n{retry_block}"

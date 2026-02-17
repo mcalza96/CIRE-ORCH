@@ -148,7 +148,7 @@ async def test_graph_skips_retry_when_retrieval_is_relevant():
 
 
 @pytest.mark.asyncio
-async def test_graph_relaxes_literal_mode_on_scope_mismatch_retry(monkeypatch):
+async def test_graph_preserves_literal_mode_on_scope_mismatch_retry(monkeypatch):
     import app.graph.iso_flow as flow_mod
 
     monkeypatch.setattr(
@@ -198,7 +198,8 @@ async def test_graph_relaxes_literal_mode_on_scope_mismatch_retry(monkeypatch):
 
     assert len(retriever.plans_seen) >= 2
     assert retriever.plans_seen[0].mode == "literal_normativa"
-    assert retriever.plans_seen[1].mode == "explicativa"
+    assert retriever.plans_seen[1].mode == "literal_normativa"
+    assert "[GRAPH_GAPS]" in retriever.queries_seen[1]
 
 
 @pytest.mark.asyncio

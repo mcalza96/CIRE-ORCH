@@ -42,14 +42,17 @@ def _raise_for_status(response: httpx.Response) -> None:
     )
 
 
-async def list_authorized_tenants(base_url: str, token: str, timeout_seconds: float = 4.0) -> list[Tenant]:
+async def list_authorized_tenants(
+    base_url: str, token: str, timeout_seconds: float = 4.0
+) -> list[Tenant]:
     url = f"{base_url.rstrip('/')}/api/v1/knowledge/tenants"
     async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=2.5)) as client:
         try:
             response = await client.get(url, headers=_headers(token))
         except httpx.RequestError as exc:
+            detail = f"{type(exc).__name__}: {exc!r}"
             raise OrchestratorDiscoveryError(
-                f"Discovery request failed (network): {exc}",
+                f"Discovery request failed (network) GET {url}: {detail}",
                 status_code=None,
             ) from exc
     _raise_for_status(response)
@@ -91,8 +94,9 @@ async def list_authorized_collections(
         try:
             response = await client.get(url, params=params, headers=_headers(token))
         except httpx.RequestError as exc:
+            detail = f"{type(exc).__name__}: {exc!r}"
             raise OrchestratorDiscoveryError(
-                f"Discovery request failed (network): {exc}",
+                f"Discovery request failed (network) GET {url}: {detail}",
                 status_code=None,
             ) from exc
     _raise_for_status(response)

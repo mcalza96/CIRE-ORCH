@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-02-17T19:30:41.630729+00:00",
+  "plan": "tests/evaluation/reports/directed_reingest_plan_phase5.json",
+  "rag_base_url": "http://localhost:8000",
+  "tenant_id": "b18a053c-1787-4a43-ac97-60c459f455b8",
+  "mode": "dry_run",
+  "documents_count": 6,
+  "selected_actions": [
+    {
+      "standard": "ISO 9001",
+      "source_doc_id": "57d9395b-bbc2-4e79-a19b-64baa3404ee3",
+      "filename": "NOM_ISO_9001-2015.pdf",
+      "storage_path": "b18a053c-1787-4a43-ac97-60c459f455b8/iso-trinorma/a88338fa-7d6b-45e4-91c1-cd29cef070fa/57d9395b-bbc2-4e79-a19b-64baa3404ee3_NOM_ISO_9001-2015.pdf",
+      "score": 110,
+      "matched_clauses": [],
+      "collection_context": {
+        "collection_id": "48a5c920-59f1-4498-9683-727339463ad2",
+        "collection_key": "iso-trinorma",
+        "collection_name": "ISO-Trinorma"
+      }
+    },
+    {
+      "standard": "ISO 14001",
+      "source_doc_id": "79b00dc5-4770-4f3f-ae1b-4d5e4646091d",
+      "filename": "ISO_14001_2015.pdf",
+      "storage_path": "b18a053c-1787-4a43-ac97-60c459f455b8/iso-trinorma/a88338fa-7d6b-45e4-91c1-cd29cef070fa/79b00dc5-4770-4f3f-ae1b-4d5e4646091d_ISO_14001_2015.pdf",
+      "score": 110,
+      "matched_clauses": [],
+      "collection_context": {
+        "collection_id": "48a5c920-59f1-4498-9683-727339463ad2",
+        "collection_key": "iso-trinorma",
+        "collection_name": "ISO-Trinorma"
+      }
+    }
+  ],
+  "unresolved": [],
+  "executions": []
+}

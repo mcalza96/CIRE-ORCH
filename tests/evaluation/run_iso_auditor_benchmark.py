@@ -262,6 +262,31 @@ async def main() -> int:
     parser.add_argument("--max-cases", type=int, default=0)
     parser.add_argument("--variant-label", default=os.getenv("ORCH_BENCH_VARIANT", "baseline"))
     parser.add_argument("--fail-on-thresholds", action="store_true")
+    parser.add_argument(
+        "--threshold-citation-marker-rate",
+        type=float,
+        default=float(os.getenv("ORCH_BENCH_THRESHOLD_CITATION", 98.0)),
+    )
+    parser.add_argument(
+        "--threshold-standard-coverage-rate",
+        type=float,
+        default=float(os.getenv("ORCH_BENCH_THRESHOLD_COVERAGE", 90.0)),
+    )
+    parser.add_argument(
+        "--threshold-literal-mode-retention-rate",
+        type=float,
+        default=float(os.getenv("ORCH_BENCH_THRESHOLD_LITERAL", 95.0)),
+    )
+    parser.add_argument(
+        "--threshold-answerable-rate",
+        type=float,
+        default=float(os.getenv("ORCH_BENCH_THRESHOLD_ANSWERABLE", 90.0)),
+    )
+    parser.add_argument(
+        "--threshold-false-positive-partial-rate-max",
+        type=float,
+        default=float(os.getenv("ORCH_BENCH_THRESHOLD_FALSE_POSITIVE_MAX", 10.0)),
+    )
     args = parser.parse_args()
 
     try:
@@ -367,15 +392,20 @@ async def main() -> int:
     )
 
     thresholds = {
-        "citation_marker_rate": 98.0,
-        "standard_coverage_rate": 90.0,
-        "literal_mode_retention_rate": 95.0,
+        "citation_marker_rate": float(args.threshold_citation_marker_rate),
+        "standard_coverage_rate": float(args.threshold_standard_coverage_rate),
+        "literal_mode_retention_rate": float(args.threshold_literal_mode_retention_rate),
+        "answerable_rate": float(args.threshold_answerable_rate),
+        "false_positive_partial_rate_max": float(args.threshold_false_positive_partial_rate_max),
     }
     checks = {
         "citation_marker_rate": citation_marker_rate >= thresholds["citation_marker_rate"],
         "standard_coverage_rate": standard_coverage_rate >= thresholds["standard_coverage_rate"],
         "literal_mode_retention_rate": literal_mode_retention_rate
         >= thresholds["literal_mode_retention_rate"],
+        "answerable_rate": answerable_rate >= thresholds["answerable_rate"],
+        "false_positive_partial_rate": false_positive_partial_rate
+        <= thresholds["false_positive_partial_rate_max"],
     }
 
     issue_counts: dict[str, int] = {}

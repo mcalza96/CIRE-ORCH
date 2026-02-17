@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from typing import TypedDict
 
@@ -32,6 +33,103 @@ from app.core.config import settings
 logger = structlog.get_logger(__name__)
 
 
+def _is_literal_query(text: str) -> bool:
+    lowered = (text or "").lower()
+    markers = (
+        "textualmente",
+        "literal",
+        "verbatim",
+        "transcribe",
+        "cita",
+        "citas",
+        "que exige",
+        "qué exige",
+    )
+    if any(token in lowered for token in markers):
+        return True
+    return bool(re.search(r"\bcl(?:a|á)usula\s*\d+(?:\.\d+)+\b", lowered))
+
+
+def _is_list_literal_query(text: str) -> bool:
+    lowered = (text or "").lower()
+    markers = ("enumera", "lista", "listado", "viñetas", "vinetas")
+    return any(token in lowered for token in markers)
+
+
+def _literal_force_eligible(text: str) -> bool:
+    query = str(text or "").strip()
+    if not _is_literal_query(query):
+        return False
+    if len(query) > 220:
+        return False
+    scopes = re.findall(r"\biso\s*[-:]?\s*\d{4,5}\b", query, flags=re.IGNORECASE)
+    if len(scopes) >= 2:
+        return False
+    if query.count("?") >= 2:
+        return False
+    return True
+
+
+def _graph_retry_reason(trace: dict[str, object]) -> str:
+    if not isinstance(trace, dict):
+        return ""
+    rag_features = trace.get("rag_features")
+    if isinstance(rag_features, dict):
+        fallback_used = bool(rag_features.get("fallback_used", False))
+        planner_multihop = bool(rag_features.get("planner_multihop", False))
+        if fallback_used and not planner_multihop:
+            return "graph_fallback_no_multihop"
+    missing_scopes = trace.get("missing_scopes")
+    if isinstance(missing_scopes, list) and missing_scopes:
+        return "scope_mismatch"
+    return ""
+
+
+def _graph_contract(trace: dict[str, object]) -> dict[str, object]:
+    if not isinstance(trace, dict):
+        return {
+            "graph_used": False,
+            "graph_strategy": "none",
+            "anchor_count": 0,
+            "anchor_entities": [],
+            "graph_paths_count": 0,
+            "community_hits": 0,
+        }
+
+    rag_features_raw = trace.get("rag_features")
+    rag_features = rag_features_raw if isinstance(rag_features_raw, dict) else {}
+    strategy = "none"
+    if bool(rag_features.get("planner_multihop", False)):
+        strategy = "hybrid"
+    elif bool(rag_features.get("planner_used", False)):
+        strategy = "local"
+    elif bool(rag_features.get("fallback_used", False)):
+        strategy = "global"
+
+    missing_scopes = trace.get("missing_scopes")
+    scope_mismatch_reason = ""
+    if isinstance(missing_scopes, list) and missing_scopes:
+        scope_mismatch_reason = "missing_scopes"
+
+    def _to_int(value: object) -> int:
+        try:
+            return int(value)  # type: ignore[arg-type]
+        except Exception:
+            return 0
+
+    return {
+        "graph_used": strategy != "none",
+        "graph_strategy": strategy,
+        "anchor_count": _to_int(trace.get("layer_0")),
+        "anchor_entities": trace.get("anchor_entities")
+        if isinstance(trace.get("anchor_entities"), list)
+        else [],
+        "graph_paths_count": _to_int(trace.get("layer_1")),
+        "community_hits": _to_int(trace.get("layer_2")),
+        "scope_mismatch_reason": scope_mismatch_reason,
+    }
+
+
 class AgentState(TypedDict, total=False):
     user_query: str
     plan: RetrievalPlan
@@ -54,6 +152,40 @@ class AgentState(TypedDict, total=False):
     grade_reason: str
     next_step: str
     max_retries: int
+    graph_contract: dict[str, object]
+
+
+def _derive_graph_gaps(
+    *,
+    query: str,
+    documents: list[EvidenceItem],
+    contract: dict[str, object],
+) -> dict[str, object]:
+    requested = {
+        f"ISO {match}"
+        for match in re.findall(r"\biso\s*[-:]?\s*(\d{4,5})\b", query, flags=re.IGNORECASE)
+    }
+    found: set[str] = set()
+    for item in documents:
+        scope = extract_row_standard(item)
+        if not scope:
+            continue
+        digits = "".join(ch for ch in scope if ch.isdigit())
+        if digits:
+            found.add(f"ISO {digits}")
+
+    disconnected_entities = sorted(scope for scope in requested if scope not in found)
+    clause_refs = sorted(set(re.findall(r"\b\d+(?:\.\d+)+\b", query or "")))
+    missing_links = [
+        f"{scope} -> clausula {clause}"
+        for scope in disconnected_entities
+        for clause in clause_refs[:2]
+    ]
+
+    out = dict(contract)
+    out["disconnected_entities"] = disconnected_entities
+    out["missing_links"] = missing_links[:4]
+    return out
 
 
 @dataclass
@@ -89,6 +221,7 @@ class IsoFlowOrchestrator:
 
     async def _planner_node(self, state: AgentState) -> AgentState:
         query = str(state.get("working_query") or state.get("user_query") or "").strip()
+        original_query = str(state.get("user_query") or "").strip()
         profile = state.get("agent_profile")
         retry_count = int(state.get("retry_count") or 0)
         reason = str(state.get("grade_reason") or "")
@@ -96,17 +229,45 @@ class IsoFlowOrchestrator:
         if retry_count > 0:
             prev_plan = state.get("plan")
             if isinstance(prev_plan, RetrievalPlan):
+                contract = state.get("graph_contract")
+                graph_gaps: list[str] = []
+                if isinstance(contract, dict):
+                    disconnected = contract.get("disconnected_entities")
+                    if isinstance(disconnected, list) and disconnected:
+                        graph_gaps.append(
+                            "desconectadas=" + ", ".join(str(item) for item in disconnected)
+                        )
+                    missing_links = contract.get("missing_links")
+                    if isinstance(missing_links, list) and missing_links:
+                        graph_gaps.append(
+                            "vinculos=" + "; ".join(str(item) for item in missing_links[:2])
+                        )
                 query = build_retry_focus_query(
                     query=query,
                     plan=prev_plan,
                     reason=reason or "retry",
+                    graph_gaps=graph_gaps,
                 )
 
                 # Mode-specific retry strategy:
                 # - literal: keep literal when empty, relax mode on mismatches/low quality.
                 # - interpretive/comparative: keep mode and broaden via retry hints.
                 if prev_plan.mode in {"literal_normativa", "literal_lista"}:
-                    if reason in {"scope_mismatch", "clause_missing", "low_score"}:
+                    if _literal_force_eligible(original_query):
+                        return {
+                            "working_query": query,
+                            "intent": QueryIntent(
+                                mode=prev_plan.mode,
+                                rationale=f"retry_force_literal_{reason or 'retry'}",
+                            ),
+                            "plan": prev_plan,
+                        }
+                    if reason in {
+                        "scope_mismatch",
+                        "clause_missing",
+                        "low_score",
+                        "empty_retrieval",
+                    }:
                         fallback_mode = (
                             "comparativa"
                             if len(prev_plan.requested_standards) >= 2
@@ -124,6 +285,12 @@ class IsoFlowOrchestrator:
                         }
 
         intent = classify_intent(query, profile=profile)
+        if _literal_force_eligible(original_query):
+            forced_mode = (
+                "literal_lista" if _is_list_literal_query(original_query) else "literal_normativa"
+            )
+            if intent.mode != forced_mode:
+                intent = QueryIntent(mode=forced_mode, rationale="graph_literal_override")
         plan = build_retrieval_plan(intent, query=query, profile=profile)
         return {
             "working_query": query,
@@ -191,6 +358,28 @@ class IsoFlowOrchestrator:
             plan,
             query=str(state.get("working_query") or state.get("user_query") or ""),
         )
+        retrieval = state.get("retrieval")
+        graph_contract: dict[str, object] = {
+            "graph_used": False,
+            "graph_strategy": "none",
+            "anchor_count": 0,
+            "anchor_entities": [],
+            "graph_paths_count": 0,
+            "community_hits": 0,
+            "scope_mismatch_reason": "",
+            "disconnected_entities": [],
+            "missing_links": [],
+        }
+        if isinstance(retrieval, RetrievalDiagnostics) and isinstance(retrieval.trace, dict):
+            graph_reason = _graph_retry_reason(retrieval.trace)
+            if graph_reason and reason == "ok":
+                reason = graph_reason
+                good = False
+            graph_contract = _derive_graph_gaps(
+                query=str(state.get("working_query") or state.get("user_query") or ""),
+                documents=documents,
+                contract=_graph_contract(retrieval.trace),
+            )
         retry_count = int(state.get("retry_count") or 0)
         max_retries = int(state.get("max_retries") or self.max_retries)
 
@@ -205,11 +394,13 @@ class IsoFlowOrchestrator:
                 "retry_count": retry_count + 1,
                 "grade_reason": reason,
                 "next_step": "retry",
+                "graph_contract": graph_contract,
             }
 
         return {
             "grade_reason": reason,
             "next_step": "generate",
+            "graph_contract": graph_contract,
         }
 
     async def _generator_node(self, state: AgentState) -> AgentState:
@@ -287,6 +478,16 @@ class IsoFlowOrchestrator:
             )
 
         trace = dict(retrieval.trace or {})
+        contract_state = final_state.get("graph_contract")
+        trace["graph_contract"] = (
+            dict(contract_state)
+            if isinstance(contract_state, dict)
+            else _derive_graph_gaps(
+                query=cmd.query,
+                documents=list(final_state.get("retrieved_documents") or []),
+                contract=_graph_contract(trace),
+            )
+        )
         trace["graph"] = {
             "name": "iso_flow",
             "retry_count": int(final_state.get("retry_count") or 0),

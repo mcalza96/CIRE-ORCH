@@ -1,0 +1,81 @@
+{
+  "source_report": "tests/evaluation/reports/iso_auditor_benchmark_doc-hints-update-fixed-r2_20260217T183500Z.json",
+  "source_dataset": "tests/evaluation/iso_auditor_smoke.json",
+  "target_cases": {
+    "golden_user_regression_001": {
+      "query": "Que exige textualmente la clausula 9.3 de la ISO 9001 sobre la revision por la direccion? Enumera una lista de las entradas requeridas para la planificacion y las salidas esperadas en la ISO 14001.",
+      "standards": [
+        "ISO 14001",
+        "ISO 9001"
+      ],
+      "clauses": [
+        "9.3"
+      ],
+      "reasons": [
+        "coverage_gap"
+      ],
+      "status_code": 200,
+      "coverage_ok": false,
+      "validation_accepted": true,
+      "has_citation_marker": true,
+      "validation_issues": []
+    },
+    "golden_user_regression_004": {
+      "query": "Analice la relacion tecnica entre la evaluacion de la eficacia de las acciones para abordar riesgos (6.1) y los resultados de seguimiento y medicion (9.1) en la ISO 9001. Que implica un desempeno bajo en 9.1 para la actualizacion de la evaluacion de riesgos?",
+      "standards": [
+        "ISO 9001"
+      ],
+      "clauses": [
+        "6.1",
+        "9.1"
+      ],
+      "reasons": [
+        "coverage_gap"
+      ],
+      "status_code": 200,
+      "coverage_ok": false,
+      "validation_accepted": true,
+      "has_citation_marker": true,
+      "validation_issues": []
+    }
+  },
+  "by_standard": {
+    "ISO 14001": {
+      "queries": 1,
+      "clauses": [
+        "9.3"
+      ],
+      "coverage_gap": 1,
+      "validation_rejected": 0,
+      "missing_citation_marker": 0,
+      "http_error": 0
+    },
+    "ISO 9001": {
+      "queries": 2,
+      "clauses": [
+        "6.1",
+        "9.1",
+        "9.3"
+      ],
+      "coverage_gap": 2,
+      "validation_rejected": 0,
+      "missing_citation_marker": 0,
+      "http_error": 0
+    }
+  },
+  "priority": [
+    {
+      "standard": "ISO 9001",
+      "priority_score": 12
+    },
+    {
+      "standard": "ISO 14001",
+      "priority_score": 6
+    }
+  ],
+  "unresolved_cases": [],
+  "notes": [
+    "Use this file to drive directed reingestion of missing clauses per standard.",
+    "Prioritize standards by priority score, then missing clauses."
+  ]
+}
