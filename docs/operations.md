@@ -15,11 +15,14 @@
 - Ruta canonica: `tools/ingestion-client/`
 - Config principal: `RAG_URL` (si no se define, `ingest` usa `RAG_ENGINE_LOCAL_URL`/`RAG_ENGINE_DOCKER_URL`)
 - Si `TENANT_ID` no está definido, `ingest` intenta resolver tenants autorizados desde ORCH y preseleccionar uno.
+- Soporta override dev tenant->cartucho vía ORCH (`--agent-profile`, `--clear-agent-profile`) sin reiniciar API.
 
 Comandos utiles:
 
 - `./ing.sh --help`
 - `./ing.sh --file ./docs/manual.pdf`
+- `./ing.sh --tenant-id <uuid> --agent-profile iso_auditor --collection-name normas --file ./docs/manual.pdf`
+- `./ing.sh --tenant-id <uuid> --clear-agent-profile --collection-name normas --file ./docs/manual.pdf`
 - `TENANT_ID=<uuid> COLLECTION_ID=<id> ./ing.sh --file ./docs/manual.pdf --no-wait`
 - `RAG_ENGINE_FORCE_BACKEND=docker ./ing.sh --file ./docs/manual.pdf --no-wait`
 

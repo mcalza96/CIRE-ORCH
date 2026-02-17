@@ -96,6 +96,8 @@ async def test_autoretry_switches_off_literal_when_empty_retrieval(monkeypatch):
     monkeypatch.setattr(settings, "ORCH_RETRIEVAL_CONTRACT", "advanced")
     monkeypatch.setattr(settings, "ORCH_MODE_AUTORETRY_ENABLED", True)
     monkeypatch.setattr(settings, "ORCH_MODE_AUTORETRY_MAX_ATTEMPTS", 2)
+    monkeypatch.setattr(settings, "ORCH_LITERAL_LOCK_ENABLED", False)
+    monkeypatch.setattr(settings, "ORCH_COVERAGE_REQUIRED", False)
 
     # Force initial intent to literal by using explicit override.
     cmd = HandleQuestionCommand(
@@ -114,3 +116,86 @@ async def test_autoretry_switches_off_literal_when_empty_retrieval(monkeypatch):
     assert isinstance(trace, dict)
     attempts = trace.get("attempts")
     assert isinstance(attempts, list)
+
+
+@pytest.mark.asyncio
+async def test_autoretry_blocks_literal_mode_downgrade_when_literal_lock_is_active(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ORCH_RETRIEVAL_CONTRACT", "advanced")
+    monkeypatch.setattr(settings, "ORCH_MODE_AUTORETRY_ENABLED", True)
+    monkeypatch.setattr(settings, "ORCH_MODE_AUTORETRY_MAX_ATTEMPTS", 2)
+    monkeypatch.setattr(settings, "ORCH_LITERAL_LOCK_ENABLED", True)
+    monkeypatch.setattr(settings, "ORCH_COVERAGE_REQUIRED", False)
+
+    cmd = HandleQuestionCommand(
+        query=(
+            "__mode__=literal_normativa "
+            "¿Qué exige textualmente ISO 9001 7.5.3? Responde con citas C#/R#."
+        ),
+        tenant_id="t",
+        user_id=None,
+        collection_id=None,
+        scope_label="tenant=t",
+    )
+    use_case = HandleQuestionUseCase(_FakeRetriever(), _FakeAnswerGen(), _FakeValidator())
+    result = await use_case.execute(cmd)
+
+    assert result.plan.mode == "literal_normativa"
+    assert bool((result.retrieval.trace or {}).get("fallback_blocked_by_literal_lock")) is True
+
+
+@pytest.mark.asyncio
+async def test_coverage_gate_does_not_reprompt_when_user_accepts_partial(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ORCH_RETRIEVAL_CONTRACT", "advanced")
+    monkeypatch.setattr(settings, "ORCH_MODE_AUTORETRY_ENABLED", True)
+    monkeypatch.setattr(settings, "ORCH_MODE_AUTORETRY_MAX_ATTEMPTS", 2)
+    monkeypatch.setattr(settings, "ORCH_LITERAL_LOCK_ENABLED", True)
+    monkeypatch.setattr(settings, "ORCH_COVERAGE_REQUIRED", True)
+
+    cmd = HandleQuestionCommand(
+        query=(
+            "__mode__=literal_normativa "
+            "Que exige textualmente ISO 9001, ISO 14001 e ISO 45001? "
+            "__clarified_scope__=true Aclaracion de alcance: Aceptar respuesta parcial."
+        ),
+        tenant_id="t",
+        user_id=None,
+        collection_id=None,
+        scope_label="tenant=t",
+    )
+    use_case = HandleQuestionUseCase(_FakeRetriever(), _FakeAnswerGen(), _FakeValidator())
+    result = await use_case.execute(cmd)
+
+    assert result.clarification is None
+    assert (result.retrieval.trace or {}).get("coverage_preference") == "partial"
+
+
+@pytest.mark.asyncio
+async def test_coverage_gate_uses_explicit_coverage_marker(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ORCH_RETRIEVAL_CONTRACT", "advanced")
+    monkeypatch.setattr(settings, "ORCH_MODE_AUTORETRY_ENABLED", True)
+    monkeypatch.setattr(settings, "ORCH_MODE_AUTORETRY_MAX_ATTEMPTS", 2)
+    monkeypatch.setattr(settings, "ORCH_LITERAL_LOCK_ENABLED", True)
+    monkeypatch.setattr(settings, "ORCH_COVERAGE_REQUIRED", True)
+
+    cmd = HandleQuestionCommand(
+        query=(
+            "__mode__=literal_normativa "
+            "Que exige textualmente ISO 9001, ISO 14001 e ISO 45001? "
+            "__clarified_scope__=true __coverage__=partial Aclaracion de alcance: 2."
+        ),
+        tenant_id="t",
+        user_id=None,
+        collection_id=None,
+        scope_label="tenant=t",
+    )
+    use_case = HandleQuestionUseCase(_FakeRetriever(), _FakeAnswerGen(), _FakeValidator())
+    result = await use_case.execute(cmd)
+
+    assert result.clarification is None
+    assert (result.retrieval.trace or {}).get("coverage_preference") == "partial"

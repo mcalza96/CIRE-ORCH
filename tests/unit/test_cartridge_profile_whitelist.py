@@ -8,6 +8,7 @@ from app.cartridges.deps import resolve_agent_profile
 def test_resolve_agent_profile_blocks_unauthorized_header_profile(monkeypatch) -> None:
     from app.core.config import settings
 
+    monkeypatch.setattr(settings, "ORCH_DEV_PROFILE_ASSIGNMENTS_ENABLED", False)
     monkeypatch.setattr(settings, "ORCH_TENANT_PROFILE_MAP", '{"tenant-iso":"iso_auditor"}')
     monkeypatch.setattr(
         settings,
@@ -24,6 +25,7 @@ def test_resolve_agent_profile_blocks_unauthorized_header_profile(monkeypatch) -
 def test_resolve_agent_profile_allows_authorized_header_profile(monkeypatch) -> None:
     from app.core.config import settings
 
+    monkeypatch.setattr(settings, "ORCH_DEV_PROFILE_ASSIGNMENTS_ENABLED", False)
     monkeypatch.setattr(settings, "ORCH_TENANT_PROFILE_MAP", '{"tenant-iso":"base"}')
     monkeypatch.setattr(
         settings,

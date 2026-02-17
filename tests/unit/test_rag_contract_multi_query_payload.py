@@ -21,7 +21,7 @@ async def test_multi_query_sanitizes_payload_and_defaults_merge(monkeypatch):
     captured = {}
 
     async def _post_once(
-        *, base_url: str, path: str, payload: dict, tenant_id: str, user_id: str | None
+        *, base_url: str, path: str, payload: dict, tenant_id: str, user_id: str | None, **kwargs
     ):
         captured["base_url"] = base_url
         captured["path"] = path

@@ -24,6 +24,8 @@ BATCH_SKIP_ESTIMATE="false"
 WATCH_MODE="${WATCH_MODE:-stream}"
 RESUME_BATCH_ID=""
 PROGRESS_JSON="false"
+AGENT_PROFILE_ID="${AGENT_PROFILE_ID:-}"
+CLEAR_AGENT_PROFILE="false"
 BATCH_ID="${BATCH_ID:-}"
 VISUAL_RATIO="${VISUAL_ROUTER_MAX_VISUAL_RATIO:-0.5}"
 VISUAL_MAX_PAGES="${VISUAL_ROUTER_MAX_VISUAL_PAGES:-100}"
@@ -36,6 +38,7 @@ declare -a ORCH_AUTH_CURL_ARGS=()
 
 STEP_HEALTH="pendiente"
 STEP_TENANT="pendiente"
+STEP_PROFILE="pendiente"
 STEP_COLLECTION="pendiente"
 STEP_QUEUE="pendiente"
 STEP_PREFLIGHT="pendiente"
@@ -56,20 +59,21 @@ render_checklist() {
   echo "📋 Checklist de ejecución"
   echo "1. Salud API: $STEP_HEALTH"
   echo "2. Tenant: $STEP_TENANT"
-  echo "3. Colección: $STEP_COLLECTION"
-  echo "4. Cola de archivos: $STEP_QUEUE"
-  echo "5. Pre-estimación visual: $STEP_PREFLIGHT"
-  echo "6. Crear batch: $STEP_BATCH_CREATE"
-  echo "7. Cargar archivos al batch: $STEP_BATCH_UPLOAD"
-  echo "8. Sellar batch: $STEP_BATCH_SEAL"
-  echo "9. Procesamiento worker: $STEP_WORKER"
-  echo "   9.1 Estado runtime: $STEP_WORKER_STATUS"
-  echo "   9.2 Documentos terminales: $STEP_WORKER_DOCS"
-  echo "   9.3 Cola activa: $STEP_WORKER_QUEUE"
-  echo "   9.4 Fallos acumulados: $STEP_WORKER_ERRORS"
-  echo "   9.5 Riesgo pérdida visual: $STEP_WORKER_LOSS"
-  echo "   9.6 Fase worker: $STEP_WORKER_PHASE"
-  echo "   9.7 Referencias: $STEP_WORKER_REFS"
+  echo "3. Cartucho por tenant: $STEP_PROFILE"
+  echo "4. Colección: $STEP_COLLECTION"
+  echo "5. Cola de archivos: $STEP_QUEUE"
+  echo "6. Pre-estimación visual: $STEP_PREFLIGHT"
+  echo "7. Crear batch: $STEP_BATCH_CREATE"
+  echo "8. Cargar archivos al batch: $STEP_BATCH_UPLOAD"
+  echo "9. Sellar batch: $STEP_BATCH_SEAL"
+  echo "10. Procesamiento worker: $STEP_WORKER"
+  echo "   10.1 Estado runtime: $STEP_WORKER_STATUS"
+  echo "   10.2 Documentos terminales: $STEP_WORKER_DOCS"
+  echo "   10.3 Cola activa: $STEP_WORKER_QUEUE"
+  echo "   10.4 Fallos acumulados: $STEP_WORKER_ERRORS"
+  echo "   10.5 Riesgo pérdida visual: $STEP_WORKER_LOSS"
+  echo "   10.6 Fase worker: $STEP_WORKER_PHASE"
+  echo "   10.7 Referencias: $STEP_WORKER_REFS"
 }
 
 usage() {
@@ -82,6 +86,8 @@ Opciones:
   --tenant-name <texto>        Alias descriptivo del tenant
   --collection-id <id>         Carpeta/Colección (id lógico)
   --collection-name <texto>    Carpeta/Colección (nombre)
+  --agent-profile <id>         Asigna override dev de cartucho para el tenant
+  --clear-agent-profile        Limpia override dev de cartucho para el tenant
   --file <ruta>                Archivo a encolar (repetible)
   --glob <patron>              Patrón para encolar (repetible)
   --embedding-mode <modo>      LOCAL o CLOUD (si no, se pregunta)
@@ -95,6 +101,7 @@ Opciones:
 
 Ejemplos:
   ./ing.sh --tenant-id 11111111-1111-1111-1111-111111111111 --collection-name trinorma --file ./docs/iso9001.pdf --file ./docs/iso14001.pdf
+  ./ing.sh --tenant-id <uuid> --agent-profile iso_auditor --collection-name normas --file ./docs/manual.pdf
   ./ing.sh --collection-name normas --glob "./docs/*.md"
   ./ing.sh --collection-name iso-v2 --no-wait
   ./ing.sh --tenant-id <uuid> --resume-batch <batch_id> --watch-mode stream
@@ -227,6 +234,116 @@ for item in items:
     if cid:
         print(f"{cid}|{key}|{name}|open")
 PY
+}
+
+fetch_orch_agent_profiles() {
+  if [[ -z "${ORCH_ACCESS_TOKEN:-}" ]]; then
+    return 0
+  fi
+
+  local status
+  status=$(curl -sS -o /tmp/orch_agent_profiles.json -w "%{http_code}" --max-time 4 \
+    -H "Authorization: Bearer $ORCH_ACCESS_TOKEN" \
+    "$ORCH_URL/api/v1/knowledge/agent-profiles" || true)
+
+  if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
+    return 0
+  fi
+
+  python3 - <<'PY'
+import json
+from pathlib import Path
+
+try:
+    payload = json.loads(Path("/tmp/orch_agent_profiles.json").read_text(encoding="utf-8"))
+except Exception:
+    payload = {}
+
+items = payload if isinstance(payload, list) else payload.get("items", [])
+for item in items:
+    if not isinstance(item, dict):
+        continue
+    profile_id = str(item.get("id") or "").strip()
+    if not profile_id:
+        continue
+    version = str(item.get("version") or "").strip()
+    status = str(item.get("status") or "").strip()
+    description = str(item.get("description") or "").strip().replace("|", "/")
+    owner = str(item.get("owner") or "").strip().replace("|", "/")
+    print(f"{profile_id}|{version}|{status}|{description}|{owner}")
+PY
+}
+
+fetch_orch_tenant_profile() {
+  local tenant_id="$1"
+  if [[ -z "${ORCH_ACCESS_TOKEN:-}" ]]; then
+    return 0
+  fi
+
+  local status
+  status=$(curl -sS -o /tmp/orch_tenant_profile.json -w "%{http_code}" --max-time 4 \
+    -H "Authorization: Bearer $ORCH_ACCESS_TOKEN" \
+    -H "X-Tenant-ID: $tenant_id" \
+    "$ORCH_URL/api/v1/knowledge/tenant-profile?tenant_id=$tenant_id" || true)
+
+  if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
+    return 0
+  fi
+
+  python3 - <<'PY'
+import json
+from pathlib import Path
+
+try:
+    payload = json.loads(Path("/tmp/orch_tenant_profile.json").read_text(encoding="utf-8"))
+except Exception:
+    payload = {}
+
+override = str(payload.get("override_profile_id") or "").strip()
+resolution = payload.get("resolution") if isinstance(payload.get("resolution"), dict) else {}
+source = str(resolution.get("source") or "").strip()
+applied = str(resolution.get("applied_profile_id") or "").strip()
+reason = str(resolution.get("decision_reason") or "").strip().replace("|", "/")
+print(f"{override}|{source}|{applied}|{reason}")
+PY
+}
+
+set_or_clear_orch_tenant_profile() {
+  local tenant_id="$1"
+  local profile_id="$2"
+  local clear_flag="$3"
+  if [[ -z "${ORCH_ACCESS_TOKEN:-}" ]]; then
+    return 1
+  fi
+
+  local payload
+  payload=$(python3 - "$tenant_id" "$profile_id" "$clear_flag" <<'PY'
+import json
+import sys
+
+tenant_id = sys.argv[1]
+profile_id = sys.argv[2].strip()
+clear_flag = sys.argv[3].strip().lower() in {"1", "true", "yes", "on"}
+body = {"tenant_id": tenant_id, "clear": clear_flag}
+if profile_id:
+    body["profile_id"] = profile_id
+print(json.dumps(body, ensure_ascii=True))
+PY
+)
+
+  local status
+  status=$(curl -sS -o /tmp/orch_tenant_profile_put.json -w "%{http_code}" --max-time 6 \
+    -X PUT \
+    -H "Authorization: Bearer $ORCH_ACCESS_TOKEN" \
+    -H "X-Tenant-ID: $tenant_id" \
+    -H "Content-Type: application/json" \
+    "$ORCH_URL/api/v1/knowledge/tenant-profile" \
+    -d "$payload" || true)
+
+  if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
+    return 1
+  fi
+  return 0
 }
 
 uuid_v4() {
@@ -394,6 +511,133 @@ PY
     TENANT_ID="${tenant_ids[$idx]}"
     TENANT_NAME="${tenant_names[$idx]}"
     echo "✅ Tenant seleccionado: $TENANT_NAME ($TENANT_ID)"
+  fi
+}
+
+select_or_assign_profile() {
+  build_orch_auth_curl_args
+
+  if [[ -z "${ORCH_ACCESS_TOKEN:-}" ]]; then
+    if [[ "$CLEAR_AGENT_PROFILE" == "true" || -n "$AGENT_PROFILE_ID" ]]; then
+      echo "⚠️  No hay ORCH_ACCESS_TOKEN; no se pudo aplicar override de cartucho."
+      STEP_PROFILE="omitido (sin ORCH_ACCESS_TOKEN)"
+      return 0
+    fi
+    STEP_PROFILE="omitido (sin ORCH_ACCESS_TOKEN)"
+    return 0
+  fi
+
+  if [[ "$CLEAR_AGENT_PROFILE" == "true" ]]; then
+    if set_or_clear_orch_tenant_profile "$TENANT_ID" "" "true"; then
+      echo "✅ Override de cartucho limpiado para tenant $TENANT_ID"
+      STEP_PROFILE="completado (override limpiado)"
+    else
+      echo "⚠️  No se pudo limpiar override de cartucho (endpoint no disponible)."
+      STEP_PROFILE="omitido (endpoint no disponible)"
+    fi
+    return 0
+  fi
+
+  if [[ -n "$AGENT_PROFILE_ID" ]]; then
+    if set_or_clear_orch_tenant_profile "$TENANT_ID" "$AGENT_PROFILE_ID" "false"; then
+      echo "✅ Cartucho asignado por flag: $AGENT_PROFILE_ID"
+      STEP_PROFILE="completado (override=$AGENT_PROFILE_ID)"
+    else
+      echo "⚠️  No se pudo asignar cartucho '$AGENT_PROFILE_ID' (endpoint no disponible o perfil inválido)."
+      STEP_PROFILE="omitido (set fallido)"
+    fi
+    return 0
+  fi
+
+  if [[ ! -t 0 ]]; then
+    STEP_PROFILE="omitido (sin TTY)"
+    return 0
+  fi
+
+  local profiles_rows
+  profiles_rows="$(fetch_orch_agent_profiles || true)"
+  if [[ -z "$profiles_rows" ]]; then
+    STEP_PROFILE="omitido (endpoint no disponible)"
+    return 0
+  fi
+
+  local current_row
+  current_row="$(fetch_orch_tenant_profile "$TENANT_ID" || true)"
+  local current_override=""
+  local current_source=""
+  local current_applied=""
+  local current_reason=""
+  if [[ -n "$current_row" ]]; then
+    IFS='|' read -r current_override current_source current_applied current_reason <<< "$current_row"
+  fi
+
+  echo ""
+  echo "🧩 Cartucho por tenant"
+  if [[ -n "$current_override" ]]; then
+    echo "   Override actual: $current_override"
+  else
+    echo "   Override actual: (sin override)"
+  fi
+  if [[ -n "$current_source" ]]; then
+    echo "   Resolución actual: source=$current_source applied=$current_applied reason=$current_reason"
+  fi
+
+  local profile_ids=()
+  local profile_labels=()
+  local line
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    IFS='|' read -r pid version status description owner <<< "$line"
+    [[ -z "$pid" ]] && continue
+    profile_ids+=("$pid")
+    profile_labels+=("v=${version:-n/a}, status=${status:-n/a}, owner=${owner:-n/a}")
+  done <<< "$profiles_rows"
+
+  if (( ${#profile_ids[@]} == 0 )); then
+    STEP_PROFILE="omitido (sin perfiles)"
+    return 0
+  fi
+
+  echo "[0] Mantener resolución actual"
+  echo "[C] Limpiar override (usar cascada)"
+  local i
+  for ((i=0; i<${#profile_ids[@]}; i++)); do
+    printf "[%d] %s (%s)\n" "$((i+1))" "${profile_ids[$i]}" "${profile_labels[$i]}"
+  done
+
+  local opt
+  read -r -p "📝 Cartucho para tenant [0]: " opt
+  [[ -z "$opt" ]] && opt="0"
+
+  if [[ "$opt" == "0" ]]; then
+    STEP_PROFILE="sin cambios"
+    return 0
+  fi
+
+  if [[ "$opt" =~ ^[Cc]$ ]]; then
+    if set_or_clear_orch_tenant_profile "$TENANT_ID" "" "true"; then
+      STEP_PROFILE="completado (override limpiado)"
+      echo "✅ Override limpiado."
+    else
+      STEP_PROFILE="omitido (clear fallido)"
+      echo "⚠️  No se pudo limpiar override (endpoint no disponible)."
+    fi
+    return 0
+  fi
+
+  if ! [[ "$opt" =~ ^[0-9]+$ ]] || (( opt < 1 || opt > ${#profile_ids[@]} )); then
+    echo "⚠️  Opción inválida. Se mantiene resolución actual."
+    STEP_PROFILE="sin cambios"
+    return 0
+  fi
+
+  local selected_profile="${profile_ids[$((opt-1))]}"
+  if set_or_clear_orch_tenant_profile "$TENANT_ID" "$selected_profile" "false"; then
+    STEP_PROFILE="completado (override=$selected_profile)"
+    echo "✅ Override aplicado: $selected_profile"
+  else
+    STEP_PROFILE="omitido (set fallido)"
+    echo "⚠️  No se pudo aplicar override '$selected_profile' (endpoint no disponible o perfil inválido)."
   fi
 }
 
@@ -1566,6 +1810,10 @@ while [[ $# -gt 0 ]]; do
       COLLECTION_ID="$2"; shift 2 ;;
     --collection-name)
       COLLECTION_NAME="$2"; shift 2 ;;
+    --agent-profile)
+      AGENT_PROFILE_ID="$2"; shift 2 ;;
+    --clear-agent-profile)
+      CLEAR_AGENT_PROFILE="true"; shift ;;
     --file)
       FILE_QUEUE+=("$2"); shift 2 ;;
     --glob)
@@ -1601,6 +1849,12 @@ render_checklist
 
 select_or_create_tenant
 STEP_TENANT="completado"
+render_checklist
+
+select_or_assign_profile
+if [[ "$STEP_PROFILE" == "pendiente" ]]; then
+  STEP_PROFILE="completado"
+fi
 render_checklist
 
 if [[ -n "$RESUME_BATCH_ID" ]]; then

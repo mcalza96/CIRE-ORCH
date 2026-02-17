@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     ORCH_COVERAGE_GATE_TOP_N: int = 12
     ORCH_COVERAGE_GATE_MAX_MISSING: int = 2
     ORCH_COVERAGE_GATE_STEP_BACK: bool = True
+    ORCH_COVERAGE_REQUIRED: bool = True
+    ORCH_LITERAL_LOCK_ENABLED: bool = True
 
     # Raptor summaries (optional). Advanced contract does not include summaries,
     # so we can call the debug summaries endpoint in a controlled way.
@@ -74,6 +76,8 @@ class Settings(BaseSettings):
     ORCH_TENANT_PROFILE_MAP: str | None = None
     ORCH_TENANT_PROFILE_WHITELIST: str | None = None
     ORCH_AGENT_PROFILE_HEADER: str = "X-Agent-Profile"
+    ORCH_DEV_PROFILE_ASSIGNMENTS_ENABLED: bool = True
+    ORCH_DEV_PROFILE_ASSIGNMENTS_FILE: str = ".state/tenant_profile_assignments.json"
 
     # Optional DB-backed cartridge override (tenant private profiles)
     ORCH_CARTRIDGE_DB_ENABLED: bool = False

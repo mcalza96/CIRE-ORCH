@@ -105,7 +105,15 @@ def _rewrite_query_with_clarification(original_query: str, clarification_answer:
     lowered = text.lower().strip()
     if lowered in {"comparativa", "explicativa", "literal_normativa", "literal_lista"}:
         return f"{original_query}\n\n__clarified_mode__={lowered} Aclaracion de modo: {text}."
-    return f"{original_query}\n\n__clarified_scope__=true Aclaracion de alcance: {text}."
+    coverage_tag = ""
+    if lowered in {"respuesta parcial", "aceptar respuesta parcial"}:
+        coverage_tag = "__coverage__=partial "
+    elif lowered in {"cobertura completa", "exigir cobertura completa"}:
+        coverage_tag = "__coverage__=full "
+    return (
+        f"{original_query}\n\n__clarified_scope__=true {coverage_tag}"
+        f"Aclaracion de alcance: {text}."
+    )
 
 
 def _parse_error_payload(response: httpx.Response) -> dict[str, Any]:
@@ -379,6 +387,12 @@ def _print_trace(last_result: dict[str, Any]) -> None:
     if trace:
         keys = ", ".join(sorted(trace.keys())[:12])
         print(f"   trace_keys={keys}")
+        coverage_preference = str(trace.get("coverage_preference") or "").strip()
+        if coverage_preference:
+            print(f"   coverage_preference={coverage_preference}")
+        missing_scopes = trace.get("missing_scopes") if isinstance(trace.get("missing_scopes"), list) else []
+        if missing_scopes:
+            print("   missing_scopes=" + ", ".join(str(x) for x in missing_scopes))
         layer_counts = (
             trace.get("layer_counts") if isinstance(trace.get("layer_counts"), dict) else {}
         )
@@ -470,7 +484,94 @@ def _print_answer(data: dict[str, Any]) -> None:
         print("⚠️ Validacion: " + "; ".join(str(issue) for issue in issues))
     if not citations and not (context_chunks := data.get("context_chunks")):
         print("💡 Sin evidencia recuperada. Prueba con otra colección o con '0) Todas / Default'.")
+    _print_answer_diagnostics(data)
     print("=" * 60 + "\n")
+
+
+def _extract_retrieval_warnings(data: dict[str, Any]) -> list[str]:
+    retrieval = data.get("retrieval") if isinstance(data.get("retrieval"), dict) else {}
+    retrieval_plan = (
+        data.get("retrieval_plan") if isinstance(data.get("retrieval_plan"), dict) else {}
+    )
+    trace = retrieval.get("trace") if isinstance(retrieval.get("trace"), dict) else {}
+    hybrid_trace = trace.get("hybrid_trace") if isinstance(trace.get("hybrid_trace"), dict) else {}
+
+    out: list[str] = []
+    warning = str(trace.get("warning") or "").strip()
+    if warning:
+        out.append(warning)
+    for raw in (
+        hybrid_trace.get("warnings")
+        if isinstance(hybrid_trace.get("warnings"), list)
+        else []
+    ):
+        text = str(raw or "").strip()
+        if text:
+            out.append(text)
+    plan_reason = str(retrieval_plan.get("reason") or "").strip()
+    if plan_reason:
+        out.append(plan_reason)
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in out:
+        key = item.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
+
+def _print_answer_diagnostics(data: dict[str, Any]) -> None:
+    retrieval = data.get("retrieval") if isinstance(data.get("retrieval"), dict) else {}
+    validation = data.get("validation") if isinstance(data.get("validation"), dict) else {}
+    context_chunks = (
+        data.get("context_chunks") if isinstance(data.get("context_chunks"), list) else []
+    )
+    citations = data.get("citations") if isinstance(data.get("citations"), list) else []
+    issues = validation.get("issues") if isinstance(validation.get("issues"), list) else []
+    accepted = bool(validation.get("accepted", True))
+
+    degraded = (not accepted) or (len(context_chunks) == 0) or (len(citations) == 0)
+    if not degraded:
+        return
+
+    contract = str(retrieval.get("contract") or "").strip() or "unknown"
+    strategy = str(retrieval.get("strategy") or "").strip() or "unknown"
+    warnings = _extract_retrieval_warnings(data)
+    issues_text = " | ".join(str(x) for x in issues).lower()
+    warning_text = " | ".join(warnings).lower()
+
+    stage = "synthesis"
+    reason = "respuesta sin evidencia suficiente o con validacion fallida"
+    if len(context_chunks) == 0:
+        stage = "retrieval"
+        reason = "no se recuperaron chunks para la respuesta"
+    if "source markers" in issues_text:
+        stage = "synthesis"
+        reason = "la generacion no incluyo marcadores C#/R# exigidos por validacion"
+    if "scope mismatch" in issues_text:
+        stage = "scope_validation"
+        reason = "inconsistencia entre alcance consultado y evidencia/respuesta"
+    if "advanced_contract_404_fallback_legacy" in warning_text:
+        stage = "retrieval_contract"
+        reason = "RAG no expone endpoints advanced y ORCH cayo a legacy"
+    if (
+        "pgrst202" in warning_text
+        or "could not find the function" in warning_text
+        or "hybrid_rpc_signature_mismatch_hnsw_ef_search" in warning_text
+    ):
+        stage = "rag_sql_contract"
+        reason = "desalineacion de firma RPC en Supabase (funcion/parametros)"
+
+    print("🩺 Diagnostico")
+    print(f"   stage={stage}")
+    print(f"   reason={reason}")
+    print(f"   retrieval={contract}/{strategy}")
+    if warnings:
+        top = " | ".join(warnings[:2])
+        print(f"   warnings={top}")
+    print("   next=/trace (detalle) | /explain (ranking de retrieval)")
 
 
 def _obs_headers(access_token: str | None, tenant_id: str | None = None) -> dict[str, str]:
@@ -491,13 +592,36 @@ def _print_obs_answer(result: dict[str, Any], latency_ms: float) -> None:
     citations = result.get("citations") if isinstance(result.get("citations"), list) else []
     validation = result.get("validation") if isinstance(result.get("validation"), dict) else {}
     accepted = bool(validation.get("accepted", True))
+    retrieval = result.get("retrieval") if isinstance(result.get("retrieval"), dict) else {}
+    retrieval_plan = (
+        result.get("retrieval_plan")
+        if isinstance(result.get("retrieval_plan"), dict)
+        else {}
+    )
+    strategy = str(retrieval.get("strategy") or "unknown")
+    contract = str(retrieval.get("contract") or "unknown")
+    timings = (
+        retrieval_plan.get("timings_ms")
+        if isinstance(retrieval_plan.get("timings_ms"), dict)
+        else {}
+    )
+    timings_compact = ""
+    if timings:
+        parts: list[str] = []
+        for key, value in list(timings.items())[:4]:
+            if isinstance(value, (int, float)):
+                parts.append(f"{key}={round(float(value), 1)}")
+        if parts:
+            timings_compact = " timings_ms(" + ", ".join(parts) + ")"
     print(
         "📈 obs:"
         f" mode={mode}"
+        f" retrieval={contract}/{strategy}"
         f" context_chunks={len(context_chunks)}"
         f" citations={len(citations)}"
         f" validation={accepted}"
         f" latency_ms={round(latency_ms, 2)}"
+        f"{timings_compact}"
     )
 
 
@@ -992,9 +1116,24 @@ async def main(argv: list[str] | None = None) -> None:
                     )
                     if question:
                         print("🧠 Clarificacion requerida: " + question)
+                    reply = ""
                     if options:
-                        print("🧩 Opciones: " + " | ".join(str(opt) for opt in options))
-                    reply = input("📝 Aclaracion > ").strip()
+                        print("🧩 Opciones:")
+                        for idx, opt in enumerate(options, start=1):
+                            print(f"  {idx}) {opt}")
+                        while True:
+                            selected_raw = _prompt(f"📝 Selecciona opcion [1-{len(options)}]: ")
+                            if not selected_raw:
+                                reply = ""
+                                break
+                            if selected_raw.isdigit():
+                                selected = int(selected_raw)
+                                if 1 <= selected <= len(options):
+                                    reply = str(options[selected - 1])
+                                    break
+                            print("⚠️ Opción inválida. Ingresa el número de una alternativa.")
+                    else:
+                        reply = _prompt("📝 Aclaracion > ")
                     if not reply:
                         break
                     clarified_query = _rewrite_query_with_clarification(query, reply)

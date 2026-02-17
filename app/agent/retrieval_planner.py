@@ -208,6 +208,7 @@ def build_deterministic_subqueries(
     query: str,
     requested_standards: tuple[str, ...],
     max_queries: int = 6,
+    mode: str | None = None,
     profile: AgentProfile | None = None,
 ) -> list[dict[str, Any]]:
     effective_query, _ = apply_search_hints(query, profile=profile)
@@ -235,12 +236,14 @@ def build_deterministic_subqueries(
         if len(out) >= max_queries:
             return out
 
+    literal_mode = (mode or "").strip().lower() in {"literal_normativa", "literal_lista"}
+
     # Bridge/documentation impact query.
     shared_filters: dict[str, Any] | None = (
         {"source_standards": list(requested_standards)} if requested_standards else None
     )
 
-    if len(out) < max_queries:
+    if len(out) < max_queries and (not literal_mode or not out):
         out.append(
             {
                 "id": "bridge_contexto",
@@ -251,7 +254,8 @@ def build_deterministic_subqueries(
             }
         )
 
-    if len(out) < max_queries:
+    # In literal modes, step-back is reserved for downstream coverage repair, not as a primary query.
+    if len(out) < max_queries and not literal_mode:
         out.append(
             {
                 "id": "step_back",

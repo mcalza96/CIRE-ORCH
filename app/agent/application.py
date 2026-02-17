@@ -215,6 +215,64 @@ class HandleQuestionUseCase:
 
             return ValidationResult(accepted=not issues, issues=issues)
 
+        def _requires_literal_lock(text: str, active_plan: RetrievalPlan) -> bool:
+            if not bool(settings.ORCH_LITERAL_LOCK_ENABLED):
+                return False
+            if not bool(active_plan.require_literal_evidence):
+                return False
+            lowered = (text or "").lower()
+            literal_hints = (
+                "textualmente",
+                "literal",
+                "verbatim",
+                "transcribe",
+                "cita",
+                "citas",
+                "c#/r#",
+                "qué exige",
+                "que exige",
+            )
+            if any(hint in lowered for hint in literal_hints):
+                return True
+            return bool(re.search(r"\b[CR]\d+\b", text or "", flags=re.IGNORECASE))
+
+        def _missing_scopes_from_evidence(
+            evidence: list[EvidenceItem],
+            *,
+            requested_scopes: tuple[str, ...],
+        ) -> list[str]:
+            if len(requested_scopes) < 2:
+                return []
+            required = [scope.upper() for scope in requested_scopes if scope]
+            found: set[str] = set()
+            for item in evidence:
+                row = item.metadata.get("row") if isinstance(item.metadata, dict) else None
+                if not isinstance(row, dict):
+                    continue
+                row_scope = _extract_row_standard(row)
+                if not row_scope:
+                    continue
+                for expected in required:
+                    if expected in row_scope or row_scope in expected:
+                        found.add(expected)
+            return [scope for scope in required if scope not in found]
+
+        def _normalize_warning_codes(trace_payload: dict[str, Any]) -> list[str]:
+            codes: list[str] = []
+            raw_codes = trace_payload.get("warning_codes")
+            if isinstance(raw_codes, list):
+                for code in raw_codes:
+                    value = str(code or "").strip().upper()
+                    if value:
+                        codes.append(value)
+            raw_warnings = trace_payload.get("warnings")
+            if isinstance(raw_warnings, list):
+                for warning in raw_warnings:
+                    text = str(warning or "").strip().lower()
+                    if "signature_mismatch" in text and "hnsw" in text:
+                        codes.append("HYBRID_RPC_SIGNATURE_MISMATCH_HNSW")
+            return list(dict.fromkeys(codes))
+
         def _base_trace_payload(extra: dict[str, Any] | None = None) -> dict[str, Any]:
             payload: dict[str, Any] = {}
             if cmd.agent_profile is not None:
@@ -229,6 +287,37 @@ class HandleQuestionUseCase:
                 payload.update(extra)
             return payload
 
+        def _coverage_preference(text: str) -> str:
+            lowered = (text or "").lower()
+            if "__coverage__=partial" in lowered:
+                return "partial"
+            if "__coverage__=full" in lowered:
+                return "full"
+            partial_markers = (
+                "aceptar respuesta parcial",
+                "respuesta parcial",
+                "parcial",
+            )
+            full_markers = (
+                "cobertura completa",
+                "exigir cobertura completa",
+                "completa",
+            )
+            has_scope_clarification = (
+                "__clarified_scope__=true" in lowered
+                or "aclaracion de alcance:" in lowered
+                or "aclaración de alcance:" in lowered
+            )
+            if not has_scope_clarification and not any(
+                marker in lowered for marker in [*partial_markers, *full_markers]
+            ):
+                return "unspecified"
+            if any(marker in lowered for marker in partial_markers):
+                return "partial"
+            if any(marker in lowered for marker in full_markers):
+                return "full"
+            return "unspecified"
+
         normalized_query = (cmd.query or "").lower()
         has_user_clarification = (
             "aclaración de alcance:" in normalized_query
@@ -237,6 +326,8 @@ class HandleQuestionUseCase:
             or "modo preferido en sesion:" in normalized_query
             or "__clarified_scope__=true" in normalized_query
         )
+        coverage_preference = _coverage_preference(normalized_query)
+        allow_partial_coverage = coverage_preference == "partial"
 
         if hasattr(self._retriever, "set_profile_context"):
             try:
@@ -578,11 +669,13 @@ class HandleQuestionUseCase:
 
         current_plan = plan
         chunks, summaries, retrieval = await _run_retrieval(attempt_plan=current_plan)
+        fallback_blocked_by_literal_lock = False
 
         initial_plan = current_plan
         initial_chunks = chunks
         initial_summaries = summaries
         initial_retrieval = retrieval
+        literal_lock_required = _requires_literal_lock(cmd.query, initial_plan)
 
         # Auto-retry on retrieval collapse when the initial mode was overly strict.
         if (
@@ -592,22 +685,107 @@ class HandleQuestionUseCase:
             and not summaries
             and current_plan.mode in {"literal_normativa", "literal_lista"}
         ):
-            fallback_mode: QueryMode = (
-                "comparativa" if len(current_plan.requested_standards) >= 2 else "explicativa"
+            if literal_lock_required:
+                fallback_blocked_by_literal_lock = True
+            else:
+                fallback_mode: QueryMode = (
+                    "comparativa" if len(current_plan.requested_standards) >= 2 else "explicativa"
+                )
+                if fallback_mode != current_plan.mode:
+                    retry_intent = QueryIntent(
+                        mode=fallback_mode,
+                        rationale="auto_retry_on_empty_retrieval",
+                    )
+                    retry_plan = build_retrieval_plan(
+                        retry_intent,
+                        query=cmd.query,
+                        profile=cmd.agent_profile,
+                    )
+                    chunks2, summaries2, retrieval2 = await _run_retrieval(attempt_plan=retry_plan)
+                    current_plan = retry_plan
+                    chunks, summaries, retrieval = chunks2, summaries2, retrieval2
+
+        evidence_all = [*chunks, *summaries]
+        trace_missing = (
+            retrieval.trace.get("missing_scopes")
+            if isinstance(retrieval.trace, dict)
+            else None
+        )
+        missing_scopes = _missing_scopes_from_evidence(
+            evidence_all,
+            requested_scopes=current_plan.requested_standards,
+        )
+        if isinstance(trace_missing, list):
+            normalized_trace_missing = [
+                str(item).strip().upper()
+                for item in trace_missing
+                if str(item).strip()
+            ]
+            missing_scopes = list(dict.fromkeys([*missing_scopes, *normalized_trace_missing]))
+
+        if (
+            bool(settings.ORCH_COVERAGE_REQUIRED)
+            and len(current_plan.requested_standards) >= 2
+            and missing_scopes
+            and not allow_partial_coverage
+        ):
+            coverage_msg = (
+                "Cobertura insuficiente por alcance. Faltan evidencias para: "
+                + ", ".join(missing_scopes)
+                + "."
             )
-            if fallback_mode != current_plan.mode:
-                retry_intent = QueryIntent(
-                    mode=fallback_mode,
-                    rationale="auto_retry_on_empty_retrieval",
-                )
-                retry_plan = build_retrieval_plan(
-                    retry_intent,
-                    query=cmd.query,
-                    profile=cmd.agent_profile,
-                )
-                chunks2, summaries2, retrieval2 = await _run_retrieval(attempt_plan=retry_plan)
-                current_plan = retry_plan
-                chunks, summaries, retrieval = chunks2, summaries2, retrieval2
+            fallback_message = (
+                cmd.agent_profile.validation.fallback_message
+                if cmd.agent_profile is not None
+                else "No encuentro evidencia suficiente para responder con trazabilidad."
+            )
+            clarification = ClarificationRequest(
+                question=(
+                    "No encontré evidencia para todos los alcances solicitados ("
+                    + ", ".join(missing_scopes)
+                    + "). ¿Deseas mantener cobertura completa o aceptar una respuesta parcial?"
+                ),
+                options=("Cobertura completa", "Aceptar respuesta parcial"),
+            )
+            answer = AnswerDraft(
+                text=f"{fallback_message}\n\n{coverage_msg}",
+                mode=current_plan.mode,
+                evidence=evidence_all,
+            )
+            validation = ValidationResult(accepted=True, issues=[])
+            trace_payload = dict(retrieval.trace or {})
+            trace_payload["initial_mode"] = initial_plan.mode
+            trace_payload["final_mode"] = current_plan.mode
+            trace_payload["fallback_blocked_by_literal_lock"] = bool(
+                fallback_blocked_by_literal_lock
+            )
+            trace_payload["missing_scopes"] = list(missing_scopes)
+            trace_payload["coverage_preference"] = coverage_preference
+            rpc_compat_mode = str(
+                trace_payload.get("rpc_compat_mode")
+                or trace_payload.get("hybrid_rpc_compat_mode")
+                or ""
+            ).strip()
+            if rpc_compat_mode:
+                trace_payload["rpc_compat_mode"] = rpc_compat_mode
+            warning_codes = _normalize_warning_codes(trace_payload)
+            if warning_codes:
+                trace_payload["warning_codes"] = warning_codes
+            trace_payload.update(_base_trace_payload())
+            return HandleQuestionResult(
+                intent=intent,
+                plan=current_plan,
+                answer=answer,
+                validation=validation,
+                retrieval=RetrievalDiagnostics(
+                    contract=retrieval.contract,
+                    strategy="coverage_required",
+                    partial=bool(retrieval.partial),
+                    trace=trace_payload,
+                    scope_validation=dict(retrieval.scope_validation or {}),
+                ),
+                clarification=clarification,
+            )
 
         # HITL fallback for low-confidence queries that still produced no evidence.
         if (
@@ -633,6 +811,23 @@ class HandleQuestionUseCase:
                 "intent": intent.mode,
                 "confidence": float(intent_trace.get("confidence") or 0.0),
             }
+            trace_payload["initial_mode"] = initial_plan.mode
+            trace_payload["final_mode"] = current_plan.mode
+            trace_payload["fallback_blocked_by_literal_lock"] = bool(
+                fallback_blocked_by_literal_lock
+            )
+            trace_payload["missing_scopes"] = list(missing_scopes)
+            trace_payload["coverage_preference"] = coverage_preference
+            rpc_compat_mode = str(
+                trace_payload.get("rpc_compat_mode")
+                or trace_payload.get("hybrid_rpc_compat_mode")
+                or ""
+            ).strip()
+            if rpc_compat_mode:
+                trace_payload["rpc_compat_mode"] = rpc_compat_mode
+            warning_codes = _normalize_warning_codes(trace_payload)
+            if warning_codes:
+                trace_payload["warning_codes"] = warning_codes
             trace_payload.update(_base_trace_payload())
             return HandleQuestionResult(
                 intent=intent,
@@ -922,6 +1117,19 @@ class HandleQuestionUseCase:
 
         # Attach attempt history to retrieval trace for white-box debugging.
         trace_out = dict(retrieval.trace or {})
+        trace_out["initial_mode"] = initial_plan.mode
+        trace_out["final_mode"] = current_plan.mode
+        trace_out["fallback_blocked_by_literal_lock"] = bool(fallback_blocked_by_literal_lock)
+        trace_out["missing_scopes"] = list(missing_scopes)
+        trace_out["coverage_preference"] = coverage_preference
+        rpc_compat_mode = str(
+            trace_out.get("rpc_compat_mode") or trace_out.get("hybrid_rpc_compat_mode") or ""
+        ).strip()
+        if rpc_compat_mode:
+            trace_out["rpc_compat_mode"] = rpc_compat_mode
+        warning_codes = _normalize_warning_codes(trace_out)
+        if warning_codes:
+            trace_out["warning_codes"] = warning_codes
         if isinstance(intent_trace, dict) and intent_trace:
             # Keep payload bounded.
             trace_out["classification"] = {

@@ -22,4 +22,19 @@ resolve_python() {
 PY_CMD="$(resolve_python)"
 
 export PYTHONPATH="$BASE_DIR:${PYTHONPATH:-}"
-exec "$PY_CMD" "$BASE_DIR/orch_cli.py" chat "$@"
+
+EXTRA_ARGS=()
+if [ "${ORCH_CHAT_OBS:-1}" != "0" ]; then
+  has_obs=0
+  for arg in "$@"; do
+    if [ "$arg" = "--obs" ]; then
+      has_obs=1
+      break
+    fi
+  done
+  if [ "$has_obs" -eq 0 ]; then
+    EXTRA_ARGS+=("--obs")
+  fi
+fi
+
+exec "$PY_CMD" "$BASE_DIR/orch_cli.py" chat "${EXTRA_ARGS[@]}" "$@"

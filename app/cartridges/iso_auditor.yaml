@@ -54,6 +54,12 @@ router:
     - obligatorio
     - exacto
     - literal
+    - textualmente
+    - verbatim
+    - transcribe
+    - cita
+    - citas
+    - c#/r#
     - que exige
   comparative_hints: [compar, difer, vs, ambas, respecto]
   interpretive_hints:
@@ -114,9 +120,19 @@ clarification_rules:
       - Proteccion al denunciante
       - Forense de trazabilidad
       - Balanceado
+  - rule_id: cobertura_trinorma_completa
+    mode: literal_normativa
+    min_scope_count: 3
+    any_markers: [textualmente, literal, c#/r#, que exige, trazabilidad]
+    question_template: >-
+      Detecte una consulta literal trinorma ({scopes}). ¿Deseas exigir cobertura completa
+      ISO 9001/14001/45001 o aceptar respuesta parcial?
+    options:
+      - Cobertura completa
+      - Respuesta parcial
 
 retrieval:
-  min_score: 0.78
+  min_score: 0.72
   search_hints:
     - term: epp
       expand_to:
@@ -130,6 +146,23 @@ retrieval:
       expand_to:
         - accion correctiva
         - hallazgo
+    - term: informacion documentada
+      expand_to:
+        - control documental
+        - retencion
+        - actualizacion
+        - disponibilidad
+    - term: comunicacion documentada
+      expand_to:
+        - comunicacion interna
+        - comunicacion externa
+        - evidencia de comunicacion
+    - term: participacion y consulta
+      expand_to:
+        - trabajadores
+        - consulta
+        - participacion
+        - sst
   by_mode:
     literal_lista:
       chunk_k: 45
@@ -137,8 +170,8 @@ retrieval:
       summary_k: 3
       require_literal_evidence: true
     literal_normativa:
-      chunk_k: 45
-      chunk_fetch_k: 220
+      chunk_k: 55
+      chunk_fetch_k: 300
       summary_k: 3
       require_literal_evidence: true
     comparativa:

@@ -34,3 +34,26 @@ def test_ing_sh_uses_shared_auth_bridge(tmp_path):
     )
     assert proc.returncode == 0, proc.stderr
     assert "Uso:" in proc.stdout
+    assert "--agent-profile <id>" in proc.stdout
+    assert "--clear-agent-profile" in proc.stdout
+
+
+def test_ing_sh_accepts_agent_profile_flags_in_help_mode(tmp_path):
+    repo = Path("/Users/mcalzadilla/cire/orch")
+    script = repo / "ing.sh"
+
+    fake_bin = _make_fake_curl(tmp_path)
+    env = dict(os.environ)
+    env["PATH"] = fake_bin + os.pathsep + env.get("PATH", "")
+    env["ORCH_URL"] = "http://127.0.0.1:8001"
+
+    proc = subprocess.run(
+        [str(script), "--agent-profile", "iso_auditor", "--help"],
+        cwd=str(repo),
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "Uso:" in proc.stdout

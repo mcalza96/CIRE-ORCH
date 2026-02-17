@@ -58,9 +58,12 @@ Opcional: prueba de ingesta HTTP (cliente portable):
 ```bash
 ./ing.sh --help
 ./ing.sh --file ./docs/manual.pdf
+./ing.sh --tenant-id <TENANT_ID> --agent-profile iso_auditor --collection-name normas --file ./docs/manual.pdf
+./ing.sh --tenant-id <TENANT_ID> --clear-agent-profile --collection-name normas --file ./docs/manual.pdf
 ```
 
 Nota: `./ing.sh` usa `RAG_URL` si está definido; si no, aplica resolución híbrida con `RAG_ENGINE_*`.
+También permite asignar override dev de cartucho por tenant desde la interfaz (`--agent-profile` / `--clear-agent-profile`).
 
 o via HTTP:
 
@@ -148,9 +151,12 @@ Optional: HTTP ingestion smoke test (portable client):
 ```bash
 ./ing.sh --help
 ./ing.sh --file ./docs/manual.pdf
+./ing.sh --tenant-id <TENANT_ID> --agent-profile iso_auditor --collection-name norms --file ./docs/manual.pdf
+./ing.sh --tenant-id <TENANT_ID> --clear-agent-profile --collection-name norms --file ./docs/manual.pdf
 ```
 
 Note: `./ing.sh` uses `RAG_URL` when defined; otherwise it applies hybrid resolution from `RAG_ENGINE_*`.
+It also supports per-tenant dev cartridge overrides from the CLI (`--agent-profile` / `--clear-agent-profile`).
 
 or via HTTP:
 

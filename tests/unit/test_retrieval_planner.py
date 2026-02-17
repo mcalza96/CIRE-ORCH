@@ -29,3 +29,16 @@ def test_build_deterministic_subqueries_bounded() -> None:
     ids = {item["id"] for item in subqueries}
     # Agnostic bridge queries should be present when there is room.
     assert "bridge_contexto" in ids or "step_back" in ids
+
+
+def test_build_deterministic_subqueries_literal_mode_defers_step_back() -> None:
+    query = "ISO 9001 7.5.3 ISO 14001 7.4 ISO 45001 5.4 textualmente"
+    requested = ("ISO 9001", "ISO 14001", "ISO 45001")
+    subqueries = build_deterministic_subqueries(
+        query=query,
+        requested_standards=requested,
+        max_queries=6,
+        mode="literal_normativa",
+    )
+    ids = {item["id"] for item in subqueries}
+    assert "step_back" not in ids

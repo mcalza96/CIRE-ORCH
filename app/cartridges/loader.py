@@ -10,6 +10,7 @@ from urllib.parse import quote
 import httpx
 import structlog
 
+from app.cartridges.dev_assignments import get_dev_profile_assignments_store
 from app.cartridges.models import AgentProfile, ProfileResolution, ResolvedAgentProfile
 from app.core.config import PROJECT_ROOT, settings
 
@@ -118,9 +119,11 @@ class CartridgeLoader:
     """Resuelve cartuchos con estrategia en cascada:
 
     1) DB privada por tenant (si esta habilitada)
-    2) Perfil explicito/header autorizado o mapeo tenant->perfil
-    3) Cartucho en filesystem (tenant_id.yaml)
-    4) Perfil por defecto (`base`)
+    2) Perfil explicito/header autorizado
+    3) Override dev local (tenant->perfil)
+    4) Mapeo tenant->perfil por env
+    5) Cartucho en filesystem (tenant_id.yaml)
+    6) Perfil por defecto (`base`)
     """
 
     def __init__(self, cartridges_dir: Path | None = None) -> None:
@@ -138,6 +141,79 @@ class CartridgeLoader:
         if allowed is None:
             return True
         return profile_id in allowed
+
+    def dev_profile_assignments_enabled(self) -> bool:
+        return bool(settings.ORCH_DEV_PROFILE_ASSIGNMENTS_ENABLED)
+
+    def _profile_yaml_path(self, profile_id: str) -> Path:
+        normalized = str(profile_id or "").strip() or "base"
+        return self._cartridges_dir / f"{normalized}.yaml"
+
+    def profile_exists(self, profile_id: str) -> bool:
+        path = self._profile_yaml_path(profile_id)
+        if not path.exists():
+            return False
+        try:
+            payload = _safe_load_yaml(path)
+            _validate_v2_payload(path, payload)
+            AgentProfile.model_validate(payload)
+        except Exception:
+            return False
+        return True
+
+    def list_available_profile_entries(self) -> list[dict[str, str]]:
+        entries: list[dict[str, str]] = []
+        if not self._cartridges_dir.exists():
+            return entries
+        for path in sorted(self._cartridges_dir.glob("*.yaml")):
+            profile_id = str(path.stem or "").strip()
+            if not profile_id:
+                continue
+            try:
+                payload = _safe_load_yaml(path)
+                _validate_v2_payload(path, payload)
+                parsed = AgentProfile.model_validate(payload)
+            except Exception as exc:
+                logger.warning(
+                    "cartridge_profile_discovery_skip_invalid",
+                    path=str(path),
+                    error=str(exc),
+                )
+                continue
+            entries.append(
+                {
+                    "id": profile_id,
+                    "declared_profile_id": parsed.profile_id,
+                    "version": parsed.version,
+                    "status": parsed.status,
+                    "description": parsed.meta.description,
+                    "owner": parsed.meta.owner,
+                }
+            )
+        return entries
+
+    def get_dev_profile_override(self, tenant_id: str | None) -> str | None:
+        if not self.dev_profile_assignments_enabled():
+            return None
+        return get_dev_profile_assignments_store().get(tenant_id)
+
+    def set_dev_profile_override(self, *, tenant_id: str, profile_id: str) -> None:
+        if not self.dev_profile_assignments_enabled():
+            raise RuntimeError("dev_profile_assignments_disabled")
+        normalized_profile = str(profile_id or "").strip()
+        if not self.profile_exists(normalized_profile):
+            raise ValueError(f"profile_not_found:{normalized_profile}")
+        get_dev_profile_assignments_store().set(tenant_id=tenant_id, profile_id=normalized_profile)
+
+    def clear_dev_profile_override(self, *, tenant_id: str) -> bool:
+        if not self.dev_profile_assignments_enabled():
+            return False
+        return get_dev_profile_assignments_store().clear(tenant_id)
+
+    def snapshot_dev_profile_overrides(self) -> dict[str, str]:
+        if not self.dev_profile_assignments_enabled():
+            return {}
+        return get_dev_profile_assignments_store().snapshot()
 
     async def _fetch_db_profile_async(self, tenant_id: str) -> AgentProfile | None:
         if not bool(settings.ORCH_CARTRIDGE_DB_ENABLED):
@@ -265,6 +341,17 @@ class CartridgeLoader:
             )
             override_denied = True
 
+        dev_mapped = self.get_dev_profile_override(tenant)
+        if dev_mapped:
+            if override_denied:
+                return (
+                    dev_mapped,
+                    "dev_map",
+                    "unauthorized_header_override_fallback_dev_map",
+                    requested,
+                )
+            return dev_mapped, "dev_map", "dev_profile_map_match", requested
+
         mapped = _tenant_profile_map().get(tenant)
         if mapped:
             if override_denied:
@@ -364,7 +451,7 @@ class CartridgeLoader:
         if profile_from_db is not None:
             return profile_from_db
 
-        # Paso 2/3/4: explicit/map/filesystem/default
+        # Paso 2..6: explicit/dev_map/map/filesystem/default
         profile_id = self.resolve_profile_id(
             tenant_id=tenant, explicit_profile_id=explicit_profile_id
         )

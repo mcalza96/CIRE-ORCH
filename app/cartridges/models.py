@@ -128,7 +128,7 @@ class ValidationPolicy(BaseModel):
 
 
 class ProfileResolution(BaseModel):
-    source: Literal["db", "header", "tenant_map", "tenant_yaml", "base"]
+    source: Literal["db", "header", "dev_map", "tenant_map", "tenant_yaml", "base"]
     requested_profile_id: str | None = None
     applied_profile_id: str
     decision_reason: str

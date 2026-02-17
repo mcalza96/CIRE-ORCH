@@ -224,6 +224,28 @@ def test_build_ingest_context_respects_explicit_tenant(monkeypatch):
     assert called["discovery"] is False
 
 
+def test_build_ingest_context_preserves_agent_profile_flags(monkeypatch):
+    base_dir = orch_cli_runtime._repo_root()
+    assert (base_dir / "tools/ingestion-client/ing.sh").exists()
+
+    monkeypatch.setattr(orch_cli_runtime, "_require_orch_health", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(orch_cli_runtime, "_resolve_rag_url", lambda _env: "http://resolved-rag:8000")
+
+    async def _resolve_token(**_kwargs):
+        return "resolved-token"
+
+    monkeypatch.setattr(orch_cli_runtime, "_resolve_access_token", _resolve_token)
+
+    context = asyncio.run(
+        orch_cli_runtime.build_ingest_exec_context(
+            ["--agent-profile", "iso_auditor", "--no-wait"],
+            env={"ORCH_URL": "http://localhost:8001", "TENANT_ID": "tenant-1"},
+        )
+    )
+    assert "--agent-profile" in context.argv
+    assert "iso_auditor" in context.argv
+
+
 def test_resolve_tenant_from_orch_fallback_parses_list_payload(monkeypatch):
     class _Response:
         status_code = 200

@@ -391,6 +391,7 @@ class RagEngineRetrieverAdapter:
                 return items
             missing = _missing_scopes(items, plan.requested_standards)
             if not missing:
+                base_trace["missing_scopes"] = []
                 return items
             cap = max(1, int(settings.ORCH_COVERAGE_GATE_MAX_MISSING or 2))
             missing = missing[:cap]
@@ -424,6 +425,13 @@ class RagEngineRetrieverAdapter:
 
             cov_items = cov_payload.get("items") if isinstance(cov_payload, dict) else []
             if not isinstance(cov_items, list) or not cov_items:
+                base_trace["coverage_gate"] = {
+                    "trigger_reason": reason,
+                    "missing_scopes": missing,
+                    "added_queries": [q.get("id") for q in focused],
+                    "final_missing_scopes": list(missing),
+                }
+                base_trace["missing_scopes"] = list(missing)
                 return items
 
             # Merge and dedupe by source id.
@@ -493,12 +501,17 @@ class RagEngineRetrieverAdapter:
                             q.get("id") for q in step_back_queries
                         ]
 
+            final_missing = _missing_scopes(merged, plan.requested_standards)
+            if isinstance(base_trace.get("coverage_gate"), dict):
+                base_trace["coverage_gate"]["final_missing_scopes"] = final_missing
+            base_trace["missing_scopes"] = list(final_missing)
             return merged
 
         async def build_subqueries() -> list[dict[str, Any]]:
             subqueries_local = build_deterministic_subqueries(
                 query=expanded_query,
                 requested_standards=plan.requested_standards,
+                mode=plan.mode,
                 profile=self._profile_context,
             )
             if settings.ORCH_SEMANTIC_PLANNER:
@@ -523,7 +536,8 @@ class RagEngineRetrieverAdapter:
         if (
             settings.ORCH_MULTI_QUERY_PRIMARY
             and multihop_hint
-            and plan.mode in {"comparativa", "explicativa"}
+            and plan.mode
+            in {"comparativa", "explicativa", "literal_normativa", "literal_lista"}
         ):
             merge = {"strategy": "rrf", "rrf_k": 60, "top_k": min(16, max(12, k))}
             subqueries = await build_subqueries()
@@ -705,7 +719,8 @@ class RagEngineRetrieverAdapter:
         if (
             settings.ORCH_MULTIHOP_FALLBACK
             and multihop_hint
-            and plan.mode in {"comparativa", "explicativa"}
+            and plan.mode
+            in {"comparativa", "explicativa", "literal_normativa", "literal_lista"}
         ):
             rows: list[dict[str, Any]] = []
             for it in items[: max(1, min(12, len(items)))]:

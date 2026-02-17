@@ -12,6 +12,7 @@ from app.agent.grounded_answer_service import GroundedAnswerService
 from app.agent.http_adapters import GroundedAnswerAdapter, RagEngineRetrieverAdapter
 from app.api.deps import UserContext, get_current_user
 from app.cartridges.deps import resolve_agent_profile
+from app.cartridges.loader import get_cartridge_loader
 from app.clients.backend_selector import RagBackendSelector
 from app.core.config import settings
 from app.core.scope_metrics import scope_metrics_store
@@ -65,6 +66,25 @@ class CollectionItem(BaseModel):
 
 class CollectionListResponse(BaseModel):
     items: list[CollectionItem]
+
+
+class AgentProfileItem(BaseModel):
+    id: str
+    declared_profile_id: str
+    version: str
+    status: str
+    description: str
+    owner: str
+
+
+class AgentProfileListResponse(BaseModel):
+    items: list[AgentProfileItem]
+
+
+class TenantProfileUpdateRequest(BaseModel):
+    tenant_id: str
+    profile_id: Optional[str] = None
+    clear: bool = False
 
 
 def _build_use_case() -> HandleQuestionUseCase:
@@ -234,6 +254,12 @@ async def answer_with_orchestrator(
                     or (result.retrieval.trace or {}).get("fallback_reason")
                     or ""
                 ),
+                "initial_mode": str((result.retrieval.trace or {}).get("initial_mode") or ""),
+                "final_mode": str((result.retrieval.trace or {}).get("final_mode") or ""),
+                "missing_scopes": list((result.retrieval.trace or {}).get("missing_scopes") or []),
+                "fallback_blocked_by_literal_lock": bool(
+                    (result.retrieval.trace or {}).get("fallback_blocked_by_literal_lock", False)
+                ),
                 "subqueries": list((result.retrieval.trace or {}).get("subqueries") or []),
                 "timings_ms": dict((result.retrieval.trace or {}).get("timings_ms") or {}),
                 "kernel_flags": {
@@ -352,6 +378,109 @@ async def list_authorized_collections(
             },
         ) from exc
     return CollectionListResponse(items=items)
+
+
+@router.get("/agent-profiles", response_model=AgentProfileListResponse)
+async def list_agent_profiles(
+    current_user: UserContext = Depends(get_current_user),
+) -> AgentProfileListResponse:
+    del current_user
+    loader = get_cartridge_loader()
+    rows = loader.list_available_profile_entries()
+    items = [AgentProfileItem.model_validate(row) for row in rows]
+    return AgentProfileListResponse(items=items)
+
+
+@router.get("/tenant-profile", response_model=Dict[str, Any])
+async def get_tenant_profile_override(
+    http_request: Request,
+    tenant_id: str = Query(..., min_length=1),
+    current_user: UserContext = Depends(get_current_user),
+) -> Dict[str, Any]:
+    authorized_tenant = await authorize_requested_tenant(http_request, current_user, tenant_id)
+    loader = get_cartridge_loader()
+    resolved = await loader.resolve_for_tenant_async(tenant_id=authorized_tenant)
+    return {
+        "tenant_id": authorized_tenant,
+        "dev_assignments_enabled": loader.dev_profile_assignments_enabled(),
+        "override_profile_id": loader.get_dev_profile_override(authorized_tenant),
+        "agent_profile": {
+            "profile_id": resolved.profile.profile_id,
+            "version": resolved.profile.version,
+            "status": resolved.profile.status,
+        },
+        "resolution": resolved.resolution.model_dump(),
+    }
+
+
+@router.put("/tenant-profile", response_model=Dict[str, Any])
+async def put_tenant_profile_override(
+    http_request: Request,
+    request: TenantProfileUpdateRequest,
+    current_user: UserContext = Depends(get_current_user),
+) -> Dict[str, Any]:
+    authorized_tenant = await authorize_requested_tenant(http_request, current_user, request.tenant_id)
+    loader = get_cartridge_loader()
+    if not loader.dev_profile_assignments_enabled():
+        logger.warning(
+            "profile_dev_override_denied",
+            tenant_id=authorized_tenant,
+            requested_profile_id=request.profile_id,
+            reason="feature_disabled",
+        )
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "DEV_PROFILE_ASSIGNMENTS_DISABLED",
+                "message": "Dev profile assignments are disabled",
+            },
+        )
+
+    should_clear = bool(request.clear) or not str(request.profile_id or "").strip()
+    if should_clear:
+        cleared = loader.clear_dev_profile_override(tenant_id=authorized_tenant)
+        logger.info(
+            "profile_dev_override_cleared",
+            tenant_id=authorized_tenant,
+            cleared=cleared,
+            requested_profile_id=request.profile_id,
+        )
+    else:
+        profile_id = str(request.profile_id or "").strip()
+        try:
+            loader.set_dev_profile_override(tenant_id=authorized_tenant, profile_id=profile_id)
+        except ValueError:
+            logger.warning(
+                "profile_dev_override_denied",
+                tenant_id=authorized_tenant,
+                requested_profile_id=profile_id,
+                reason="invalid_profile_id",
+            )
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "INVALID_AGENT_PROFILE",
+                    "message": f"Unknown or invalid profile_id: {profile_id}",
+                },
+            )
+        logger.info(
+            "profile_dev_override_set",
+            tenant_id=authorized_tenant,
+            applied_profile_id=profile_id,
+        )
+
+    resolved = await loader.resolve_for_tenant_async(tenant_id=authorized_tenant)
+    return {
+        "tenant_id": authorized_tenant,
+        "dev_assignments_enabled": loader.dev_profile_assignments_enabled(),
+        "override_profile_id": loader.get_dev_profile_override(authorized_tenant),
+        "agent_profile": {
+            "profile_id": resolved.profile.profile_id,
+            "version": resolved.profile.version,
+            "status": resolved.profile.status,
+        },
+        "resolution": resolved.resolution.model_dump(),
+    }
 
 
 @router.post("/validate-scope", response_model=Dict[str, Any])
