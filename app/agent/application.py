@@ -918,6 +918,12 @@ class HandleQuestionUseCase:
         validation = _validate_with_profile_policy(answer, current_plan)
 
         if validation.accepted and answer.evidence and _looks_profile_fallback_answer(answer.text):
+            logger.info(
+                "orchestrator_answer_fallback_with_evidence_detected",
+                tenant_id=cmd.tenant_id,
+                mode=current_plan.mode,
+                evidence_count=len(answer.evidence),
+            )
             answer2 = await _generate_answer_safe(
                 query=(
                     cmd.query + "\n\n[INSTRUCCION INTERNA] Hay evidencia recuperada util. "
@@ -933,6 +939,12 @@ class HandleQuestionUseCase:
             validation2 = _validate_with_profile_policy(answer2, current_plan)
             if validation2.accepted:
                 answer, validation = answer2, validation2
+                logger.info(
+                    "orchestrator_answer_fallback_with_evidence_corrected",
+                    tenant_id=cmd.tenant_id,
+                    mode=current_plan.mode,
+                    evidence_count=len(answer.evidence),
+                )
 
         attempts_trace.append(
             {

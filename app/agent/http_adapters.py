@@ -1185,6 +1185,53 @@ class GroundedAnswerAdapter:
                 return raw
             return raw[:limit].rstrip() + "..."
 
+        def _extract_subquestions(text: str) -> list[str]:
+            raw = str(text or "").strip()
+            if not raw:
+                return []
+            parts = re.split(r"\?+|\n+", raw)
+            out: list[str] = []
+            seen: set[str] = set()
+            for part in parts:
+                candidate = " ".join(part.split()).strip(" .:-")
+                if len(candidate) < 18:
+                    continue
+                key = candidate.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(candidate)
+            return out
+
+        def _row_clause_label(item: EvidenceItem) -> str:
+            row = item.metadata.get("row") if isinstance(item.metadata, dict) else None
+            if not isinstance(row, dict):
+                return ""
+            meta_raw = row.get("metadata")
+            meta: dict[str, Any] = meta_raw if isinstance(meta_raw, dict) else {}
+            for key in ("clause_id", "clause_ref", "clause", "clause_anchor"):
+                value = str(meta.get(key) or "").strip()
+                if value:
+                    return value
+            return ""
+
+        def _render_literal_rows(items: list[EvidenceItem], *, max_rows: int) -> str:
+            rows: list[str] = []
+            seen: set[str] = set()
+            for item in items:
+                src = str(item.source or "").strip()
+                if not src or src in seen:
+                    continue
+                seen.add(src)
+                clause = _row_clause_label(item)
+                label = f"Clausula {clause}" if clause else "Afirmacion"
+                rows.append(
+                    f'{len(rows) + 1}) {label} | "{_snippet(item.content)}" | Fuente ({src})'
+                )
+                if len(rows) >= max_rows:
+                    break
+            return "\n".join(rows)
+
         def _safe_parse_iso8601(value: Any) -> float | None:
             from datetime import datetime
 
@@ -1243,6 +1290,17 @@ class GroundedAnswerAdapter:
                 + "\n\n[INSTRUCCION INTERNA] Si hay evidencia suficiente, responde con al menos 2 "
                 "afirmaciones literales distintas de la misma clausula, cada una con su fuente C#/R#."
             )
+        elif not plan.require_literal_evidence:
+            subquestions = _extract_subquestions(query)
+            if len(subquestions) >= 2:
+                numbered = "\n".join(
+                    f"{idx + 1}) {item}" for idx, item in enumerate(subquestions[:4])
+                )
+                query_for_generation = (
+                    query + "\n\n[INSTRUCCION INTERNA] La consulta contiene multiples preguntas. "
+                    "Responde cada una con subtitulo propio, en el mismo orden, y cita evidencia por seccion:\n"
+                    + numbered
+                )
 
         text = await self.service.generate_answer(
             query=query_for_generation,
@@ -1304,8 +1362,16 @@ class GroundedAnswerAdapter:
             # Ensure literal outputs include at least two grounded rows when available.
             markers = set(re.findall(r"\b[CR]\d+\b", text or ""))
             if literal_min_items > 1 and len(markers) < 2 and len(clause_items) >= 2:
-                rows: list[str] = []
-                for idx, item in enumerate(clause_items[:2], start=1):
-                    rows.append(f"{idx}) {_snippet(item.content)} | Fuente: {item.source}")
-                text = "\n".join(rows)
+                text = _render_literal_rows(clause_items, max_rows=2)
+
+            low_text = (text or "").strip().lower()
+            looks_fallback = low_text.startswith(
+                "no encontrado explicitamente"
+            ) or low_text.startswith("no encuentro evidencia suficiente")
+            if looks_fallback and ordered_items:
+                preferred = clause_items if clause_items else ordered_items
+                max_rows = 3 if plan.mode == "literal_lista" else 2
+                rendered = _render_literal_rows(preferred, max_rows=max_rows)
+                if rendered:
+                    text = rendered
         return AnswerDraft(text=text, mode=plan.mode, evidence=[*chunks, *summaries])
