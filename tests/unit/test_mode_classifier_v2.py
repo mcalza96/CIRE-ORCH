@@ -1,4 +1,5 @@
 from app.agent.mode_classifier import classify_mode_v2
+from app.cartridges.models import AgentProfile, RouterHeuristics
 
 
 def test_multiclause_analytical_prompt_is_not_literal() -> None:
@@ -17,3 +18,19 @@ def test_clause_without_scope_prefers_not_ambigua_here() -> None:
     result = classify_mode_v2(query)
     # v2 mode classifier alone doesn't do scope clarification; policies layer handles ambigua_scope.
     assert result.mode in {"literal_normativa", "literal_lista", "explicativa", "comparativa"}
+
+
+def test_low_signal_defaults_to_explicativa_with_profile_specific_markers() -> None:
+    profile = AgentProfile(
+        profile_id="iso_like",
+        router=RouterHeuristics(
+            literal_normative_hints=["textualmente", "verbatim"],
+            literal_list_hints=["lista", "enumera"],
+            comparative_hints=["comparar", "vs"],
+            interpretive_hints=["analiza", "impacta"],
+        ),
+    )
+    query = "que dice la introduccion de la iso 9001?"
+    result = classify_mode_v2(query, profile=profile)
+    assert result.mode == "explicativa"
+    assert "default:explicativa_for_low_signal" in set(result.reasons)

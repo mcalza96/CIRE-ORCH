@@ -50,3 +50,28 @@ def test_resolve_collection_displays_id_and_key(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "id=c1" in out
     assert "key=iso" in out
+
+
+def test_print_answer_diagnostics_maps_preflight_signature_warning(capsys):
+    chat_cli_runtime._print_answer_diagnostics(
+        {
+            "context_chunks": [],
+            "citations": [],
+            "validation": {
+                "accepted": False,
+                "issues": ["Answer does not include explicit source markers (C#/R#)."],
+            },
+            "retrieval": {
+                "contract": "advanced",
+                "strategy": "hybrid",
+                "trace": {
+                    "warnings": ["hybrid_rpc_preflight_signature_mismatch"],
+                    "warning_codes": ["HYBRID_RPC_SIGNATURE_MISMATCH_HNSW"],
+                },
+            },
+            "retrieval_plan": {},
+        }
+    )
+    out = capsys.readouterr().out
+    assert "stage=rag_sql_contract" in out
+    assert "desalineacion de firma RPC" in out

@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     ORCH_SEMANTIC_PLANNER: bool = False
     ORCH_PLANNER_MAX_QUERIES: int = 5
     ORCH_PLANNER_MODEL: str | None = None
+    ORCH_DETERMINISTIC_SUBQUERY_SEMANTIC_TAIL: bool = True
 
     # Multi-query promotion/iteration (agentic kernel guardrails)
     ORCH_MULTI_QUERY_PRIMARY: bool = False
@@ -52,6 +53,8 @@ class Settings(BaseSettings):
     ORCH_COVERAGE_GATE_STEP_BACK: bool = True
     ORCH_COVERAGE_REQUIRED: bool = True
     ORCH_LITERAL_LOCK_ENABLED: bool = True
+    ORCH_MIN_SCORE_BACKSTOP_ENABLED: bool = True
+    ORCH_MIN_SCORE_BACKSTOP_TOP_N: int = 6
 
     # Raptor summaries (optional). Advanced contract does not include summaries,
     # so we can call the debug summaries endpoint in a controlled way.

@@ -97,6 +97,45 @@ def _clause_near_standard(query: str, standard: str) -> str | None:
     return clause.group(0) if clause else None
 
 
+def _semantic_tail_for_standard(
+    *,
+    effective_query: str,
+    standard: str,
+    clause_refs: list[str],
+) -> str:
+    text = str(effective_query or "").strip()
+    if not text:
+        return ""
+
+    cleaned = text
+    cleaned = re.sub(rf"\b{re.escape(standard)}\b", " ", cleaned, flags=re.IGNORECASE)
+
+    key = _standard_key(standard)
+    if key:
+        cleaned = re.sub(
+            rf"\biso\s*[-:]?\s*{re.escape(key)}(?::\s*\d{{4}})?\b",
+            " ",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        cleaned = re.sub(rf"\b{re.escape(key)}\b", " ", cleaned, flags=re.IGNORECASE)
+
+    for clause in clause_refs[:8]:
+        value = str(clause or "").strip()
+        if not value:
+            continue
+        cleaned = re.sub(
+            rf"\bcl(?:a|á)usula\s*{re.escape(value)}\b",
+            " ",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        cleaned = re.sub(rf"\b{re.escape(value)}\b", " ", cleaned, flags=re.IGNORECASE)
+
+    cleaned = re.sub(r"[()\[\],;:]+", " ", cleaned)
+    return " ".join(part for part in cleaned.split() if part).strip()
+
+
 def _row_standard(row: dict[str, Any]) -> str | None:
     meta = row.get("metadata")
     if isinstance(meta, dict):
@@ -188,17 +227,19 @@ def build_initial_scope_filters(
     query: str,
     profile: AgentProfile | None = None,
 ) -> dict[str, Any] | None:
-    effective_query, _ = apply_search_hints(query, profile=profile)
+    raw_query = str(query or "").strip()
+    effective_query, _ = apply_search_hints(raw_query, profile=profile)
     requested = tuple(plan_requested) or extract_requested_scopes(effective_query, profile=profile)
     filters: dict[str, Any] = {}
     if requested:
         filters["source_standards"] = list(requested)
 
-    # Only narrow to clause_id for strict literal extraction; interpretive modes keep recall.
+    # Only narrow to clause_id for strict literal extraction AND explicit user references.
+    # Do not derive hard clause filters from search-hint expansions.
     if mode in {"literal_normativa", "literal_lista"}:
-        clause_refs = extract_clause_refs(effective_query, profile=profile)
+        clause_refs = extract_clause_refs(raw_query, profile=profile)
         if clause_refs:
-            filters["metadata"] = {"clause_id": clause_refs[0], "clause_refs": clause_refs}
+            filters["metadata"] = {"clause_id": clause_refs[0]}
 
     return filters or None
 
@@ -209,18 +250,30 @@ def build_deterministic_subqueries(
     requested_standards: tuple[str, ...],
     max_queries: int = 6,
     mode: str | None = None,
+    include_semantic_tail: bool = True,
     profile: AgentProfile | None = None,
 ) -> list[dict[str, Any]]:
-    effective_query, _ = apply_search_hints(query, profile=profile)
-    clause_refs = extract_clause_refs(effective_query, profile=profile)
+    raw_query = str(query or "").strip()
+    effective_query, _ = apply_search_hints(raw_query, profile=profile)
+    clause_refs = extract_clause_refs(raw_query, profile=profile)
     out: list[dict[str, Any]] = []
 
     # Per-standard subqueries (bounded).
     for standard in requested_standards[:3]:
-        clause = _clause_near_standard(effective_query, standard)
+        clause = _clause_near_standard(raw_query, standard)
         key = _standard_key(standard).lower() or "scope"
-        qtext = f"{standard} {clause or ''} " + " ".join(clause_refs[:3])
+        if include_semantic_tail:
+            semantic_tail = _semantic_tail_for_standard(
+                effective_query=effective_query,
+                standard=standard,
+                clause_refs=clause_refs,
+            )
+            tail = semantic_tail or " ".join(clause_refs[:3]) or effective_query[:500]
+        else:
+            tail = " ".join(clause_refs[:3])
+        qtext = f"{standard} {clause or ''} {tail or ''}"
         qtext = " ".join(part for part in qtext.split() if part).strip()
+        qtext = qtext[:900].rstrip()
         filters: dict[str, Any] = {"source_standard": standard}
         if clause:
             filters["metadata"] = {"clause_id": clause}

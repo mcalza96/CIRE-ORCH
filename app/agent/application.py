@@ -195,7 +195,7 @@ class HandleQuestionUseCase:
                 return base
 
             issues = list(base.issues)
-            if profile.validation.require_citations:
+            if profile.validation.require_citations and draft.evidence:
                 has_citation_marker = bool(re.search(r"\b[CR]\d+\b", draft.text or ""))
                 if (
                     not has_citation_marker

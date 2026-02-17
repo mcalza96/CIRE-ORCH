@@ -71,7 +71,9 @@ class RagEngineRetrieverAdapter:
         profile_resolution: dict[str, Any] | None = None,
     ) -> None:
         self._profile_context = profile
-        self._profile_resolution_context = profile_resolution if isinstance(profile_resolution, dict) else None
+        self._profile_resolution_context = (
+            profile_resolution if isinstance(profile_resolution, dict) else None
+        )
 
     def _profile_min_score(self) -> float | None:
         if self._profile_context is None:
@@ -93,6 +95,7 @@ class RagEngineRetrieverAdapter:
 
         kept: list[dict[str, Any]] = []
         dropped = 0
+        scored_dropped: list[tuple[float, dict[str, Any]]] = []
         for item in items:
             if not isinstance(item, dict):
                 continue
@@ -107,12 +110,26 @@ class RagEngineRetrieverAdapter:
                 kept.append(item)
             else:
                 dropped += 1
+                scored_dropped.append((score, item))
+
+        backstop_applied = False
+        if not kept and dropped > 0 and bool(settings.ORCH_MIN_SCORE_BACKSTOP_ENABLED):
+            top_n = max(1, int(settings.ORCH_MIN_SCORE_BACKSTOP_TOP_N or 6))
+            scored_dropped.sort(key=lambda pair: pair[0], reverse=True)
+            kept = [item for _, item in scored_dropped[:top_n]]
+            backstop_applied = bool(kept)
 
         if isinstance(trace_target, dict):
             trace_target["min_score_filter"] = {
                 "threshold": threshold,
                 "kept": len(kept),
                 "dropped": dropped,
+                "backstop_applied": backstop_applied,
+                "backstop_top_n": (
+                    max(1, int(settings.ORCH_MIN_SCORE_BACKSTOP_TOP_N or 6))
+                    if backstop_applied
+                    else 0
+                ),
             }
         return kept
 
@@ -325,8 +342,9 @@ class RagEngineRetrieverAdapter:
         fetch_k = max(1, int(plan.chunk_fetch_k))
 
         expanded_query, hint_trace = apply_search_hints(query, profile=self._profile_context)
-        clause_refs = extract_clause_refs(expanded_query, profile=self._profile_context)
+        clause_refs = extract_clause_refs(query, profile=self._profile_context)
         multihop_hint = len(plan.requested_standards) >= 2 or len(clause_refs) >= 2
+        semantic_tail_enabled = bool(settings.ORCH_DETERMINISTIC_SUBQUERY_SEMANTIC_TAIL)
 
         def _layer_stats(raw_items: list[dict[str, Any]]) -> dict[str, Any]:
             counts: dict[str, int] = {}
@@ -399,7 +417,9 @@ class RagEngineRetrieverAdapter:
             # Build one focused subquery per missing scope (agnostic: treat scope labels as strings).
             focused: list[dict[str, Any]] = []
             for idx, scope in enumerate(missing, start=1):
-                qtext = " ".join(part for part in [scope, *clause_refs[:3], expanded_query] if part).strip()
+                qtext = " ".join(
+                    part for part in [scope, *clause_refs[:3], expanded_query] if part
+                ).strip()
                 focused.append(
                     {
                         "id": f"scope_repair_{idx}",
@@ -512,6 +532,7 @@ class RagEngineRetrieverAdapter:
                 query=expanded_query,
                 requested_standards=plan.requested_standards,
                 mode=plan.mode,
+                include_semantic_tail=semantic_tail_enabled,
                 profile=self._profile_context,
             )
             if settings.ORCH_SEMANTIC_PLANNER:
@@ -536,8 +557,7 @@ class RagEngineRetrieverAdapter:
         if (
             settings.ORCH_MULTI_QUERY_PRIMARY
             and multihop_hint
-            and plan.mode
-            in {"comparativa", "explicativa", "literal_normativa", "literal_lista"}
+            and plan.mode in {"comparativa", "explicativa", "literal_normativa", "literal_lista"}
         ):
             merge = {"strategy": "rrf", "rrf_k": 60, "top_k": min(16, max(12, k))}
             subqueries = await build_subqueries()
@@ -561,6 +581,7 @@ class RagEngineRetrieverAdapter:
             diag_trace: dict[str, Any] = {
                 "promoted": True,
                 "reason": "complex_intent",
+                "deterministic_subquery_semantic_tail": semantic_tail_enabled,
                 "multi_query_trace": mq_trace if isinstance(mq_trace, dict) else {},
                 "subqueries": subq if isinstance(subq, list) else [],
                 "timings_ms": dict(timings_ms),
@@ -719,8 +740,7 @@ class RagEngineRetrieverAdapter:
         if (
             settings.ORCH_MULTIHOP_FALLBACK
             and multihop_hint
-            and plan.mode
-            in {"comparativa", "explicativa", "literal_normativa", "literal_lista"}
+            and plan.mode in {"comparativa", "explicativa", "literal_normativa", "literal_lista"}
         ):
             rows: list[dict[str, Any]] = []
             for it in items[: max(1, min(12, len(items)))]:
@@ -762,6 +782,7 @@ class RagEngineRetrieverAdapter:
                 subq = mq_payload.get("subqueries") if isinstance(mq_payload, dict) else None
                 diag_trace: dict[str, Any] = {
                     "fallback_reason": decision.reason,
+                    "deterministic_subquery_semantic_tail": semantic_tail_enabled,
                     "hybrid_trace": trace,
                     "multi_query_trace": mq_trace if isinstance(mq_trace, dict) else {},
                     "subqueries": subq if isinstance(subq, list) else [],
@@ -800,7 +821,11 @@ class RagEngineRetrieverAdapter:
             contract="advanced",
             strategy="hybrid",
             partial=False,
-            trace={"hybrid_trace": trace, "timings_ms": dict(timings_ms)},
+            trace={
+                "hybrid_trace": trace,
+                "timings_ms": dict(timings_ms),
+                "deterministic_subquery_semantic_tail": semantic_tail_enabled,
+            },
             scope_validation=self._validated_scope_payload or {},
         )
         if isinstance(items, list) and isinstance(self.last_retrieval_diagnostics.trace, dict):

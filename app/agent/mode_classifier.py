@@ -81,16 +81,24 @@ def extract_features(query: str, profile: AgentProfile | None = None) -> dict[st
     sentence_count = max(1, len([s for s in re.split(r"[.!?]+", text) if s.strip()]))
 
     list_markers = (
-        tuple(profile.router.literal_list_hints) if profile is not None else _LIST_MARKERS
+        tuple(profile.router.literal_list_hints)
+        if profile is not None and profile.router.literal_list_hints
+        else _LIST_MARKERS
     )
     comparative_markers = (
-        tuple(profile.router.comparative_hints) if profile is not None else _COMPARATIVE_MARKERS
+        tuple(profile.router.comparative_hints)
+        if profile is not None and profile.router.comparative_hints
+        else _COMPARATIVE_MARKERS
     )
     interpretive_markers = (
-        tuple(profile.router.interpretive_hints) if profile is not None else _ANALYSIS_VERBS
+        tuple(profile.router.interpretive_hints)
+        if profile is not None and profile.router.interpretive_hints
+        else _ANALYSIS_VERBS
     )
     literal_markers = (
-        tuple(profile.router.literal_normative_hints) if profile is not None else _LITERAL_VERBS
+        tuple(profile.router.literal_normative_hints)
+        if profile is not None and profile.router.literal_normative_hints
+        else _LITERAL_VERBS
     )
 
     features: dict[str, Any] = {
@@ -154,7 +162,7 @@ def classify_mode_v2(query: str, profile: AgentProfile | None = None) -> ModeCla
         reasons.append("feature:comparative_marker")
 
     if f.get("multi_scope"):
-        comparative_score += 2.0
+        comparative_score += 3.2
         explanatory_score += 0.5
         reasons.append("feature:multi_scope")
 
@@ -180,8 +188,15 @@ def classify_mode_v2(query: str, profile: AgentProfile | None = None) -> ModeCla
     if not filtered:
         filtered = candidates
 
-    # Pick max; compute a simple confidence from margin.
-    filtered.sort(key=lambda x: x[1], reverse=True)
+    # Pick max; for ties prefer interpretive defaults over strict literal modes.
+    tie_break_priority: dict[QueryMode, int] = {
+        "explicativa": 0,
+        "comparativa": 1,
+        "literal_normativa": 2,
+        "literal_lista": 3,
+        "ambigua_scope": 4,
+    }
+    filtered.sort(key=lambda x: (-x[1], tie_break_priority.get(x[0], 99)))
     best_mode_raw, best_score = filtered[0]
     best_mode = cast(QueryMode, best_mode_raw)
     second_score = filtered[1][1] if len(filtered) > 1 else (best_score - 1.0)
@@ -190,6 +205,19 @@ def classify_mode_v2(query: str, profile: AgentProfile | None = None) -> ModeCla
 
     # If scores are low across the board, reduce confidence.
     if best_score <= 1.0:
+        weak_signal = not any(
+            [
+                bool(f.get("has_literal_verb")),
+                bool(f.get("has_list_marker")),
+                bool(f.get("has_analysis_verb")),
+                bool(f.get("has_comparative_marker")),
+                int(f.get("clause_refs_count", 0)) >= 1,
+                bool(f.get("multi_scope")),
+            ]
+        )
+        if weak_signal and "explicativa" not in blocked:
+            best_mode = cast(QueryMode, "explicativa")
+            reasons.append("default:explicativa_for_low_signal")
         confidence = min(confidence, 0.55)
         reasons.append("low_signal")
 

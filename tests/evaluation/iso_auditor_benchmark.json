@@ -1,0 +1,1494 @@
+{
+  "meta": {
+    "profile_id": "iso_auditor",
+    "description": "Benchmark P2 para calibracion de min_score/search_hints",
+    "total_cases": 120,
+    "distribution": {
+      "literal": 40,
+      "comparativa": 40,
+      "explicativa": 40
+    }
+  },
+  "cases": [
+    {
+      "id": "literal_001",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "En el contexto de una auditoria interna: \u00bfque exige textualmente la ISO 9001 sobre control de la informacion documentada (clausula 7.5), que exige la ISO 14001 sobre comunicacion documentada interna y externa (clausula 7.4) y que exige la ISO 45001 sobre participacion y consulta de los trabajadores (clausula 5.4)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_002",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Para una evaluacion de conformidad inicial: \u00bfque exige textualmente la ISO 9001 sobre control de documentos y registros (clausula 7.5.2), que exige la ISO 14001 sobre comunicacion de requisitos ambientales (clausula 7.4.1) y que exige la ISO 45001 sobre participacion de representantes de trabajadores (clausula 5.4.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_003",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Considerando cierre de no conformidades: \u00bfque exige textualmente la ISO 9001 sobre creacion, actualizacion y control de informacion documentada (clausula 7.5.3), que exige la ISO 14001 sobre comunicacion de obligaciones de cumplimiento (clausula 7.4.2) y que exige la ISO 45001 sobre consulta sobre riesgos y controles de SST (clausula 5.4.2)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_004",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Durante revision por la direccion: \u00bfque exige textualmente la ISO 9001 sobre disponibilidad y proteccion de informacion documentada (clausula 8.5), que exige la ISO 14001 sobre informacion documentada para comunicacion ambiental (clausula 7.4.3) y que exige la ISO 45001 sobre participacion en investigacion de incidentes (clausula 6.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_005",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "En una auditoria de certificacion de tercera parte: \u00bfque exige textualmente la ISO 9001 sobre retencion y disposicion de informacion documentada (clausula 9.1), que exige la ISO 14001 sobre comunicacion documentada a partes interesadas (clausula 8.1) y que exige la ISO 45001 sobre consulta documentada en seguridad y salud (clausula 8.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_006",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Para sustentar trazabilidad forense: \u00bfque exige textualmente la ISO 9001 sobre gestion de versiones y aprobaciones documentadas (clausula 10.2), que exige la ISO 14001 sobre mecanismos documentados de comunicacion ambiental (clausula 9.1) y que exige la ISO 45001 sobre participacion de trabajadores en SST (clausula 9.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_007",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Durante plan anual de cumplimiento: \u00bfque exige textualmente la ISO 9001 sobre identificacion y recuperacion de registros de calidad (clausula 4.4), que exige la ISO 14001 sobre evidencia de comunicacion ambiental (clausula 6.1.3) y que exige la ISO 45001 sobre consulta previa a cambios de SST (clausula 10.2)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_008",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "En seguimiento de acciones correctivas: \u00bfque exige textualmente la ISO 9001 sobre proteccion frente a perdida o uso no intencional de documentos (clausula 6.1), que exige la ISO 14001 sobre comunicacion de desempeno ambiental (clausula 10.2) y que exige la ISO 45001 sobre participacion en decisiones de SST (clausula 7.4)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_009",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "En el contexto de una auditoria interna: \u00bfque exige textualmente la ISO 9001 sobre control de la informacion documentada (clausula 7.5), que exige la ISO 14001 sobre comunicacion documentada interna y externa (clausula 7.4) y que exige la ISO 45001 sobre participacion y consulta de los trabajadores (clausula 5.4)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_010",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Para una evaluacion de conformidad inicial: \u00bfque exige textualmente la ISO 9001 sobre control de documentos y registros (clausula 7.5.2), que exige la ISO 14001 sobre comunicacion de requisitos ambientales (clausula 7.4.1) y que exige la ISO 45001 sobre participacion de representantes de trabajadores (clausula 5.4.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_011",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Considerando cierre de no conformidades: \u00bfque exige textualmente la ISO 9001 sobre creacion, actualizacion y control de informacion documentada (clausula 7.5.3), que exige la ISO 14001 sobre comunicacion de obligaciones de cumplimiento (clausula 7.4.2) y que exige la ISO 45001 sobre consulta sobre riesgos y controles de SST (clausula 5.4.2)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_012",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Durante revision por la direccion: \u00bfque exige textualmente la ISO 9001 sobre disponibilidad y proteccion de informacion documentada (clausula 8.5), que exige la ISO 14001 sobre informacion documentada para comunicacion ambiental (clausula 7.4.3) y que exige la ISO 45001 sobre participacion en investigacion de incidentes (clausula 6.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_013",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "En una auditoria de certificacion de tercera parte: \u00bfque exige textualmente la ISO 9001 sobre retencion y disposicion de informacion documentada (clausula 9.1), que exige la ISO 14001 sobre comunicacion documentada a partes interesadas (clausula 8.1) y que exige la ISO 45001 sobre consulta documentada en seguridad y salud (clausula 8.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_014",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Para sustentar trazabilidad forense: \u00bfque exige textualmente la ISO 9001 sobre gestion de versiones y aprobaciones documentadas (clausula 10.2), que exige la ISO 14001 sobre mecanismos documentados de comunicacion ambiental (clausula 9.1) y que exige la ISO 45001 sobre participacion de trabajadores en SST (clausula 9.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_015",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Durante plan anual de cumplimiento: \u00bfque exige textualmente la ISO 9001 sobre identificacion y recuperacion de registros de calidad (clausula 4.4), que exige la ISO 14001 sobre evidencia de comunicacion ambiental (clausula 6.1.3) y que exige la ISO 45001 sobre consulta previa a cambios de SST (clausula 10.2)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_016",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "En seguimiento de acciones correctivas: \u00bfque exige textualmente la ISO 9001 sobre proteccion frente a perdida o uso no intencional de documentos (clausula 6.1), que exige la ISO 14001 sobre comunicacion de desempeno ambiental (clausula 10.2) y que exige la ISO 45001 sobre participacion en decisiones de SST (clausula 7.4)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_017",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "En el contexto de una auditoria interna: \u00bfque exige textualmente la ISO 9001 sobre control de la informacion documentada (clausula 7.5), que exige la ISO 14001 sobre comunicacion documentada interna y externa (clausula 7.4) y que exige la ISO 45001 sobre participacion y consulta de los trabajadores (clausula 5.4)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_018",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Para una evaluacion de conformidad inicial: \u00bfque exige textualmente la ISO 9001 sobre control de documentos y registros (clausula 7.5.2), que exige la ISO 14001 sobre comunicacion de requisitos ambientales (clausula 7.4.1) y que exige la ISO 45001 sobre participacion de representantes de trabajadores (clausula 5.4.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_019",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Considerando cierre de no conformidades: \u00bfque exige textualmente la ISO 9001 sobre creacion, actualizacion y control de informacion documentada (clausula 7.5.3), que exige la ISO 14001 sobre comunicacion de obligaciones de cumplimiento (clausula 7.4.2) y que exige la ISO 45001 sobre consulta sobre riesgos y controles de SST (clausula 5.4.2)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_020",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Durante revision por la direccion: \u00bfque exige textualmente la ISO 9001 sobre disponibilidad y proteccion de informacion documentada (clausula 8.5), que exige la ISO 14001 sobre informacion documentada para comunicacion ambiental (clausula 7.4.3) y que exige la ISO 45001 sobre participacion en investigacion de incidentes (clausula 6.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_021",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "En una auditoria de certificacion de tercera parte: \u00bfque exige textualmente la ISO 9001 sobre retencion y disposicion de informacion documentada (clausula 9.1), que exige la ISO 14001 sobre comunicacion documentada a partes interesadas (clausula 8.1) y que exige la ISO 45001 sobre consulta documentada en seguridad y salud (clausula 8.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_022",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Para sustentar trazabilidad forense: \u00bfque exige textualmente la ISO 9001 sobre gestion de versiones y aprobaciones documentadas (clausula 10.2), que exige la ISO 14001 sobre mecanismos documentados de comunicacion ambiental (clausula 9.1) y que exige la ISO 45001 sobre participacion de trabajadores en SST (clausula 9.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_023",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Durante plan anual de cumplimiento: \u00bfque exige textualmente la ISO 9001 sobre identificacion y recuperacion de registros de calidad (clausula 4.4), que exige la ISO 14001 sobre evidencia de comunicacion ambiental (clausula 6.1.3) y que exige la ISO 45001 sobre consulta previa a cambios de SST (clausula 10.2)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_024",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "En seguimiento de acciones correctivas: \u00bfque exige textualmente la ISO 9001 sobre proteccion frente a perdida o uso no intencional de documentos (clausula 6.1), que exige la ISO 14001 sobre comunicacion de desempeno ambiental (clausula 10.2) y que exige la ISO 45001 sobre participacion en decisiones de SST (clausula 7.4)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_025",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "En el contexto de una auditoria interna: \u00bfque exige textualmente la ISO 9001 sobre control de la informacion documentada (clausula 7.5), que exige la ISO 14001 sobre comunicacion documentada interna y externa (clausula 7.4) y que exige la ISO 45001 sobre participacion y consulta de los trabajadores (clausula 5.4)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_026",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Para una evaluacion de conformidad inicial: \u00bfque exige textualmente la ISO 9001 sobre control de documentos y registros (clausula 7.5.2), que exige la ISO 14001 sobre comunicacion de requisitos ambientales (clausula 7.4.1) y que exige la ISO 45001 sobre participacion de representantes de trabajadores (clausula 5.4.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_027",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Considerando cierre de no conformidades: \u00bfque exige textualmente la ISO 9001 sobre creacion, actualizacion y control de informacion documentada (clausula 7.5.3), que exige la ISO 14001 sobre comunicacion de obligaciones de cumplimiento (clausula 7.4.2) y que exige la ISO 45001 sobre consulta sobre riesgos y controles de SST (clausula 5.4.2)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_028",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Durante revision por la direccion: \u00bfque exige textualmente la ISO 9001 sobre disponibilidad y proteccion de informacion documentada (clausula 8.5), que exige la ISO 14001 sobre informacion documentada para comunicacion ambiental (clausula 7.4.3) y que exige la ISO 45001 sobre participacion en investigacion de incidentes (clausula 6.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_029",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "En una auditoria de certificacion de tercera parte: \u00bfque exige textualmente la ISO 9001 sobre retencion y disposicion de informacion documentada (clausula 9.1), que exige la ISO 14001 sobre comunicacion documentada a partes interesadas (clausula 8.1) y que exige la ISO 45001 sobre consulta documentada en seguridad y salud (clausula 8.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_030",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Para sustentar trazabilidad forense: \u00bfque exige textualmente la ISO 9001 sobre gestion de versiones y aprobaciones documentadas (clausula 10.2), que exige la ISO 14001 sobre mecanismos documentados de comunicacion ambiental (clausula 9.1) y que exige la ISO 45001 sobre participacion de trabajadores en SST (clausula 9.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_031",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Durante plan anual de cumplimiento: \u00bfque exige textualmente la ISO 9001 sobre identificacion y recuperacion de registros de calidad (clausula 4.4), que exige la ISO 14001 sobre evidencia de comunicacion ambiental (clausula 6.1.3) y que exige la ISO 45001 sobre consulta previa a cambios de SST (clausula 10.2)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_032",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "En seguimiento de acciones correctivas: \u00bfque exige textualmente la ISO 9001 sobre proteccion frente a perdida o uso no intencional de documentos (clausula 6.1), que exige la ISO 14001 sobre comunicacion de desempeno ambiental (clausula 10.2) y que exige la ISO 45001 sobre participacion en decisiones de SST (clausula 7.4)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_033",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "En el contexto de una auditoria interna: \u00bfque exige textualmente la ISO 9001 sobre control de la informacion documentada (clausula 7.5), que exige la ISO 14001 sobre comunicacion documentada interna y externa (clausula 7.4) y que exige la ISO 45001 sobre participacion y consulta de los trabajadores (clausula 5.4)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_034",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Para una evaluacion de conformidad inicial: \u00bfque exige textualmente la ISO 9001 sobre control de documentos y registros (clausula 7.5.2), que exige la ISO 14001 sobre comunicacion de requisitos ambientales (clausula 7.4.1) y que exige la ISO 45001 sobre participacion de representantes de trabajadores (clausula 5.4.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_035",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Considerando cierre de no conformidades: \u00bfque exige textualmente la ISO 9001 sobre creacion, actualizacion y control de informacion documentada (clausula 7.5.3), que exige la ISO 14001 sobre comunicacion de obligaciones de cumplimiento (clausula 7.4.2) y que exige la ISO 45001 sobre consulta sobre riesgos y controles de SST (clausula 5.4.2)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_036",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Durante revision por la direccion: \u00bfque exige textualmente la ISO 9001 sobre disponibilidad y proteccion de informacion documentada (clausula 8.5), que exige la ISO 14001 sobre informacion documentada para comunicacion ambiental (clausula 7.4.3) y que exige la ISO 45001 sobre participacion en investigacion de incidentes (clausula 6.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_037",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "En una auditoria de certificacion de tercera parte: \u00bfque exige textualmente la ISO 9001 sobre retencion y disposicion de informacion documentada (clausula 9.1), que exige la ISO 14001 sobre comunicacion documentada a partes interesadas (clausula 8.1) y que exige la ISO 45001 sobre consulta documentada en seguridad y salud (clausula 8.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_038",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Para sustentar trazabilidad forense: \u00bfque exige textualmente la ISO 9001 sobre gestion de versiones y aprobaciones documentadas (clausula 10.2), que exige la ISO 14001 sobre mecanismos documentados de comunicacion ambiental (clausula 9.1) y que exige la ISO 45001 sobre participacion de trabajadores en SST (clausula 9.1)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_039",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "Durante plan anual de cumplimiento: \u00bfque exige textualmente la ISO 9001 sobre identificacion y recuperacion de registros de calidad (clausula 4.4), que exige la ISO 14001 sobre evidencia de comunicacion ambiental (clausula 6.1.3) y que exige la ISO 45001 sobre consulta previa a cambios de SST (clausula 10.2)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "literal_040",
+      "category": "literal",
+      "expected_mode": "literal_normativa",
+      "query": "En seguimiento de acciones correctivas: \u00bfque exige textualmente la ISO 9001 sobre proteccion frente a perdida o uso no intencional de documentos (clausula 6.1), que exige la ISO 14001 sobre comunicacion de desempeno ambiental (clausula 10.2) y que exige la ISO 45001 sobre participacion en decisiones de SST (clausula 7.4)? Responde con citas C#/R# por cada afirmacion.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": true
+    },
+    {
+      "id": "comparativa_001",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Considerando cierre de no conformidades, compara ISO 9001, ISO 14001 e ISO 45001 sobre control documental; explica diferencias y similitudes y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_002",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Durante revision por la direccion, compara ISO 9001, ISO 14001 e ISO 45001 sobre comunicacion de requisitos; explica coincidencias y brechas y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_003",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "En una auditoria de certificacion de tercera parte, compara ISO 9001, ISO 14001 e ISO 45001 sobre consulta y participacion de trabajadores; explica alineamientos y divergencias y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_004",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Para sustentar trazabilidad forense, compara ISO 9001, ISO 14001 e ISO 45001 sobre gestion de cambios; explica puntos comunes y requisitos distintivos y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_005",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Durante plan anual de cumplimiento, compara ISO 9001, ISO 14001 e ISO 45001 sobre acciones correctivas; explica diferencias y similitudes y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_006",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "En seguimiento de acciones correctivas, compara ISO 9001, ISO 14001 e ISO 45001 sobre competencia y toma de conciencia; explica coincidencias y brechas y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_007",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "En el contexto de una auditoria interna, compara ISO 9001, ISO 14001 e ISO 45001 sobre identificacion de riesgos; explica alineamientos y divergencias y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_008",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Para una evaluacion de conformidad inicial, compara ISO 9001, ISO 14001 e ISO 45001 sobre seguimiento y medicion; explica puntos comunes y requisitos distintivos y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_009",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Considerando cierre de no conformidades, compara ISO 9001, ISO 14001 e ISO 45001 sobre gestion de evidencia de cumplimiento; explica diferencias y similitudes y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_010",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Durante revision por la direccion, compara ISO 9001, ISO 14001 e ISO 45001 sobre control de informacion para auditorias; explica coincidencias y brechas y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_011",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "En una auditoria de certificacion de tercera parte, compara ISO 9001, ISO 14001 e ISO 45001 sobre control documental; explica alineamientos y divergencias y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_012",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Para sustentar trazabilidad forense, compara ISO 9001, ISO 14001 e ISO 45001 sobre comunicacion de requisitos; explica puntos comunes y requisitos distintivos y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_013",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Durante plan anual de cumplimiento, compara ISO 9001, ISO 14001 e ISO 45001 sobre consulta y participacion de trabajadores; explica diferencias y similitudes y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_014",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "En seguimiento de acciones correctivas, compara ISO 9001, ISO 14001 e ISO 45001 sobre gestion de cambios; explica coincidencias y brechas y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_015",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "En el contexto de una auditoria interna, compara ISO 9001, ISO 14001 e ISO 45001 sobre acciones correctivas; explica alineamientos y divergencias y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_016",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Para una evaluacion de conformidad inicial, compara ISO 9001, ISO 14001 e ISO 45001 sobre competencia y toma de conciencia; explica puntos comunes y requisitos distintivos y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_017",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Considerando cierre de no conformidades, compara ISO 9001, ISO 14001 e ISO 45001 sobre identificacion de riesgos; explica diferencias y similitudes y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_018",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Durante revision por la direccion, compara ISO 9001, ISO 14001 e ISO 45001 sobre seguimiento y medicion; explica coincidencias y brechas y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_019",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "En una auditoria de certificacion de tercera parte, compara ISO 9001, ISO 14001 e ISO 45001 sobre gestion de evidencia de cumplimiento; explica alineamientos y divergencias y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_020",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Para sustentar trazabilidad forense, compara ISO 9001, ISO 14001 e ISO 45001 sobre control de informacion para auditorias; explica puntos comunes y requisitos distintivos y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_021",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Durante plan anual de cumplimiento, compara ISO 9001, ISO 14001 e ISO 45001 sobre control documental; explica diferencias y similitudes y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_022",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "En seguimiento de acciones correctivas, compara ISO 9001, ISO 14001 e ISO 45001 sobre comunicacion de requisitos; explica coincidencias y brechas y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_023",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "En el contexto de una auditoria interna, compara ISO 9001, ISO 14001 e ISO 45001 sobre consulta y participacion de trabajadores; explica alineamientos y divergencias y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_024",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Para una evaluacion de conformidad inicial, compara ISO 9001, ISO 14001 e ISO 45001 sobre gestion de cambios; explica puntos comunes y requisitos distintivos y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_025",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Considerando cierre de no conformidades, compara ISO 9001, ISO 14001 e ISO 45001 sobre acciones correctivas; explica diferencias y similitudes y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_026",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Durante revision por la direccion, compara ISO 9001, ISO 14001 e ISO 45001 sobre competencia y toma de conciencia; explica coincidencias y brechas y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_027",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "En una auditoria de certificacion de tercera parte, compara ISO 9001, ISO 14001 e ISO 45001 sobre identificacion de riesgos; explica alineamientos y divergencias y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_028",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Para sustentar trazabilidad forense, compara ISO 9001, ISO 14001 e ISO 45001 sobre seguimiento y medicion; explica puntos comunes y requisitos distintivos y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_029",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Durante plan anual de cumplimiento, compara ISO 9001, ISO 14001 e ISO 45001 sobre gestion de evidencia de cumplimiento; explica diferencias y similitudes y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_030",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "En seguimiento de acciones correctivas, compara ISO 9001, ISO 14001 e ISO 45001 sobre control de informacion para auditorias; explica coincidencias y brechas y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_031",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "En el contexto de una auditoria interna, compara ISO 9001, ISO 14001 e ISO 45001 sobre control documental; explica alineamientos y divergencias y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_032",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Para una evaluacion de conformidad inicial, compara ISO 9001, ISO 14001 e ISO 45001 sobre comunicacion de requisitos; explica puntos comunes y requisitos distintivos y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_033",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Considerando cierre de no conformidades, compara ISO 9001, ISO 14001 e ISO 45001 sobre consulta y participacion de trabajadores; explica diferencias y similitudes y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_034",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Durante revision por la direccion, compara ISO 9001, ISO 14001 e ISO 45001 sobre gestion de cambios; explica coincidencias y brechas y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_035",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "En una auditoria de certificacion de tercera parte, compara ISO 9001, ISO 14001 e ISO 45001 sobre acciones correctivas; explica alineamientos y divergencias y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_036",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Para sustentar trazabilidad forense, compara ISO 9001, ISO 14001 e ISO 45001 sobre competencia y toma de conciencia; explica puntos comunes y requisitos distintivos y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_037",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Durante plan anual de cumplimiento, compara ISO 9001, ISO 14001 e ISO 45001 sobre identificacion de riesgos; explica diferencias y similitudes y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_038",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "En seguimiento de acciones correctivas, compara ISO 9001, ISO 14001 e ISO 45001 sobre seguimiento y medicion; explica coincidencias y brechas y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_039",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "En el contexto de una auditoria interna, compara ISO 9001, ISO 14001 e ISO 45001 sobre gestion de evidencia de cumplimiento; explica alineamientos y divergencias y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "comparativa_040",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Para una evaluacion de conformidad inicial, compara ISO 9001, ISO 14001 e ISO 45001 sobre control de informacion para auditorias; explica puntos comunes y requisitos distintivos y sustenta cada punto con C#/R#.",
+      "expected_standards": [
+        "ISO 9001",
+        "ISO 14001",
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_001",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "En una auditoria de certificacion de tercera parte: explica los requisitos de ISO 9001 sobre control de la informacion documentada y su impacto en la conformidad del producto desde una perspectiva de auditor lider. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 9001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_002",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Para sustentar trazabilidad forense: explica los requisitos de ISO 9001 sobre retencion y actualizacion de evidencia documentada para auditoria interna desde enfoque de mejora continua. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 9001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_003",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Durante plan anual de cumplimiento: explica los requisitos de ISO 9001 sobre aprobacion y proteccion de registros de calidad en clave de cumplimiento verificable. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 9001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_004",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "En seguimiento de acciones correctivas: explica los requisitos de ISO 14001 sobre comunicacion ambiental interna y externa basada en evidencia como preparacion para auditoria externa. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 14001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_005",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "En el contexto de una auditoria interna: explica los requisitos de ISO 14001 sobre informacion documentada para cumplimiento de obligaciones ambientales con enfoque de riesgo y evidencia. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 14001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_006",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Para una evaluacion de conformidad inicial: explica los requisitos de ISO 14001 sobre mantenimiento de evidencia de comunicacion ambiental desde una perspectiva de auditor lider. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 14001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_007",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Considerando cierre de no conformidades: explica los requisitos de ISO 45001 sobre participacion y consulta de trabajadores en SST y toma de decisiones desde enfoque de mejora continua. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_008",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Durante revision por la direccion: explica los requisitos de ISO 45001 sobre consulta sobre peligros, riesgos y controles operacionales de SST en clave de cumplimiento verificable. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_009",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "En una auditoria de certificacion de tercera parte: explica los requisitos de ISO 45001 sobre participacion de trabajadores en investigacion de incidentes como preparacion para auditoria externa. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_010",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Para sustentar trazabilidad forense: explica los requisitos de ISO 9001 sobre control de la informacion documentada y su impacto en la conformidad del producto con enfoque de riesgo y evidencia. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 9001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_011",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Durante plan anual de cumplimiento: explica los requisitos de ISO 9001 sobre retencion y actualizacion de evidencia documentada para auditoria interna desde una perspectiva de auditor lider. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 9001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_012",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "En seguimiento de acciones correctivas: explica los requisitos de ISO 9001 sobre aprobacion y proteccion de registros de calidad desde enfoque de mejora continua. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 9001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_013",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "En el contexto de una auditoria interna: explica los requisitos de ISO 14001 sobre comunicacion ambiental interna y externa basada en evidencia en clave de cumplimiento verificable. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 14001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_014",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Para una evaluacion de conformidad inicial: explica los requisitos de ISO 14001 sobre informacion documentada para cumplimiento de obligaciones ambientales como preparacion para auditoria externa. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 14001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_015",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Considerando cierre de no conformidades: explica los requisitos de ISO 14001 sobre mantenimiento de evidencia de comunicacion ambiental con enfoque de riesgo y evidencia. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 14001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_016",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Durante revision por la direccion: explica los requisitos de ISO 45001 sobre participacion y consulta de trabajadores en SST y toma de decisiones desde una perspectiva de auditor lider. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_017",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "En una auditoria de certificacion de tercera parte: explica los requisitos de ISO 45001 sobre consulta sobre peligros, riesgos y controles operacionales de SST desde enfoque de mejora continua. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_018",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Para sustentar trazabilidad forense: explica los requisitos de ISO 45001 sobre participacion de trabajadores en investigacion de incidentes en clave de cumplimiento verificable. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_019",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Durante plan anual de cumplimiento: explica los requisitos de ISO 9001 sobre control de la informacion documentada y su impacto en la conformidad del producto como preparacion para auditoria externa. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 9001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_020",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "En seguimiento de acciones correctivas: explica los requisitos de ISO 9001 sobre retencion y actualizacion de evidencia documentada para auditoria interna con enfoque de riesgo y evidencia. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 9001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_021",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "En el contexto de una auditoria interna: explica los requisitos de ISO 9001 sobre aprobacion y proteccion de registros de calidad desde una perspectiva de auditor lider. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 9001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_022",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Para una evaluacion de conformidad inicial: explica los requisitos de ISO 14001 sobre comunicacion ambiental interna y externa basada en evidencia desde enfoque de mejora continua. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 14001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_023",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Considerando cierre de no conformidades: explica los requisitos de ISO 14001 sobre informacion documentada para cumplimiento de obligaciones ambientales en clave de cumplimiento verificable. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 14001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_024",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Durante revision por la direccion: explica los requisitos de ISO 14001 sobre mantenimiento de evidencia de comunicacion ambiental como preparacion para auditoria externa. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 14001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_025",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "En una auditoria de certificacion de tercera parte: explica los requisitos de ISO 45001 sobre participacion y consulta de trabajadores en SST y toma de decisiones con enfoque de riesgo y evidencia. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_026",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Para sustentar trazabilidad forense: explica los requisitos de ISO 45001 sobre consulta sobre peligros, riesgos y controles operacionales de SST desde una perspectiva de auditor lider. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_027",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Durante plan anual de cumplimiento: explica los requisitos de ISO 45001 sobre participacion de trabajadores en investigacion de incidentes desde enfoque de mejora continua. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_028",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "En seguimiento de acciones correctivas: explica los requisitos de ISO 9001 sobre control de la informacion documentada y su impacto en la conformidad del producto en clave de cumplimiento verificable. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 9001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_029",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "En el contexto de una auditoria interna: explica los requisitos de ISO 9001 sobre retencion y actualizacion de evidencia documentada para auditoria interna como preparacion para auditoria externa. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 9001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_030",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Para una evaluacion de conformidad inicial: explica los requisitos de ISO 9001 sobre aprobacion y proteccion de registros de calidad con enfoque de riesgo y evidencia. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 9001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_031",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Considerando cierre de no conformidades: explica los requisitos de ISO 14001 sobre comunicacion ambiental interna y externa basada en evidencia desde una perspectiva de auditor lider. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 14001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_032",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Durante revision por la direccion: explica los requisitos de ISO 14001 sobre informacion documentada para cumplimiento de obligaciones ambientales desde enfoque de mejora continua. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 14001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_033",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "En una auditoria de certificacion de tercera parte: explica los requisitos de ISO 14001 sobre mantenimiento de evidencia de comunicacion ambiental en clave de cumplimiento verificable. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 14001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_034",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Para sustentar trazabilidad forense: explica los requisitos de ISO 45001 sobre participacion y consulta de trabajadores en SST y toma de decisiones como preparacion para auditoria externa. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_035",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Durante plan anual de cumplimiento: explica los requisitos de ISO 45001 sobre consulta sobre peligros, riesgos y controles operacionales de SST con enfoque de riesgo y evidencia. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_036",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "En seguimiento de acciones correctivas: explica los requisitos de ISO 45001 sobre participacion de trabajadores en investigacion de incidentes desde una perspectiva de auditor lider. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 45001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_037",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "En el contexto de una auditoria interna: explica los requisitos de ISO 9001 sobre control de la informacion documentada y su impacto en la conformidad del producto desde enfoque de mejora continua. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 9001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_038",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Para una evaluacion de conformidad inicial: explica los requisitos de ISO 9001 sobre retencion y actualizacion de evidencia documentada para auditoria interna en clave de cumplimiento verificable. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 9001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_039",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Considerando cierre de no conformidades: explica los requisitos de ISO 9001 sobre aprobacion y proteccion de registros de calidad como preparacion para auditoria externa. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 9001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    },
+    {
+      "id": "explicativa_040",
+      "category": "explicativa",
+      "expected_mode": "explicativa",
+      "query": "Durante revision por la direccion: explica los requisitos de ISO 14001 sobre comunicacion ambiental interna y externa basada en evidencia con enfoque de riesgo y evidencia. Entrega respuesta verificable con C#/R#.",
+      "expected_standards": [
+        "ISO 14001"
+      ],
+      "require_citations": true,
+      "require_full_coverage": false
+    }
+  ]
+}

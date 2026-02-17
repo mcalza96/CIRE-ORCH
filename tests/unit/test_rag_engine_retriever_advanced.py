@@ -63,6 +63,46 @@ async def test_retrieve_advanced_multi_query_primary_success(retriever, mock_con
 
 
 @pytest.mark.asyncio
+async def test_retrieve_advanced_passes_semantic_tail_flag_to_planner(
+    retriever, mock_contract_client
+):
+    with patch("app.agent.http_adapters.settings") as mock_settings:
+        mock_settings.ORCH_RETRIEVAL_CONTRACT = "advanced"
+        mock_settings.ORCH_MULTI_QUERY_PRIMARY = True
+        mock_settings.ORCH_MULTI_QUERY_MIN_ITEMS = 1
+        mock_settings.ORCH_SEMANTIC_PLANNER = False
+        mock_settings.ORCH_COVERAGE_GATE_ENABLED = False
+        mock_settings.ORCH_DETERMINISTIC_SUBQUERY_SEMANTIC_TAIL = False
+
+        plan = create_retrieval_plan(standards=("ISO 9001", "ISO 14001"))
+        mock_contract_client.multi_query = AsyncMock(
+            return_value={
+                "items": [{"content": "c1"}, {"content": "c2"}],
+                "trace": {},
+                "subqueries": [],
+            }
+        )
+
+        with patch(
+            "app.agent.http_adapters.build_deterministic_subqueries",
+            return_value=[{"id": "s1", "query": "sub1"}],
+        ) as mock_builder:
+            results = await retriever.retrieve_chunks(
+                query="consulta multinorma",
+                tenant_id="t1",
+                collection_id="c1",
+                plan=plan,
+            )
+
+        assert len(results) == 2
+        assert mock_builder.call_args.kwargs["include_semantic_tail"] is False
+        assert (
+            retriever.last_retrieval_diagnostics.trace["deterministic_subquery_semantic_tail"]
+            is False
+        )
+
+
+@pytest.mark.asyncio
 async def test_retrieve_advanced_evaluator_override(retriever, mock_contract_client):
     with patch("app.agent.http_adapters.settings") as mock_settings:
         mock_settings.ORCH_RETRIEVAL_CONTRACT = "advanced"

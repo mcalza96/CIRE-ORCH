@@ -163,6 +163,14 @@ retrieval:
         - consulta
         - participacion
         - sst
+    - term: introduccion
+      expand_to:
+        - objeto y campo de aplicacion
+        - principios de gestion de la calidad
+    - term: introducción
+      expand_to:
+        - objeto y campo de aplicación
+        - principios de gestión de la calidad
   by_mode:
     literal_lista:
       chunk_k: 45

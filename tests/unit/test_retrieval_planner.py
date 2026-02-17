@@ -42,3 +42,66 @@ def test_build_deterministic_subqueries_literal_mode_defers_step_back() -> None:
     )
     ids = {item["id"] for item in subqueries}
     assert "step_back" not in ids
+
+
+def test_build_deterministic_subqueries_semantic_tail_preserves_keywords_without_clause() -> None:
+    query = (
+        "Que exige textualmente la ISO 9001 sobre control de la informacion documentada, "
+        "la ISO 14001 sobre comunicacion documentada y la ISO 45001 sobre participacion y consulta"
+    )
+    requested = ("ISO 9001", "ISO 14001", "ISO 45001")
+    subqueries = build_deterministic_subqueries(
+        query=query,
+        requested_standards=requested,
+        max_queries=6,
+        mode="literal_normativa",
+        include_semantic_tail=True,
+    )
+    scope_queries = [item for item in subqueries if str(item.get("id", "")).startswith("scope_")]
+    assert len(scope_queries) == 3
+    for item in scope_queries:
+        text = str(item.get("query") or "").lower()
+        assert "iso " in text
+        assert len(text) <= 900
+        assert any(
+            token in text
+            for token in (
+                "informacion documentada",
+                "control",
+                "comunicacion documentada",
+                "participacion",
+                "consulta",
+            )
+        )
+
+
+def test_build_deterministic_subqueries_semantic_tail_keeps_clause_plus_keywords() -> None:
+    query = "ISO 9001 7.5.3 control de la informacion documentada textualmente con citas"
+    requested = ("ISO 9001",)
+    subqueries = build_deterministic_subqueries(
+        query=query,
+        requested_standards=requested,
+        max_queries=4,
+        mode="literal_normativa",
+        include_semantic_tail=True,
+    )
+    assert subqueries
+    qtext = str(subqueries[0]["query"]).lower()
+    assert "iso 9001" in qtext
+    assert "7.5.3" in qtext
+    assert "control" in qtext
+    assert "informacion documentada" in qtext
+
+
+def test_build_deterministic_subqueries_semantic_tail_disabled() -> None:
+    query = "Que exige textualmente la ISO 9001 sobre control documental"
+    requested = ("ISO 9001",)
+    subqueries = build_deterministic_subqueries(
+        query=query,
+        requested_standards=requested,
+        max_queries=3,
+        mode="literal_normativa",
+        include_semantic_tail=False,
+    )
+    assert subqueries
+    assert str(subqueries[0]["query"]).strip() == "ISO 9001"

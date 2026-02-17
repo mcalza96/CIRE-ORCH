@@ -500,9 +500,27 @@ def _extract_retrieval_warnings(data: dict[str, Any]) -> list[str]:
     warning = str(trace.get("warning") or "").strip()
     if warning:
         out.append(warning)
+    for raw in (trace.get("warnings") if isinstance(trace.get("warnings"), list) else []):
+        text = str(raw or "").strip()
+        if text:
+            out.append(text)
+    for raw in (
+        trace.get("warning_codes") if isinstance(trace.get("warning_codes"), list) else []
+    ):
+        text = str(raw or "").strip()
+        if text:
+            out.append(text)
     for raw in (
         hybrid_trace.get("warnings")
         if isinstance(hybrid_trace.get("warnings"), list)
+        else []
+    ):
+        text = str(raw or "").strip()
+        if text:
+            out.append(text)
+    for raw in (
+        hybrid_trace.get("warning_codes")
+        if isinstance(hybrid_trace.get("warning_codes"), list)
         else []
     ):
         text = str(raw or "").strip()
@@ -560,6 +578,8 @@ def _print_answer_diagnostics(data: dict[str, Any]) -> None:
         "pgrst202" in warning_text
         or "could not find the function" in warning_text
         or "hybrid_rpc_signature_mismatch_hnsw_ef_search" in warning_text
+        or "hybrid_rpc_preflight_signature_mismatch" in warning_text
+        or "hybrid_rpc_signature_mismatch_hnsw" in warning_text
     ):
         stage = "rag_sql_contract"
         reason = "desalineacion de firma RPC en Supabase (funcion/parametros)"

@@ -1,5 +1,6 @@
 from app.agent.retrieval_planner import (
     apply_search_hints,
+    build_deterministic_subqueries,
     build_initial_scope_filters,
     extract_clause_refs,
 )
@@ -52,3 +53,40 @@ def test_apply_search_hints_expands_query_terms() -> None:
     assert "equipo de proteccion personal" in expanded
     assert "casco" in expanded
     assert trace.get("applied")
+
+
+def test_build_initial_scope_filters_does_not_force_clause_from_hint_expansion() -> None:
+    profile = AgentProfile(profile_id="test-hints")
+    profile.router.reference_patterns = [r"\b\d+(?:\.\d+)+\b"]
+    profile.retrieval.search_hints = [
+        SearchHint(term="introduccion", expand_to=["0.1", "objeto y campo de aplicacion"])
+    ]
+
+    filters = build_initial_scope_filters(
+        plan_requested=("ISO 9001",),
+        mode="literal_normativa",
+        query="Que dice la introduccion de la ISO 9001",
+        profile=profile,
+    )
+
+    assert isinstance(filters, dict)
+    metadata = filters.get("metadata")
+    assert metadata is None
+
+
+def test_build_deterministic_subqueries_ignores_hint_generated_clause_refs() -> None:
+    profile = AgentProfile(profile_id="test-hints")
+    profile.router.reference_patterns = [r"\b\d+(?:\.\d+)+\b"]
+    profile.retrieval.search_hints = [SearchHint(term="introduccion", expand_to=["0.1", "0.2"])]
+
+    subqueries = build_deterministic_subqueries(
+        query="Que dice la introduccion de la ISO 9001",
+        requested_standards=("ISO 9001",),
+        mode="literal_normativa",
+        profile=profile,
+    )
+
+    assert subqueries
+    scope_query = subqueries[0]
+    metadata = scope_query.get("filters", {}).get("metadata", {})
+    assert "clause_id" not in metadata
