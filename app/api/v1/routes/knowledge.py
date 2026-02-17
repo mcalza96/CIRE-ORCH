@@ -312,6 +312,7 @@ async def answer_with_orchestrator(
         return {
             "answer": result.answer.text,
             "mode": result.plan.mode,
+            "engine": str(result.engine or "universal_flow"),
             "agent_profile": {
                 "profile_id": agent_profile.profile_id,
                 "version": agent_profile.version,
@@ -363,6 +364,7 @@ async def answer_with_orchestrator(
                 "accepted": result.validation.accepted,
                 "issues": list(result.validation.issues),
             },
+            "reasoning_trace": dict(result.reasoning_trace or {}),
         }
     except ScopeValidationError as exc:
         raise HTTPException(

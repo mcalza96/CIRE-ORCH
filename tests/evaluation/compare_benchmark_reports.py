@@ -9,9 +9,14 @@ from typing import Any
 
 TRACKED = (
     "citation_marker_rate",
+    "citation_sufficiency_rate",
     "standard_coverage_rate",
     "coverage_strict_rate",
     "coverage_partial_honest_rate",
+    "semantic_recall_rate",
+    "clause_recall_rate",
+    "hallucination_guard_rate",
+    "literal_obedience_rate",
     "literal_mode_retention_rate",
     "answerable_rate",
     "false_positive_partial_rate",
@@ -42,8 +47,12 @@ def main() -> int:
 
     before = _load(args.before)
     after = _load(args.after)
-    before_metrics = before.get("metrics") if isinstance(before.get("metrics"), dict) else {}
-    after_metrics = after.get("metrics") if isinstance(after.get("metrics"), dict) else {}
+    before_metrics_raw = before.get("metrics")
+    after_metrics_raw = after.get("metrics")
+    before_metrics: dict[str, Any] = (
+        before_metrics_raw if isinstance(before_metrics_raw, dict) else {}
+    )
+    after_metrics: dict[str, Any] = after_metrics_raw if isinstance(after_metrics_raw, dict) else {}
 
     deltas: dict[str, dict[str, float]] = {}
     for key in TRACKED:

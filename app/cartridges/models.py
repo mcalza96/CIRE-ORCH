@@ -10,6 +10,15 @@ class ScopePattern(BaseModel):
     regex: str
 
 
+ToolName = Literal[
+    "semantic_retrieval",
+    "structural_extraction",
+    "logical_comparison",
+    "python_calculator",
+    "citation_validator",
+]
+
+
 class RouterHeuristics(BaseModel):
     literal_list_hints: list[str] = Field(default_factory=list)
     literal_normative_hints: list[str] = Field(default_factory=list)
@@ -127,6 +136,30 @@ class ValidationPolicy(BaseModel):
     fallback_message: str = "No tengo informacion suficiente en el contexto para responder."
 
 
+class ReasoningBudget(BaseModel):
+    max_steps: int = Field(default=4, ge=1, le=12)
+    max_reflections: int = Field(default=2, ge=0, le=6)
+
+
+class ToolPolicy(BaseModel):
+    enabled: bool = True
+    max_input_chars: int = Field(default=6000, ge=256, le=32000)
+    max_output_chars: int = Field(default=12000, ge=256, le=64000)
+    max_expression_chars: int = Field(default=256, ge=16, le=4096)
+    timeout_ms: int = Field(default=200, ge=20, le=5000)
+    max_operations: int = Field(default=1000, ge=10, le=100000)
+    schema_hint: str | None = None
+
+
+class CapabilitiesPolicy(BaseModel):
+    reasoning_level: Literal["low", "high"] = "low"
+    allowed_tools: list[ToolName] = Field(
+        default_factory=lambda: ["semantic_retrieval", "citation_validator"]
+    )
+    reasoning_budget: ReasoningBudget = Field(default_factory=ReasoningBudget)
+    tool_policies: dict[ToolName, ToolPolicy] = Field(default_factory=dict)
+
+
 class ProfileResolution(BaseModel):
     source: Literal["db", "header", "dev_map", "tenant_map", "tenant_yaml", "base"]
     requested_profile_id: str | None = None
@@ -149,6 +182,7 @@ class AgentProfile(BaseModel):
     retrieval: RetrievalPolicy = Field(default_factory=RetrievalPolicy)
     validation: ValidationPolicy = Field(default_factory=ValidationPolicy)
     synthesis: SynthesisPolicy = Field(default_factory=SynthesisPolicy)
+    capabilities: CapabilitiesPolicy = Field(default_factory=CapabilitiesPolicy)
 
 
 class ResolvedAgentProfile(BaseModel):
@@ -160,3 +194,6 @@ AgentProfile.model_rebuild()
 RetrievalPolicy.model_rebuild()
 RouterHeuristics.model_rebuild()
 SynthesisPolicy.model_rebuild()
+CapabilitiesPolicy.model_rebuild()
+ReasoningBudget.model_rebuild()
+ToolPolicy.model_rebuild()

@@ -57,3 +57,53 @@ class RetrievalDiagnostics:
     partial: bool = False
     trace: dict[str, Any] = field(default_factory=dict)
     scope_validation: dict[str, Any] = field(default_factory=dict)
+
+
+ReasoningStepType = Literal["plan", "tool", "reflection", "synthesis", "validation"]
+
+
+@dataclass(frozen=True)
+class ToolCall:
+    tool: str
+    input: dict[str, Any] = field(default_factory=dict)
+    rationale: str = ""
+
+
+@dataclass(frozen=True)
+class ToolResult:
+    tool: str
+    ok: bool
+    output: dict[str, Any] = field(default_factory=dict)
+    error: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+    evidence: list[EvidenceItem] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ReasoningStep:
+    index: int
+    type: ReasoningStepType
+    description: str
+    tool: str | None = None
+    input: dict[str, Any] = field(default_factory=dict)
+    output: dict[str, Any] = field(default_factory=dict)
+    ok: bool = True
+    error: str = ""
+
+
+@dataclass(frozen=True)
+class ReasoningPlan:
+    goal: str
+    steps: list[ToolCall] = field(default_factory=list)
+    complexity: Literal["simple", "complex"] = "simple"
+
+
+@dataclass(frozen=True)
+class ReasoningTrace:
+    engine: str = "universal_flow"
+    stop_reason: str = "unknown"
+    plan_attempts: int = 1
+    reflections: int = 0
+    tools_used: list[str] = field(default_factory=list)
+    final_confidence: float | None = None
+    steps: list[ReasoningStep] = field(default_factory=list)

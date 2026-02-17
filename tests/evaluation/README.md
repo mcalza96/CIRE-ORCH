@@ -4,6 +4,7 @@ Dataset y runner para calibrar `min_score` + `search_hints` de `iso_auditor`.
 
 ## Archivos
 - `iso_auditor_benchmark.json`: 120 casos (`40 literal`, `40 comparativa`, `40 explicativa`).
+- `lab_analyst_benchmark.json`: benchmark inicial para casos de calculo de insumos y QA en laboratorio.
 - `run_iso_auditor_benchmark.py`: ejecuta benchmark contra `POST /api/v1/knowledge/answer`.
 
 ## Uso rapido

@@ -1,0 +1,72 @@
+{
+  "before": "tests/evaluation/reports/iso_auditor_benchmark_semantic-benchmark-v1-r2_20260217T213852Z.json",
+  "after": "tests/evaluation/reports/iso_auditor_benchmark_semantic-benchmark-calibrated_20260217T214749Z.json",
+  "deltas": {
+    "citation_marker_rate": {
+      "before": 100.0,
+      "after": 100.0,
+      "delta": 0.0
+    },
+    "citation_sufficiency_rate": {
+      "before": 100.0,
+      "after": 100.0,
+      "delta": 0.0
+    },
+    "standard_coverage_rate": {
+      "before": 54.55,
+      "after": 72.73,
+      "delta": 18.18
+    },
+    "coverage_strict_rate": {
+      "before": 72.73,
+      "after": 81.82,
+      "delta": 9.09
+    },
+    "coverage_partial_honest_rate": {
+      "before": 63.64,
+      "after": 72.73,
+      "delta": 9.09
+    },
+    "semantic_recall_rate": {
+      "before": 81.82,
+      "after": 90.91,
+      "delta": 9.09
+    },
+    "clause_recall_rate": {
+      "before": 81.82,
+      "after": 90.91,
+      "delta": 9.09
+    },
+    "hallucination_guard_rate": {
+      "before": 100.0,
+      "after": 100.0,
+      "delta": 0.0
+    },
+    "literal_obedience_rate": {
+      "before": 20.0,
+      "after": 20.0,
+      "delta": 0.0
+    },
+    "literal_mode_retention_rate": {
+      "before": 20.0,
+      "after": 20.0,
+      "delta": 0.0
+    },
+    "answerable_rate": {
+      "before": 100.0,
+      "after": 100.0,
+      "delta": 0.0
+    },
+    "false_positive_partial_rate": {
+      "before": 100.0,
+      "after": 0.0,
+      "delta": -100.0
+    },
+    "latency_p95_ms": {
+      "before": 3930.27,
+      "after": 3379.03,
+      "delta": -551.24
+    }
+  },
+  "regressions": []
+}

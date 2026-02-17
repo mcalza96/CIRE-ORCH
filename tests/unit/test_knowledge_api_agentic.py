@@ -59,6 +59,8 @@ def test_answer_api_includes_retrieval_plan(client, mock_use_case):
     assert rp["reason"] == "complex_intent"
     assert len(rp["subqueries"]) == 1
     assert rp["timings_ms"]["multi_query_primary"] == 120.5
+    assert data.get("engine") == "universal_flow"
+    assert isinstance(data.get("reasoning_trace"), dict)
 
 def test_answer_api_includes_standard_fields(client, mock_use_case):
     mock_result = HandleQuestionResult(
@@ -86,3 +88,5 @@ def test_answer_api_includes_standard_fields(client, mock_use_case):
     assert data["clarification"]["question"] == "clarify?"
     assert "agent_profile" in data
     assert isinstance(data["agent_profile"].get("resolution"), dict)
+    assert data.get("engine") == "universal_flow"
+    assert isinstance(data.get("reasoning_trace"), dict)

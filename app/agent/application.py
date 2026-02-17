@@ -15,7 +15,6 @@ from app.agent.models import (
     ValidationResult,
 )
 from app.cartridges.models import AgentProfile
-from app.core.config import settings
 from app.agent.policies import (  # compatibility exports for existing tests/imports
     build_retrieval_plan,
     classify_intent,
@@ -108,6 +107,8 @@ class HandleQuestionResult:
     validation: ValidationResult
     retrieval: RetrievalDiagnostics
     clarification: ClarificationRequest | None = None
+    reasoning_trace: dict[str, Any] | None = None
+    engine: str = "universal_flow"
 
 
 class HandleQuestionUseCase:
@@ -123,24 +124,24 @@ class HandleQuestionUseCase:
         self._answer_generator = answer_generator
         self._validator = validator
         self._runner: Any | None = None
+        self._universal_runner: Any | None = None
 
-    def _get_runner(self) -> Any:
-        if self._runner is None:
-            from app.graph.iso_flow import IsoFlowOrchestrator
+    def _get_universal_runner(self) -> Any:
+        if self._universal_runner is None:
+            from app.graph.universal_flow import UniversalReasoningOrchestrator
 
-            self._runner = IsoFlowOrchestrator(
+            self._universal_runner = UniversalReasoningOrchestrator(
                 retriever=self._retriever,
                 answer_generator=self._answer_generator,
                 validator=self._validator,
-                max_retries=max(0, int(settings.ORCH_GRAPH_MAX_RETRIES or 1)),
             )
             logger.info(
-                "orchestrator_migrated_to_langgraph",
-                graph="iso_flow",
-                max_retries=max(0, int(settings.ORCH_GRAPH_MAX_RETRIES or 1)),
+                "orchestrator_universal_flow_active",
+                graph="universal_flow",
             )
-        return self._runner
+        return self._universal_runner
 
     async def execute(self, cmd: HandleQuestionCommand) -> HandleQuestionResult:
-        runner = self._get_runner()
+        runner = self._get_universal_runner()
+        self._runner = runner
         return await runner.execute(cmd)

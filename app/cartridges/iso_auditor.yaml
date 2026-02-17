@@ -264,6 +264,20 @@ retrieval:
       summary_k: 5
       require_literal_evidence: false
 
+capabilities:
+  reasoning_level: high
+  allowed_tools:
+    - semantic_retrieval
+    - logical_comparison
+    - structural_extraction
+    - citation_validator
+  reasoning_budget:
+    max_steps: 4
+    max_reflections: 2
+  tool_policies:
+    python_calculator:
+      enabled: false
+
 validation:
   require_citations: true
   forbidden_concepts:

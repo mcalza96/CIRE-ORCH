@@ -38,7 +38,6 @@ jobs:
       - name: Run orchestrator unit tests
         run: |
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q \
-            tests/unit/test_iso_flow_graph.py \
             tests/unit/test_qa_orchestrator_use_case.py \
             tests/unit/test_citation_details.py \
             tests/unit/test_orch_discovery_client.py \
@@ -75,6 +74,15 @@ jobs:
             --collection-id "${{ inputs.collection_id }}" \
             --access-token "${AUTH_BEARER_TOKEN}" \
             --variant-label "ci-gate" \
+            --threshold-standard-coverage-rate 55 \
+            --threshold-literal-mode-retention-rate 20 \
+            --threshold-answerable-rate 95 \
+            --threshold-false-positive-partial-rate-max 20 \
+            --threshold-semantic-recall-rate 80 \
+            --threshold-clause-recall-rate 80 \
+            --threshold-hallucination-guard-rate 99 \
+            --threshold-partial-honesty-rate 60 \
+            --threshold-literal-obedience-rate 20 \
             --fail-on-thresholds
       - name: Generate dashboard and alert check
         run: |

@@ -1,0 +1,51 @@
+{
+  "meta": {
+    "profile_id": "lab_analyst",
+    "description": "Benchmark inicial de razonamiento universal para laboratorio (arsenico, blancos y controles)",
+    "total_cases": 6
+  },
+  "cases": [
+    {
+      "id": "lab_calc_001",
+      "category": "resource_calculation",
+      "expected_mode": "explicativa",
+      "query": "Calcula HCl para 20 muestras si el metodo usa 5 mL por muestra y debo incluir 2 blancos.",
+      "require_citations": true
+    },
+    {
+      "id": "lab_calc_002",
+      "category": "resource_calculation",
+      "expected_mode": "explicativa",
+      "query": "Para arsenico por SM 3114, estima NaBH4 para 24 muestras, 2 blancos y 2 controles con 3 mL por corrida.",
+      "require_citations": true
+    },
+    {
+      "id": "lab_proc_003",
+      "category": "procedural_execution",
+      "expected_mode": "explicativa",
+      "query": "Extrae en JSON los reactivos y unidades del procedimiento de digestion para arsenico.",
+      "require_citations": true
+    },
+    {
+      "id": "lab_comp_004",
+      "category": "comparativa",
+      "expected_mode": "comparativa",
+      "query": "Compara control de calidad entre SM 3114 y EPA 200.8 para limite de deteccion y blancos.",
+      "require_citations": true
+    },
+    {
+      "id": "lab_scope_005",
+      "category": "scope_disambiguation",
+      "expected_mode": "explicativa",
+      "query": "Necesito insumos para arsenico con horno de grafito para 15 muestras y 2 controles.",
+      "require_citations": true
+    },
+    {
+      "id": "lab_hse_006",
+      "category": "safety_hse",
+      "expected_mode": "explicativa",
+      "query": "Resume controles HSE cuando el metodo incluye HCl y HNO3 durante digestion.",
+      "require_citations": true
+    }
+  ]
+}

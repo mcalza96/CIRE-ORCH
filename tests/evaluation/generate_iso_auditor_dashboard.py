@@ -42,15 +42,22 @@ def main() -> int:
     rows: list[dict[str, Any]] = []
     for path in selected:
         payload = _load_report(path)
-        metrics = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {}
-        checks = payload.get("checks") if isinstance(payload.get("checks"), dict) else {}
+        metrics_raw = payload.get("metrics")
+        checks_raw = payload.get("checks")
+        metrics: dict[str, Any] = metrics_raw if isinstance(metrics_raw, dict) else {}
+        checks: dict[str, Any] = checks_raw if isinstance(checks_raw, dict) else {}
         rows.append(
             {
                 "path": str(path),
                 "variant": str(payload.get("variant_label") or ""),
                 "generated_at": str(payload.get("generated_at") or ""),
                 "citation": _safe_float(metrics.get("citation_marker_rate")),
+                "citation_suff": _safe_float(metrics.get("citation_sufficiency_rate")),
                 "coverage": _safe_float(metrics.get("standard_coverage_rate")),
+                "semantic": _safe_float(metrics.get("semantic_recall_rate")),
+                "clause": _safe_float(metrics.get("clause_recall_rate")),
+                "hallucination_guard": _safe_float(metrics.get("hallucination_guard_rate")),
+                "literal_obedience": _safe_float(metrics.get("literal_obedience_rate")),
                 "literal": _safe_float(metrics.get("literal_mode_retention_rate")),
                 "answerable": _safe_float(metrics.get("answerable_rate")),
                 "false_positive": _safe_float(metrics.get("false_positive_partial_rate")),
@@ -73,19 +80,21 @@ def main() -> int:
     lines.append("## Latest Metrics")
     lines.append("")
     lines.append(
-        f"- citation={latest['citation']:.2f} | coverage={latest['coverage']:.2f} | literal={latest['literal']:.2f} | "
-        f"answerable={latest['answerable']:.2f} | false_positive={latest['false_positive']:.2f} | p95_ms={latest['latency']:.2f}"
+        f"- citation={latest['citation']:.2f} | citation_suff={latest['citation_suff']:.2f} | coverage={latest['coverage']:.2f} | semantic={latest['semantic']:.2f} | clause={latest['clause']:.2f}"
+    )
+    lines.append(
+        f"- hallucination_guard={latest['hallucination_guard']:.2f} | literal_obedience={latest['literal_obedience']:.2f} | literal_mode_retention={latest['literal']:.2f} | answerable={latest['answerable']:.2f} | false_positive={latest['false_positive']:.2f} | p95_ms={latest['latency']:.2f}"
     )
     lines.append("")
     lines.append("## Recent Runs")
     lines.append("")
     lines.append(
-        "| variant | generated_at | citation | coverage | literal | answerable | false_positive | p95_ms | checks |"
+        "| variant | generated_at | citation | citation_suff | coverage | semantic | clause | hallucination_guard | literal_obedience | literal | answerable | false_positive | p95_ms | checks |"
     )
-    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for row in rows:
         lines.append(
-            f"| {row['variant']} | {row['generated_at']} | {row['citation']:.2f} | {row['coverage']:.2f} | {row['literal']:.2f} | "
+            f"| {row['variant']} | {row['generated_at']} | {row['citation']:.2f} | {row['citation_suff']:.2f} | {row['coverage']:.2f} | {row['semantic']:.2f} | {row['clause']:.2f} | {row['hallucination_guard']:.2f} | {row['literal_obedience']:.2f} | {row['literal']:.2f} | "
             f"{row['answerable']:.2f} | {row['false_positive']:.2f} | {row['latency']:.2f} | {'OK' if row['checks_ok'] else 'FAIL'} |"
         )
 
