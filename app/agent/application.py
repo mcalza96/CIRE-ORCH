@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -125,6 +126,7 @@ class HandleQuestionUseCase:
         self._validator = validator
         self._orchestrator: Any | None = None
         from app.agent.policies.query_splitter import QuerySplitter
+
         self._splitter = QuerySplitter()
 
     def _get_orchestrator(self) -> Any:
@@ -197,9 +199,14 @@ class HandleQuestionUseCase:
                     seen_ids.add(eid)
                     combined_evidence.append(ev)
 
-        # Determine mode: if all are same, use it, else fallback to explanatory
+        # Determine mode: if all are same, use it; otherwise fallback to profile default mode.
         modes = [res.plan.mode for res in valid_results]
-        mode = modes[0] if len(set(modes)) == 1 else "explicativa"
+        fallback_mode = (
+            str(cmd.agent_profile.query_modes.default_mode).strip()
+            if cmd.agent_profile is not None and cmd.agent_profile.query_modes.default_mode
+            else "default"
+        )
+        mode = modes[0] if len(set(modes)) == 1 else fallback_mode
 
         combined_answer = AnswerDraft(
             text=combined_text,
@@ -213,7 +220,7 @@ class HandleQuestionUseCase:
             answer=combined_answer,
             validation=ValidationResult(accepted=True, issues=[]),
             retrieval=RetrievalDiagnostics(
-                contract="virtual", strategy="compound", partial=False, trace={}
+                contract="legacy", strategy="compound", partial=False, trace={}
             ),
         )
 

@@ -77,3 +77,20 @@ def test_doctor_reports_tenant_without_collections(monkeypatch, capsys):
     assert "selected_tenant: t1" in output
     assert "collection_count: 0" in output
     assert "context_chunks_count: 0" in output
+
+
+def test_rewrite_query_with_dynamic_mode_identifier() -> None:
+    out = chat_cli_runtime._rewrite_query_with_clarification(
+        "pregunta original",
+        "cross_standard_analysis",
+    )
+    assert "__clarified_mode__=cross_standard_analysis" in out
+
+
+def test_rewrite_query_with_scope_clarification_text() -> None:
+    out = chat_cli_runtime._rewrite_query_with_clarification(
+        "pregunta original",
+        "Cobertura completa",
+    )
+    assert "__clarified_scope__=true" in out
+    assert "__coverage__=full" in out

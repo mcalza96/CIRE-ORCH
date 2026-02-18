@@ -29,6 +29,33 @@ class RouterHeuristics(BaseModel):
     scope_hints: dict[str, list[str]] = Field(default_factory=dict)
     scope_patterns: list[ScopePattern] = Field(default_factory=list)
     reference_patterns: list[str] = Field(default_factory=list)
+    complexity_patterns: list[str] = Field(default_factory=list)
+    extraction_patterns: list[str] = Field(default_factory=list)
+    calculation_patterns: list[str] = Field(default_factory=list)
+
+
+class IntentRule(BaseModel):
+    id: str
+    mode: str
+    all_keywords: list[str] = Field(default_factory=list)
+    any_keywords: list[str] = Field(default_factory=list)
+    all_patterns: list[str] = Field(default_factory=list)
+    any_patterns: list[str] = Field(default_factory=list)
+    all_markers: list[str] = Field(default_factory=list)
+    any_markers: list[str] = Field(default_factory=list)
+
+
+class QueryModeConfig(BaseModel):
+    require_literal_evidence: bool = False
+    allow_inference: bool = True
+    retrieval_profile: str | None = None
+    tool_hints: list[ToolName] = Field(default_factory=list)
+
+
+class QueryModesPolicy(BaseModel):
+    default_mode: str = "default"
+    modes: dict[str, QueryModeConfig] = Field(default_factory=dict)
+    intent_rules: list[IntentRule] = Field(default_factory=list)
 
 
 class RetrievalModeConfig(BaseModel):
@@ -44,51 +71,23 @@ class SearchHint(BaseModel):
 
 
 class RetrievalPolicy(BaseModel):
-    by_mode: dict[str, RetrievalModeConfig] = Field(
-        default_factory=lambda: {
-            "literal_lista": RetrievalModeConfig(
-                chunk_k=45,
-                chunk_fetch_k=220,
-                summary_k=3,
-                require_literal_evidence=True,
-            ),
-            "literal_normativa": RetrievalModeConfig(
-                chunk_k=45,
-                chunk_fetch_k=220,
-                summary_k=3,
-                require_literal_evidence=True,
-            ),
-            "comparativa": RetrievalModeConfig(
-                chunk_k=35,
-                chunk_fetch_k=140,
-                summary_k=5,
-                require_literal_evidence=False,
-            ),
-            "ambigua_scope": RetrievalModeConfig(
-                chunk_k=0,
-                chunk_fetch_k=0,
-                summary_k=0,
-                require_literal_evidence=True,
-            ),
-            "explicativa": RetrievalModeConfig(
-                chunk_k=30,
-                chunk_fetch_k=120,
-                summary_k=5,
-                require_literal_evidence=False,
-            ),
-        }
-    )
+    by_mode: dict[str, RetrievalModeConfig] = Field(default_factory=dict)
     search_hints: list[SearchHint] = Field(default_factory=list)
     min_score: float = Field(default=0.75, ge=0.0, le=1.0)
 
 
 class SynthesisPolicy(BaseModel):
-    system_persona: str = (
-        "Responde con evidencia del contexto recuperado y evita afirmaciones sin sustento."
-    )
+    system_persona: str = ""
     citation_format: str = "C#/R#"
-    strict_reference_label: str = "Referencia"
-    strict_subject_label: str = "Afirmacion"
+    strict_reference_label: str = "Reference"
+    strict_subject_label: str = "Claim"
+    strict_system_prompt_template: str = ""
+    interpretive_system_prompt_template: str = ""
+    strict_style_template: str = ""
+    interpretive_style_template: str = ""
+    identity_role_prefix: str = ""
+    identity_tone_prefix: str = ""
+    user_prompt_template: str = ""
     scope_hints: dict[str, list[str]] = Field(default_factory=dict)
     scope_patterns: list[str] = Field(default_factory=list)
     reference_patterns: list[str] = Field(
@@ -179,6 +178,7 @@ class AgentProfile(BaseModel):
     clarification_rules: list[dict[str, Any]] = Field(default_factory=list)
 
     router: RouterHeuristics = Field(default_factory=RouterHeuristics)
+    query_modes: QueryModesPolicy = Field(default_factory=QueryModesPolicy)
     retrieval: RetrievalPolicy = Field(default_factory=RetrievalPolicy)
     validation: ValidationPolicy = Field(default_factory=ValidationPolicy)
     synthesis: SynthesisPolicy = Field(default_factory=SynthesisPolicy)
@@ -193,6 +193,9 @@ class ResolvedAgentProfile(BaseModel):
 AgentProfile.model_rebuild()
 RetrievalPolicy.model_rebuild()
 RouterHeuristics.model_rebuild()
+IntentRule.model_rebuild()
+QueryModeConfig.model_rebuild()
+QueryModesPolicy.model_rebuild()
 SynthesisPolicy.model_rebuild()
 CapabilitiesPolicy.model_rebuild()
 ReasoningBudget.model_rebuild()

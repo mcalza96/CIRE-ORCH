@@ -33,6 +33,7 @@ def test_build_initial_scope_filters_uses_first_extracted_reference() -> None:
         mode="literal_normativa",
         query="cita art. 7 letra a",
         profile=profile,
+        require_literal_evidence=True,
     )
 
     assert isinstance(filters, dict)
@@ -67,6 +68,7 @@ def test_build_initial_scope_filters_does_not_force_clause_from_hint_expansion()
         mode="literal_normativa",
         query="Que dice la introduccion de la ISO 9001",
         profile=profile,
+        require_literal_evidence=True,
     )
 
     assert isinstance(filters, dict)
@@ -83,6 +85,7 @@ def test_build_deterministic_subqueries_ignores_hint_generated_clause_refs() -> 
         query="Que dice la introduccion de la ISO 9001",
         requested_standards=("ISO 9001",),
         mode="literal_normativa",
+        require_literal_evidence=True,
         profile=profile,
     )
 
@@ -104,6 +107,7 @@ def test_build_initial_scope_filters_does_not_lock_clause_for_compound_query() -
             "Enumera entradas y salidas esperadas de ISO 14001"
         ),
         profile=profile,
+        require_literal_evidence=True,
     )
 
     assert isinstance(filters, dict)

@@ -5,6 +5,7 @@ from app.cartridges.models import AgentProfile
 # Perfil para pruebas de dominio
 ISO_PROFILE = AgentProfile.model_validate(BUILTIN_PROFILES["iso_auditor"])
 
+
 def test_classify_intent_multi_standard_cross_impact_prefers_comparativa() -> None:
     query = (
         "En el contexto de la Gestion del Cambio, como obliga la ISO 45001:2018 (8.1.2) "
@@ -12,4 +13,4 @@ def test_classify_intent_multi_standard_cross_impact_prefers_comparativa() -> No
     )
     # Usamos el perfil iso_auditor para asegurar detección de múltiples alcances
     intent = classify_intent(query, profile=ISO_PROFILE)
-    assert intent.mode == "comparativa"
+    assert intent.mode == "cross_standard_analysis"

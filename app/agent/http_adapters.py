@@ -16,6 +16,7 @@ from app.agent.retrieval_planner import (
     build_deterministic_subqueries,
     decide_multihop_fallback,
     extract_clause_refs,
+    mode_requires_literal_evidence,
 )
 from app.agent.semantic_subquery_planner import SemanticSubqueryPlanner
 from app.agent.retrieval_sufficiency_evaluator import RetrievalSufficiencyEvaluator
@@ -338,12 +339,18 @@ class RagEngineRetrieverAdapter:
                 else None
             )
 
-        k = max(1, min(int(plan.chunk_k), 24 if plan.mode == "comparativa" else 18))
-        fetch_k = max(1, int(plan.chunk_fetch_k))
-
         expanded_query, hint_trace = apply_search_hints(query, profile=self._profile_context)
         clause_refs = extract_clause_refs(query, profile=self._profile_context)
         multihop_hint = len(plan.requested_standards) >= 2 or len(clause_refs) >= 2
+        literal_mode = mode_requires_literal_evidence(
+            mode=plan.mode,
+            profile=self._profile_context,
+            explicit_flag=plan.require_literal_evidence,
+        )
+        cross_scope_mode = len(plan.requested_standards) >= 2 and not literal_mode
+        k_cap = 24 if cross_scope_mode else 18
+        k = max(1, min(int(plan.chunk_k), k_cap))
+        fetch_k = max(1, int(plan.chunk_fetch_k))
         semantic_tail_enabled = bool(
             getattr(settings, "ORCH_DETERMINISTIC_SUBQUERY_SEMANTIC_TAIL", False)
         )
@@ -642,6 +649,7 @@ class RagEngineRetrieverAdapter:
                 query=query,
                 requested_standards=plan.requested_standards,
                 mode=plan.mode,
+                require_literal_evidence=plan.require_literal_evidence,
                 include_semantic_tail=semantic_tail_enabled,
                 profile=self._profile_context,
             )
@@ -672,11 +680,7 @@ class RagEngineRetrieverAdapter:
         timings_ms: dict[str, float] = {}
 
         # Promote multi-query as the primary retrieval strategy for complex intents (optional).
-        if (
-            settings.ORCH_MULTI_QUERY_PRIMARY
-            and multihop_hint
-            and plan.mode in {"comparativa", "explicativa", "literal_normativa", "literal_lista"}
-        ):
+        if settings.ORCH_MULTI_QUERY_PRIMARY and multihop_hint and int(plan.chunk_k or 0) > 0:
             merge = {"strategy": "rrf", "rrf_k": 60, "top_k": min(16, max(12, k))}
             subqueries = await build_subqueries(purpose="primary")
             t0 = time.perf_counter()
@@ -859,11 +863,7 @@ class RagEngineRetrieverAdapter:
             trace["agent_profile_resolution"] = dict(self._profile_resolution_context)
 
         # Decide multihop fallback if configured.
-        if (
-            settings.ORCH_MULTIHOP_FALLBACK
-            and multihop_hint
-            and plan.mode in {"comparativa", "explicativa", "literal_normativa", "literal_lista"}
-        ):
+        if settings.ORCH_MULTIHOP_FALLBACK and multihop_hint and int(plan.chunk_k or 0) > 0:
             if (
                 bool(getattr(settings, "EARLY_EXIT_COVERAGE_ENABLED", True))
                 and len(plan.requested_standards) >= 2
@@ -1325,7 +1325,8 @@ class GroundedAnswerAdapter:
             return float(ts or 0.0)
 
         ordered_items = [*summaries, *chunks]
-        if plan.mode == "comparativa":
+        cross_scope_mode = len(plan.requested_standards) >= 2 and not plan.require_literal_evidence
+        if cross_scope_mode:
             # Best-effort recency: if timestamps exist in metadata, prefer more recent evidence.
             ordered_items = sorted(ordered_items, key=_recency_key, reverse=True)
 
@@ -1338,7 +1339,7 @@ class GroundedAnswerAdapter:
             labeled.append(f"[{source}] {_clip(content, 900)}")
 
         # Use more context for multi-standard interpretive questions.
-        if plan.mode == "comparativa":
+        if cross_scope_mode:
             max_ctx = 28
         elif plan.require_literal_evidence:
             max_ctx = 14
@@ -1377,7 +1378,7 @@ class GroundedAnswerAdapter:
             max_chunks=max_ctx,
         )
 
-        if not ordered_items and plan.mode == "comparativa" and len(plan.requested_standards) >= 2:
+        if not ordered_items and cross_scope_mode:
             lines = [
                 f"**{scope}**: No encontrado explicitamente en el contexto recuperado."
                 for scope in plan.requested_standards
@@ -1443,7 +1444,7 @@ class GroundedAnswerAdapter:
             ) or low_text.startswith("no encuentro evidencia suficiente")
             if looks_fallback and ordered_items:
                 preferred = clause_items if clause_items else ordered_items
-                max_rows = 3 if plan.mode == "literal_lista" else 2
+                max_rows = 3 if len(clause_refs) == 0 else 2
                 rendered = _render_literal_rows(preferred, max_rows=max_rows)
                 if rendered:
                     text = rendered

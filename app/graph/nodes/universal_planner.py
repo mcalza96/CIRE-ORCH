@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 
 from app.agent.models import (
     QueryIntent,
@@ -10,44 +11,66 @@ from app.agent.models import (
     ToolCall,
 )
 from app.agent.policies import build_retrieval_plan, classify_intent
-from app.cartridges.models import AgentProfile
+from app.cartridges.models import AgentProfile, QueryModeConfig
 
 
 _ARITHMETIC_PATTERN = re.compile(r"\d+\s*[\+\-\*/]\s*\d+")
-_COMPLEX_HINT_PATTERN = re.compile(
-    r"\b(?:analiza|relacion|relación|impact|compara|calcula|calcular|extrae|extraer|formula)\b",
-    re.IGNORECASE,
-)
 _CLAUSE_REFERENCE_PATTERN = re.compile(r"\b\d+(?:\.\d+)+\b")
-_EXTRACTION_HINT_PATTERN = re.compile(
-    r"\b(?:extrae|extraer|estructura|json|tabla|reactivo|insumo|cantidad|bom)\b",
-    re.IGNORECASE,
-)
-_CALCULATION_HINT_PATTERN = re.compile(
-    r"\b(?:calcula|calcular|cuanto|cuánto|formula|lote|muestras)\b",
-    re.IGNORECASE,
-)
 
 
-def _is_complex_query(query: str, intent: QueryIntent) -> bool:
+@lru_cache(maxsize=64)
+def _compile_patterns(patterns: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
+    compiled: list[re.Pattern[str]] = []
+    for pattern in patterns:
+        value = str(pattern or "").strip()
+        if not value:
+            continue
+        try:
+            compiled.append(re.compile(value, re.IGNORECASE))
+        except re.error:
+            continue
+    return tuple(compiled)
+
+
+def _profile_patterns(profile: AgentProfile | None, field_name: str) -> tuple[re.Pattern[str], ...]:
+    if profile is None:
+        return ()
+    raw = getattr(profile.router, field_name, [])
+    if not isinstance(raw, list):
+        return ()
+    return _compile_patterns(tuple(str(item) for item in raw if str(item).strip()))
+
+
+def _matches_any(text: str, patterns: tuple[re.Pattern[str], ...]) -> bool:
+    return any(pattern.search(text) for pattern in patterns)
+
+
+def _count_reference_matches(text: str, profile: AgentProfile | None) -> int:
+    profile_refs = _profile_patterns(profile, "reference_patterns")
+    if profile_refs:
+        return sum(len(pattern.findall(text)) for pattern in profile_refs)
+    return len(_CLAUSE_REFERENCE_PATTERN.findall(text))
+
+
+def _is_complex_query(query: str, intent: QueryIntent, profile: AgentProfile | None) -> bool:
     text = query or ""
     if intent.mode in {"comparativa"}:
         return True
-    if _COMPLEX_HINT_PATTERN.search(text):
+    if _matches_any(text, _profile_patterns(profile, "complexity_patterns")):
         return True
-    if len(_CLAUSE_REFERENCE_PATTERN.findall(text)) >= 2:
+    if _count_reference_matches(text, profile) >= 2:
         return True
     return False
 
 
-def _needs_extraction(query: str) -> bool:
-    return bool(_EXTRACTION_HINT_PATTERN.search(query or ""))
+def _needs_extraction(query: str, profile: AgentProfile | None) -> bool:
+    return _matches_any(query or "", _profile_patterns(profile, "extraction_patterns"))
 
 
-def _needs_calculation(query: str) -> bool:
+def _needs_calculation(query: str, profile: AgentProfile | None) -> bool:
     text = query or ""
     has_math = bool(_ARITHMETIC_PATTERN.search(text))
-    procedural_math = bool(_CALCULATION_HINT_PATTERN.search(text))
+    procedural_math = _matches_any(text, _profile_patterns(profile, "calculation_patterns"))
     return has_math or procedural_math
 
 
@@ -59,8 +82,13 @@ def build_universal_plan(
 ) -> tuple[QueryIntent, RetrievalPlan, ReasoningPlan, list[ReasoningStep]]:
     intent = classify_intent(query, profile=profile)
     retrieval_plan = build_retrieval_plan(intent, query=query, profile=profile)
-    complexity = "complex" if _is_complex_query(query, intent) else "simple"
+    complexity = "complex" if _is_complex_query(query, intent, profile) else "simple"
     allowed_tool_set = set(allowed_tools)
+    mode_tool_hints: set[str] = set()
+    if profile is not None:
+        mode_config = profile.query_modes.modes.get(str(intent.mode))
+        if isinstance(mode_config, QueryModeConfig):
+            mode_tool_hints = set(mode_config.tool_hints)
     steps: list[ToolCall] = []
 
     if "semantic_retrieval" in allowed_tool_set:
@@ -75,7 +103,7 @@ def build_universal_plan(
     if (
         complexity == "complex"
         and "logical_comparison" in allowed_tool_set
-        and intent.mode == "comparativa"
+        and ("logical_comparison" in mode_tool_hints or intent.mode == "comparativa")
     ):
         steps.append(
             ToolCall(
@@ -85,7 +113,7 @@ def build_universal_plan(
             )
         )
 
-    if "structural_extraction" in allowed_tool_set and _needs_extraction(query):
+    if "structural_extraction" in allowed_tool_set and _needs_extraction(query, profile):
         steps.append(
             ToolCall(
                 tool="structural_extraction",
@@ -94,7 +122,7 @@ def build_universal_plan(
             )
         )
 
-    if "python_calculator" in allowed_tool_set and _needs_calculation(query):
+    if "python_calculator" in allowed_tool_set and _needs_calculation(query, profile):
         steps.append(
             ToolCall(
                 tool="python_calculator",

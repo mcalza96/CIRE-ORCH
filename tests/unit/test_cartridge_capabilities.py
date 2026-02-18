@@ -8,6 +8,7 @@ def test_capabilities_defaults_are_safe() -> None:
     assert profile.capabilities.reasoning_budget.max_reflections == 2
     assert "semantic_retrieval" in profile.capabilities.allowed_tools
     assert "citation_validator" in profile.capabilities.allowed_tools
+    assert profile.retrieval.by_mode == {}
 
 
 def test_capabilities_accept_high_reasoning_payload() -> None:

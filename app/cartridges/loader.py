@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 from urllib.parse import quote
 
 import httpx
@@ -33,6 +35,14 @@ _REQUIRED_TOP_LEVEL_KEYS = {
     "validation",
     "synthesis",
 }
+
+
+@dataclass(frozen=True)
+class ProfileChoice:
+    candidate_id: str
+    source: Literal["header", "dev_map", "tenant_map", "tenant_yaml", "base"]
+    decision_reason: str
+    requested_profile_id: str | None
 
 
 def _default_cartridges_dir() -> Path:
@@ -319,7 +329,7 @@ class CartridgeLoader:
 
     def _resolve_profile_choice(
         self, tenant_id: str | None, explicit_profile_id: str | None = None
-    ) -> tuple[str, str, str, str | None]:
+    ) -> ProfileChoice:
         tenant = str(tenant_id or "").strip()
         requested = str(explicit_profile_id or "").strip() or None
         override_denied = False
@@ -332,7 +342,12 @@ class CartridgeLoader:
                     tenant_id=tenant,
                     requested_profile_id=candidate,
                 )
-                return candidate, "header", "authorized_header_override", requested
+                return ProfileChoice(
+                    candidate_id=candidate,
+                    source="header",
+                    decision_reason="authorized_header_override",
+                    requested_profile_id=requested,
+                )
             logger.warning(
                 "profile_header_override_denied",
                 tenant_id=tenant,
@@ -344,54 +359,74 @@ class CartridgeLoader:
         dev_mapped = self.get_dev_profile_override(tenant)
         if dev_mapped:
             if override_denied:
-                return (
-                    dev_mapped,
-                    "dev_map",
-                    "unauthorized_header_override_fallback_dev_map",
-                    requested,
+                return ProfileChoice(
+                    candidate_id=dev_mapped,
+                    source="dev_map",
+                    decision_reason="unauthorized_header_override_fallback_dev_map",
+                    requested_profile_id=requested,
                 )
-            return dev_mapped, "dev_map", "dev_profile_map_match", requested
+            return ProfileChoice(
+                candidate_id=dev_mapped,
+                source="dev_map",
+                decision_reason="dev_profile_map_match",
+                requested_profile_id=requested,
+            )
 
         mapped = _tenant_profile_map().get(tenant)
         if mapped:
             if override_denied:
-                return (
-                    mapped,
-                    "tenant_map",
-                    "unauthorized_header_override_fallback_tenant_map",
-                    requested,
+                return ProfileChoice(
+                    candidate_id=mapped,
+                    source="tenant_map",
+                    decision_reason="unauthorized_header_override_fallback_tenant_map",
+                    requested_profile_id=requested,
                 )
-            return mapped, "tenant_map", "tenant_profile_map_match", requested
+            return ProfileChoice(
+                candidate_id=mapped,
+                source="tenant_map",
+                decision_reason="tenant_profile_map_match",
+                requested_profile_id=requested,
+            )
 
         if tenant:
             candidate_path = self._cartridges_dir / f"{tenant}.yaml"
             if candidate_path.exists():
                 if override_denied:
-                    return (
-                        tenant,
-                        "tenant_yaml",
-                        "unauthorized_header_override_fallback_tenant_yaml",
-                        requested,
+                    return ProfileChoice(
+                        candidate_id=tenant,
+                        source="tenant_yaml",
+                        decision_reason="unauthorized_header_override_fallback_tenant_yaml",
+                        requested_profile_id=requested,
                     )
-                return tenant, "tenant_yaml", "tenant_yaml_found", requested
+                return ProfileChoice(
+                    candidate_id=tenant,
+                    source="tenant_yaml",
+                    decision_reason="tenant_yaml_found",
+                    requested_profile_id=requested,
+                )
 
         default_profile = str(settings.ORCH_DEFAULT_PROFILE_ID or "base").strip()
         if override_denied:
-            return (
-                default_profile or "base",
-                "base",
-                "unauthorized_header_override_fallback_base",
-                requested,
+            return ProfileChoice(
+                candidate_id=default_profile or "base",
+                source="base",
+                decision_reason="unauthorized_header_override_fallback_base",
+                requested_profile_id=requested,
             )
-        return default_profile or "base", "base", "default_profile_fallback", requested
+        return ProfileChoice(
+            candidate_id=default_profile or "base",
+            source="base",
+            decision_reason="default_profile_fallback",
+            requested_profile_id=requested,
+        )
 
     def resolve_profile_id(
         self, tenant_id: str | None, explicit_profile_id: str | None = None
     ) -> str:
-        profile_id, _, _, _ = self._resolve_profile_choice(
+        choice = self._resolve_profile_choice(
             tenant_id=tenant_id, explicit_profile_id=explicit_profile_id
         )
-        return profile_id
+        return choice.candidate_id
 
     def load(self, profile_id: str) -> AgentProfile:
         normalized = str(profile_id or "").strip() or "base"
@@ -485,20 +520,20 @@ class CartridgeLoader:
             )
             return ResolvedAgentProfile(profile=profile_from_db, resolution=resolution)
 
-        candidate_id, source, decision_reason, requested_candidate = self._resolve_profile_choice(
+        choice = self._resolve_profile_choice(
             tenant_id=tenant,
             explicit_profile_id=explicit_profile_id,
         )
-        profile = self.load(candidate_id)
-        resolved_source = source
-        resolved_reason = decision_reason
-        if profile.profile_id != candidate_id:
+        profile = self.load(choice.candidate_id)
+        resolved_source = choice.source
+        resolved_reason = choice.decision_reason
+        if profile.profile_id != choice.candidate_id:
             resolved_source = "base"
-            resolved_reason = f"profile_not_found_fallback_base_from_{source}"
+            resolved_reason = f"profile_not_found_fallback_base_from_{choice.source}"
 
         resolution = ProfileResolution(
             source=resolved_source,
-            requested_profile_id=requested_candidate,
+            requested_profile_id=choice.requested_profile_id,
             applied_profile_id=profile.profile_id,
             decision_reason=resolved_reason,
         )

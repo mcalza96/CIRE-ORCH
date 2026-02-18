@@ -63,15 +63,27 @@ class ModeAdvisor:
         )
         reference_patterns = list(profile.router.reference_patterns) if profile is not None else []
         scope_labels = list(profile.router.scope_hints.keys()) if profile is not None else []
+        mode_hints: list[str] = []
+        if profile is not None and profile.query_modes.modes:
+            for mode_name in candidate_modes:
+                cfg = profile.query_modes.modes.get(str(mode_name))
+                if cfg is None:
+                    continue
+                mode_hints.append(
+                    "- "
+                    + str(mode_name)
+                    + f": literal_evidence={bool(cfg.require_literal_evidence)}, allow_inference={bool(cfg.allow_inference)}, tool_hints={list(cfg.tool_hints)}"
+                )
 
         user = (
             "Elige 1 modo de esta lista exacta: " + ", ".join(candidate_modes) + "\n\n"
-            "Criterios:\n"
-            "- literal_normativa: si el usuario pide cita/texto exacto por referencia.\n"
-            "- comparativa: si requiere relacionar multiples alcances/fuentes.\n"
-            "- explicativa: si pide analisis/impacto/causa sin exigir literalidad.\n"
-            "- literal_lista: si pide un listado literal de entradas/salidas/requisitos.\n"
-            "- ambigua_scope: si hay referencias pero no alcance objetivo.\n\n"
+            "Criterios por modo (desde cartucho):\n"
+            + (
+                "\n".join(mode_hints)
+                if mode_hints
+                else "- Usa el modo mas apropiado para la intencion detectada."
+            )
+            + "\n\n"
             f"Patrones de referencia activos: {reference_patterns or ['(default)']}\n"
             f"Alcances sugeridos: {scope_labels or ['(sin hints)']}\n\n"
             "Devuelve JSON schema:\n"

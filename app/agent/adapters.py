@@ -327,7 +327,7 @@ class GroqAnswerGeneratorAdapter:
             context_parts.append("=== CHUNKS (DETALLE) ===\n" + chunk_block)
         context = "\n\n".join(context_parts)
 
-        strict_literal = plan.mode in {"literal_normativa", "literal_lista", "comparativa"}
+        strict_literal = bool(plan.require_literal_evidence) or len(plan.requested_standards) >= 2
         persona = (
             agent_profile.synthesis.system_persona
             if agent_profile is not None
@@ -413,13 +413,7 @@ RESPUESTA:
 class LiteralEvidenceValidator:
     def validate(self, draft: AnswerDraft, plan: RetrievalPlan, query: str) -> ValidationResult:
         issues: list[str] = []
-        literal_modes = {"literal_normativa", "literal_lista"}
-        strict_literal_clause_check = bool(
-            getattr(settings, "STRICT_LITERAL_CLAUSE_VALIDATION_ONLY", True)
-        )
-        enforce_clause_refs = bool(plan.require_literal_evidence) and (
-            (plan.mode in literal_modes) if strict_literal_clause_check else True
-        )
+        enforce_clause_refs = bool(plan.require_literal_evidence)
         if plan.require_literal_evidence and not draft.evidence:
             issues.append("No retrieval evidence available for literal answer mode.")
 

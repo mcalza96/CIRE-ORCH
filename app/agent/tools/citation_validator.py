@@ -20,13 +20,13 @@ class CitationValidatorTool:
         draft = state.get("generation")
         if not isinstance(draft, AnswerDraft):
             text = str(payload.get("draft_response") or "").strip()
-            mode = str(payload.get("mode") or "explicativa")
+            mode = str(payload.get("mode") or "default")
             draft = AnswerDraft(text=text, mode=mode)  # type: ignore[arg-type]
 
         plan = state.get("retrieval_plan")
         if not isinstance(plan, RetrievalPlan):
             plan = RetrievalPlan(
-                mode=str(getattr(draft, "mode", "explicativa")),  # type: ignore[arg-type]
+                mode=str(getattr(draft, "mode", "default")),  # type: ignore[arg-type]
                 chunk_k=0,
                 chunk_fetch_k=0,
                 summary_k=0,

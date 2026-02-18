@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -103,7 +104,7 @@ def _rewrite_query_with_clarification(original_query: str, clarification_answer:
     if not text:
         return original_query
     lowered = text.lower().strip()
-    if lowered in {"comparativa", "explicativa", "literal_normativa", "literal_lista"}:
+    if re.fullmatch(r"[a-z][a-z0-9_:-]{1,63}", lowered):
         return f"{original_query}\n\n__clarified_mode__={lowered} Aclaracion de modo: {text}."
     coverage_tag = ""
     if lowered in {"respuesta parcial", "aceptar respuesta parcial"}:

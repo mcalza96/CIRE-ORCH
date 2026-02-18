@@ -4,9 +4,7 @@ import re
 from typing import Any
 
 from app.cartridges.models import AgentProfile
-from app.agent.models import QueryIntent, QueryMode, RetrievalPlan
-
-from app.core.config import settings
+from app.agent.models import QueryIntent, RetrievalPlan
 
 
 LITERAL_LIST_HINTS = ("lista", "enumera", "listado", "vinetas")
@@ -54,6 +52,100 @@ EVIDENCE_MARKERS = (
     "informacion documentada",
     "información documentada",
 )
+
+
+def _has_any_keyword(text: str, values: tuple[str, ...]) -> bool:
+    hay = (text or "").lower()
+    return any(str(value).strip().lower() in hay for value in values if str(value).strip())
+
+
+def _has_all_keywords(text: str, values: tuple[str, ...]) -> bool:
+    hay = (text or "").lower()
+    checks = [str(value).strip().lower() for value in values if str(value).strip()]
+    if not checks:
+        return True
+    return all(value in hay for value in checks)
+
+
+def _has_any_pattern(text: str, values: tuple[str, ...]) -> bool:
+    for value in values:
+        pattern = str(value).strip()
+        if not pattern:
+            continue
+        try:
+            if re.search(pattern, text, flags=re.IGNORECASE):
+                return True
+        except re.error:
+            continue
+    return False
+
+
+def _has_all_patterns(text: str, values: tuple[str, ...]) -> bool:
+    checks = [str(value).strip() for value in values if str(value).strip()]
+    if not checks:
+        return True
+    for pattern in checks:
+        try:
+            if not re.search(pattern, text, flags=re.IGNORECASE):
+                return False
+        except re.error:
+            return False
+    return True
+
+
+def _classify_with_profile_rules(
+    query: str,
+    profile: AgentProfile,
+) -> tuple[QueryIntent, dict[str, Any]] | None:
+    modes = profile.query_modes.modes
+    rules = profile.query_modes.intent_rules
+    if not modes or not rules:
+        return None
+
+    text = str(query or "")
+    lowered = text.lower()
+    requested_standards = extract_requested_scopes(query, profile=profile)
+    for rule in rules:
+        mode = str(rule.mode or "").strip()
+        if not mode or mode not in modes:
+            continue
+        if not _has_all_keywords(lowered, tuple(rule.all_keywords)):
+            continue
+        if tuple(rule.any_keywords) and not _has_any_keyword(lowered, tuple(rule.any_keywords)):
+            continue
+        if not _has_all_patterns(text, tuple(rule.all_patterns)):
+            continue
+        if tuple(rule.any_patterns) and not _has_any_pattern(text, tuple(rule.any_patterns)):
+            continue
+        if not _has_all_keywords(lowered, tuple(rule.all_markers)):
+            continue
+        if tuple(rule.any_markers) and not _has_any_keyword(lowered, tuple(rule.any_markers)):
+            continue
+
+        return QueryIntent(mode=mode, rationale=f"profile_rule:{rule.id}"), {
+            "version": "profile_rules_v1",
+            "mode": mode,
+            "confidence": 0.85,
+            "reasons": [f"rule:{rule.id}"],
+            "features": {
+                "requested_scopes_count": len(requested_standards),
+            },
+            "blocked_modes": [],
+        }
+
+    default_mode = str(profile.query_modes.default_mode or "").strip()
+    if default_mode and default_mode in modes:
+        return QueryIntent(mode=default_mode, rationale="profile_default_mode"), {
+            "version": "profile_rules_v1",
+            "mode": default_mode,
+            "confidence": 0.55,
+            "reasons": ["default_mode"],
+            "features": {
+                "requested_scopes_count": len(requested_standards),
+            },
+            "blocked_modes": [],
+        }
+    return None
 
 
 def _router_hints(
@@ -209,109 +301,31 @@ def classify_intent_with_trace(
     profile: AgentProfile | None = None,
 ) -> tuple[QueryIntent, dict[str, Any]]:
     """Return intent plus a trace payload suitable for observability."""
+    if profile is not None:
+        profile_match = _classify_with_profile_rules(query, profile)
+        if profile_match is not None:
+            return profile_match
 
-    text = (query or "").strip().lower()
-    requested_standards = extract_requested_scopes(query, profile=profile)
-    (
-        literal_list_hints,
-        literal_normative_hints,
-        comparative_hints,
-        interpretive_hints,
-        _,
-        _,
-        _,
-    ) = _router_hints(profile)
-
-    # Backward-compatible fast path (kept for now) when v2 is disabled.
-    if not bool(settings.ORCH_MODE_CLASSIFIER_V2):
-        if len(requested_standards) >= 2 and any(k in text for k in interpretive_hints):
-            return QueryIntent(
-                mode="comparativa", rationale="multi-standard interpretive cross-impact"
-            ), {
-                "version": "v1",
-                "mode": "comparativa",
-                "confidence": 0.7,
-                "reasons": ["heuristic:multi_scope+interpretive"],
-            }
-        if any(h in text for h in literal_list_hints):
-            return QueryIntent(mode="literal_lista", rationale="list-like normative query"), {
-                "version": "v1",
-                "mode": "literal_lista",
-                "confidence": 0.7,
-                "reasons": ["heuristic:list"],
-            }
-        if any(h in text for h in literal_normative_hints):
-            if any(h in text for h in interpretive_hints):
-                mode: QueryMode = "comparativa" if len(requested_standards) >= 2 else "explicativa"
-                return QueryIntent(mode=mode, rationale="interpretive question with clause refs"), {
-                    "version": "v1",
-                    "mode": mode,
-                    "confidence": 0.65,
-                    "reasons": ["heuristic:interpretive+clause"],
-                }
-            if has_clause_reference(query) and not requested_standards:
-                return QueryIntent(
-                    mode="ambigua_scope",
-                    rationale="clause reference without explicit standard scope",
-                ), {
-                    "version": "v1",
-                    "mode": "ambigua_scope",
-                    "confidence": 0.7,
-                    "reasons": ["heuristic:clause_without_scope"],
-                }
-            return QueryIntent(mode="literal_normativa", rationale="normative exactness query"), {
-                "version": "v1",
-                "mode": "literal_normativa",
-                "confidence": 0.7,
-                "reasons": ["heuristic:literal"],
-            }
-        if any(h in text for h in comparative_hints):
-            return QueryIntent(mode="comparativa", rationale="cross-scope comparison"), {
-                "version": "v1",
-                "mode": "comparativa",
-                "confidence": 0.6,
-                "reasons": ["heuristic:comparative"],
-            }
-        return QueryIntent(mode="explicativa", rationale="general explanatory query"), {
-            "version": "v1",
-            "mode": "explicativa",
-            "confidence": 0.55,
-            "reasons": ["heuristic:default"],
-        }
-
-    from app.agent.mode_classifier import ModeClassification, classify_mode_v2
-
-    classification: ModeClassification = classify_mode_v2(query, profile=profile)
-
-    # Preserve an important v1 behavior: clause refs without explicit scope => ask for scope.
-    # Only do this when the classifier is not strongly analytical/comparative.
-    f = classification.features or {}
-    if f.get("clause_refs_count", 0) >= 1 and f.get("requested_scopes_count", 0) == 0:
-        if not bool(f.get("has_analysis_verb")) and not bool(f.get("has_comparative_marker")):
-            return QueryIntent(
-                mode="ambigua_scope", rationale="clause reference without explicit standard scope"
-            ), {
-                "version": "v2",
-                "mode": "ambigua_scope",
-                "confidence": 0.7,
-                "reasons": ["guardrail:clause_without_scope"],
-                "features": f,
-                "blocked_modes": list(classification.blocked_modes),
+        default_mode = str(profile.query_modes.default_mode or "").strip()
+        if default_mode:
+            return QueryIntent(mode=default_mode, rationale="profile_default_mode"), {
+                "version": "profile_rules_v1",
+                "mode": default_mode,
+                "confidence": 0.5,
+                "reasons": ["default_mode"],
+                "features": {},
+                "blocked_modes": [],
             }
 
-    intent = QueryIntent(
-        mode=classification.mode,
-        rationale=f"v2 confidence={round(classification.confidence, 2)} reasons={','.join(classification.reasons[:6])}",
-    )
-    trace = {
-        "version": "v2",
-        "mode": classification.mode,
-        "confidence": float(classification.confidence),
-        "reasons": list(classification.reasons),
-        "features": f,
-        "blocked_modes": list(classification.blocked_modes),
+    generic_mode = "default"
+    return QueryIntent(mode=generic_mode, rationale="generic_default_mode"), {
+        "version": "generic",
+        "mode": generic_mode,
+        "confidence": 0.4,
+        "reasons": ["generic_default"],
+        "features": {},
+        "blocked_modes": [],
     }
-    return intent, trace
 
 
 def build_retrieval_plan(
@@ -320,8 +334,32 @@ def build_retrieval_plan(
     profile: AgentProfile | None = None,
 ) -> RetrievalPlan:
     requested_standards = extract_requested_scopes(query, profile=profile)
-    mode_cfg = profile.retrieval.by_mode.get(intent.mode) if profile is not None else None
 
+    if profile is not None and profile.query_modes.modes:
+        mode_name = str(intent.mode or "").strip()
+        mode_cfg = profile.query_modes.modes.get(mode_name)
+        if mode_cfg is not None:
+            retrieval_key = str(mode_cfg.retrieval_profile or mode_name).strip() or mode_name
+            retrieval_cfg = profile.retrieval.by_mode.get(retrieval_key)
+            if retrieval_cfg is not None:
+                return RetrievalPlan(
+                    mode=mode_name,
+                    chunk_k=int(retrieval_cfg.chunk_k),
+                    chunk_fetch_k=int(retrieval_cfg.chunk_fetch_k),
+                    summary_k=int(retrieval_cfg.summary_k),
+                    require_literal_evidence=bool(mode_cfg.require_literal_evidence),
+                    requested_standards=requested_standards,
+                )
+            return RetrievalPlan(
+                mode=mode_name,
+                chunk_k=30,
+                chunk_fetch_k=120,
+                summary_k=5,
+                require_literal_evidence=bool(mode_cfg.require_literal_evidence),
+                requested_standards=requested_standards,
+            )
+
+    mode_cfg = profile.retrieval.by_mode.get(intent.mode) if profile is not None else None
     if mode_cfg is not None:
         return RetrievalPlan(
             mode=intent.mode,
@@ -332,33 +370,14 @@ def build_retrieval_plan(
             requested_standards=requested_standards,
         )
 
-    if intent.mode in {"literal_lista", "literal_normativa"}:
+    if profile is not None and profile.retrieval.by_mode:
+        first_cfg = next(iter(profile.retrieval.by_mode.values()))
         return RetrievalPlan(
             mode=intent.mode,
-            chunk_k=45,
-            chunk_fetch_k=220,
-            summary_k=3,
-            require_literal_evidence=True,
-            requested_standards=requested_standards,
-        )
-    if intent.mode == "comparativa":
-        return RetrievalPlan(
-            mode=intent.mode,
-            chunk_k=35,
-            chunk_fetch_k=140,
-            summary_k=5,
-            # Comparativa is typically interpretive; still grounded in retrieved context,
-            # but do not force clause-by-clause literal quoting.
-            require_literal_evidence=False,
-            requested_standards=requested_standards,
-        )
-    if intent.mode == "ambigua_scope":
-        return RetrievalPlan(
-            mode=intent.mode,
-            chunk_k=0,
-            chunk_fetch_k=0,
-            summary_k=0,
-            require_literal_evidence=True,
+            chunk_k=int(first_cfg.chunk_k),
+            chunk_fetch_k=int(first_cfg.chunk_fetch_k),
+            summary_k=int(first_cfg.summary_k),
+            require_literal_evidence=bool(first_cfg.require_literal_evidence),
             requested_standards=requested_standards,
         )
     return RetrievalPlan(

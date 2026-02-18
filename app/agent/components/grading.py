@@ -31,13 +31,13 @@ def looks_relevant_retrieval(
             for scope in requested:
                 if scope in row_standard or row_standard in scope:
                     matched.add(scope)
-        if plan.mode == "comparativa" and len(requested) >= 2 and len(matched) < 2:
+        if len(requested) >= 2 and len(matched) < 2:
             return False, "scope_mismatch"
         if not matched:
             return False, "scope_mismatch"
 
     query_clause_refs = re.findall(r"\b\d+(?:\.\d+)+\b", query or "")
-    if plan.mode in {"literal_normativa", "literal_lista"} and query_clause_refs:
+    if bool(plan.require_literal_evidence) and query_clause_refs:
         found_clause_anchor = False
         for doc in contentful:
             row = doc.metadata.get("row") if isinstance(doc.metadata, dict) else None

@@ -109,6 +109,52 @@ router:
     - "\\b\\d+(?:\\.\\d+)+\\b"
     - "\\bcl(?:a|á)usula\\s*\\d+(?:\\.\\d+)+\\b"
 
+query_modes:
+  default_mode: explanatory_audit
+  modes:
+    literal_list_extract:
+      require_literal_evidence: true
+      allow_inference: false
+      retrieval_profile: literal_lista
+      tool_hints: [semantic_retrieval, structural_extraction, citation_validator]
+    literal_clause_check:
+      require_literal_evidence: true
+      allow_inference: false
+      retrieval_profile: literal_normativa
+      tool_hints: [semantic_retrieval, citation_validator]
+    cross_standard_analysis:
+      require_literal_evidence: false
+      allow_inference: true
+      retrieval_profile: comparativa
+      tool_hints: [semantic_retrieval, logical_comparison, citation_validator]
+    explanatory_audit:
+      require_literal_evidence: false
+      allow_inference: true
+      retrieval_profile: explicativa
+      tool_hints: [semantic_retrieval, citation_validator]
+    scope_ambiguity:
+      require_literal_evidence: true
+      allow_inference: false
+      retrieval_profile: ambigua_scope
+      tool_hints: [citation_validator]
+  intent_rules:
+    - id: iso_ambiguous_scope
+      mode: scope_ambiguity
+      any_markers: ["__mode__=ambigua_scope"]
+    - id: iso_literal_list
+      mode: literal_list_extract
+      any_keywords: [entradas, salidas, lista, enumera, listado, vinetas]
+    - id: iso_literal_clause
+      mode: literal_clause_check
+      any_keywords: [clausula, documento obligatorio, obligatorio, exacto, literal, textualmente, verbatim, transcribe, cita, citas, c#/r#, que exige]
+      any_patterns:
+        - "\\bcl(?:a|á)usula\\s*\\d+(?:\\.\\d+)+\\b"
+    - id: iso_comparative
+      mode: cross_standard_analysis
+      any_keywords: [compar, difer, vs, ambas, respecto, impacto, impacta, interaccion]
+      any_patterns:
+        - "\\biso\\s*[-:]?\\s*9001\\b"
+        - "\\biso\\s*[-:]?\\s*14001\\b"
 clarification_rules:
   - rule_id: denunciante_vs_trazabilidad
     min_scope_count: 2

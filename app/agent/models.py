@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 
-QueryMode = Literal["literal_lista", "literal_normativa", "explicativa", "comparativa", "ambigua_scope"]
+QueryMode = str
 
 
 @dataclass(frozen=True)

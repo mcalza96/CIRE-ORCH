@@ -39,6 +39,7 @@ def test_build_deterministic_subqueries_literal_mode_defers_step_back() -> None:
         requested_standards=requested,
         max_queries=6,
         mode="literal_normativa",
+        require_literal_evidence=True,
     )
     ids = {item["id"] for item in subqueries}
     assert "step_back" not in ids
@@ -55,6 +56,7 @@ def test_build_deterministic_subqueries_semantic_tail_preserves_keywords_without
         requested_standards=requested,
         max_queries=6,
         mode="literal_normativa",
+        require_literal_evidence=True,
         include_semantic_tail=True,
     )
     scope_queries = [item for item in subqueries if str(item.get("id", "")).startswith("scope_")]
@@ -83,6 +85,7 @@ def test_build_deterministic_subqueries_semantic_tail_keeps_clause_plus_keywords
         requested_standards=requested,
         max_queries=4,
         mode="literal_normativa",
+        require_literal_evidence=True,
         include_semantic_tail=True,
     )
     assert subqueries
@@ -101,6 +104,7 @@ def test_build_deterministic_subqueries_semantic_tail_disabled() -> None:
         requested_standards=requested,
         max_queries=3,
         mode="literal_normativa",
+        require_literal_evidence=True,
         include_semantic_tail=False,
     )
     assert subqueries

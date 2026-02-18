@@ -25,7 +25,7 @@ def apply_search_hints(
 ) -> tuple[str, dict[str, Any]]:
     text = str(query or "").strip()
     if not text or profile is None or not profile.retrieval.search_hints:
-        return text, {"applied": [], "expanded_terms": []}
+        return text, {"applied": False, "applied_hints": [], "expanded_terms": []}
 
     lower_text = text.lower()
     expanded_terms: list[str] = []
@@ -60,10 +60,14 @@ def apply_search_hints(
         )
 
     if not expanded_terms:
-        return text, {"applied": [], "expanded_terms": []}
+        return text, {"applied": False, "applied_hints": [], "expanded_terms": []}
 
     expanded_query = f"{text} {' '.join(expanded_terms)}".strip()
-    return expanded_query, {"applied": applied, "expanded_terms": expanded_terms}
+    return expanded_query, {
+        "applied": True,
+        "applied_hints": applied,
+        "expanded_terms": expanded_terms,
+    }
 
 
 def extract_clause_refs(text: str, profile: AgentProfile | None = None) -> list[str]:
@@ -88,6 +92,27 @@ def extract_clause_refs(text: str, profile: AgentProfile | None = None) -> list[
             seen.add(value)
             ordered.append(value)
     return ordered
+
+
+def mode_requires_literal_evidence(
+    *,
+    mode: str | None,
+    profile: AgentProfile | None,
+    explicit_flag: bool | None = None,
+) -> bool:
+    if explicit_flag is not None:
+        return bool(explicit_flag)
+    mode_name = str(mode or "").strip()
+    if not mode_name:
+        return False
+    if profile is not None:
+        mode_cfg = profile.query_modes.modes.get(mode_name)
+        if mode_cfg is not None:
+            return bool(mode_cfg.require_literal_evidence)
+        retrieval_cfg = profile.retrieval.by_mode.get(mode_name)
+        if retrieval_cfg is not None:
+            return bool(retrieval_cfg.require_literal_evidence)
+    return False
 
 
 def _standard_key(standard: str) -> str:
@@ -244,6 +269,7 @@ def build_initial_scope_filters(
     mode: str,
     query: str,
     profile: AgentProfile | None = None,
+    require_literal_evidence: bool | None = None,
 ) -> dict[str, Any] | None:
     raw_query = str(query or "").strip()
     effective_query, _ = apply_search_hints(raw_query, profile=profile)
@@ -254,7 +280,11 @@ def build_initial_scope_filters(
 
     # Only narrow to clause_id for strict literal extraction AND explicit user references.
     # Do not derive hard clause filters from search-hint expansions.
-    if mode in {"literal_normativa", "literal_lista"}:
+    if mode_requires_literal_evidence(
+        mode=mode,
+        profile=profile,
+        explicit_flag=require_literal_evidence,
+    ):
         clause_refs = extract_clause_refs(raw_query, profile=profile)
         # If the user asked multiple questions in one turn, avoid over-constraining
         # retrieval to a single clause (e.g. "9.3 ..." + a second question).
@@ -276,6 +306,7 @@ def build_deterministic_subqueries(
     requested_standards: tuple[str, ...],
     max_queries: int = 6,
     mode: str | None = None,
+    require_literal_evidence: bool | None = None,
     include_semantic_tail: bool = True,
     profile: AgentProfile | None = None,
 ) -> list[dict[str, Any]]:
@@ -315,7 +346,11 @@ def build_deterministic_subqueries(
         if len(out) >= max_queries:
             return out
 
-    literal_mode = (mode or "").strip().lower() in {"literal_normativa", "literal_lista"}
+    literal_mode = mode_requires_literal_evidence(
+        mode=mode,
+        profile=profile,
+        explicit_flag=require_literal_evidence,
+    )
 
     # Bridge/documentation impact query.
     shared_filters: dict[str, Any] | None = (
