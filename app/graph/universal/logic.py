@@ -9,6 +9,8 @@ from app.agent.error_codes import (
     RETRIEVAL_CODE_LOW_SCORE,
     RETRIEVAL_CODE_SCOPE_MISMATCH,
     RETRIEVAL_CODE_EMPTY_RETRIEVAL,
+    RETRIEVAL_CODE_TIMEOUT,
+    RETRIEVAL_CODE_UPSTREAM_UNAVAILABLE,
 )
 from app.agent.models import RetrievalDiagnostics, ToolResult
 from app.graph.universal.state import UniversalState
@@ -20,7 +22,10 @@ _RETRYABLE_REASONS = {
     RETRIEVAL_CODE_CLAUSE_MISSING,
     RETRIEVAL_CODE_LOW_SCORE,
     RETRIEVAL_CODE_GRAPH_FALLBACK_NO_MULTIHOP,
+    RETRIEVAL_CODE_TIMEOUT,
+    RETRIEVAL_CODE_UPSTREAM_UNAVAILABLE,
 }
+
 
 def _is_retryable_reason(reason: str) -> bool:
     text = str(reason or "").strip().lower()
@@ -65,6 +70,8 @@ def _extract_retry_signal_from_retrieval(state: UniversalState, last: ToolResult
         RETRIEVAL_CODE_CLAUSE_MISSING,
         RETRIEVAL_CODE_LOW_SCORE,
         RETRIEVAL_CODE_GRAPH_FALLBACK_NO_MULTIHOP,
+        RETRIEVAL_CODE_TIMEOUT,
+        RETRIEVAL_CODE_UPSTREAM_UNAVAILABLE,
     ):
         if code in error_codes:
             return code

@@ -5,6 +5,9 @@ RETRIEVAL_CODE_SCOPE_MISMATCH = "scope_mismatch"
 RETRIEVAL_CODE_CLAUSE_MISSING = "clause_missing"
 RETRIEVAL_CODE_LOW_SCORE = "low_score"
 RETRIEVAL_CODE_GRAPH_FALLBACK_NO_MULTIHOP = "graph_fallback_no_multihop"
+RETRIEVAL_CODE_TIMEOUT = "retrieval_timeout"
+RETRIEVAL_CODE_UPSTREAM_UNAVAILABLE = "retrieval_upstream_unavailable"
+RETRIEVAL_CODE_INVALID_RESPONSE = "retrieval_invalid_response"
 
 
 def merge_error_codes(*groups: object) -> list[str]:

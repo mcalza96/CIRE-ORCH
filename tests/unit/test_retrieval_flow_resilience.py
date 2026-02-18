@@ -1,0 +1,166 @@
+from __future__ import annotations
+
+from unittest.mock import AsyncMock
+
+import pytest
+
+from app.agent.models import RetrievalPlan
+from app.agent.retrieval_flow import RetrievalFlow
+
+
+class _FakePlanner:
+    async def plan(self, _context):
+        return [{"id": "q1", "query": "subquery"}]
+
+
+def _plan() -> RetrievalPlan:
+    return RetrievalPlan(
+        mode="comparativa",
+        chunk_k=12,
+        chunk_fetch_k=60,
+        summary_k=0,
+        require_literal_evidence=False,
+        requested_standards=("ISO 9001", "ISO 14001"),
+    )
+
+
+def _set_retrieval_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_MULTI_QUERY_PRIMARY", True)
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_MULTI_QUERY_MIN_ITEMS", 3)
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_MULTI_QUERY_REFINE", True)
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_MULTI_QUERY_EVALUATOR", False)
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_MULTIHOP_FALLBACK", False)
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_COVERAGE_GATE_ENABLED", False)
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_COVERAGE_GATE_STEP_BACK", True)
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_COVERAGE_GATE_MAX_MISSING", 2)
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_COVERAGE_GATE_TOP_N", 12)
+    monkeypatch.setattr(
+        "app.agent.retrieval_flow.settings.ORCH_DETERMINISTIC_SUBQUERY_SEMANTIC_TAIL", False
+    )
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_MIN_SCORE_BACKSTOP_ENABLED", False)
+    monkeypatch.setattr(
+        "app.agent.retrieval_flow.settings.ORCH_TIMEOUT_RETRIEVAL_MULTI_QUERY_MS", 5000
+    )
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_TIMEOUT_RETRIEVAL_HYBRID_MS", 5000)
+    monkeypatch.setattr(
+        "app.agent.retrieval_flow.settings.ORCH_TIMEOUT_RETRIEVAL_COVERAGE_REPAIR_MS", 5000
+    )
+
+
+@pytest.mark.asyncio
+async def test_primary_multi_query_timeout_falls_back_to_hybrid(monkeypatch: pytest.MonkeyPatch):
+    _set_retrieval_defaults(monkeypatch)
+
+    contract_client = AsyncMock()
+    contract_client.multi_query = AsyncMock(
+        side_effect=RuntimeError("retrieval_timeout:multi_query_primary")
+    )
+    contract_client.hybrid = AsyncMock(
+        return_value={
+            "items": [{"content": "hybrid ok", "source": "H1", "score": 0.9}],
+            "trace": {"hybrid": True},
+        }
+    )
+
+    flow = RetrievalFlow(contract_client=contract_client, subquery_planner=_FakePlanner())
+    items = await flow.execute(
+        query="compara iso 9001 vs iso 14001",
+        tenant_id="t1",
+        collection_id=None,
+        plan=_plan(),
+        user_id="u1",
+    )
+
+    assert len(items) == 1
+    assert items[0].content == "hybrid ok"
+    assert flow.last_diagnostics is not None
+    assert flow.last_diagnostics.strategy == "hybrid"
+    assert "multi_query_primary_error" in flow.last_diagnostics.trace.get("hybrid_trace", {})
+
+
+@pytest.mark.asyncio
+async def test_refine_timeout_falls_back_to_hybrid(monkeypatch: pytest.MonkeyPatch):
+    _set_retrieval_defaults(monkeypatch)
+
+    contract_client = AsyncMock()
+    contract_client.multi_query = AsyncMock(
+        side_effect=[
+            {"items": [{"content": "p1"}]},
+            RuntimeError("retrieval_timeout:multi_query_refine"),
+        ]
+    )
+    contract_client.hybrid = AsyncMock(
+        return_value={
+            "items": [{"content": "hybrid after refine fail", "source": "H2", "score": 0.8}],
+            "trace": {"hybrid": True},
+        }
+    )
+
+    flow = RetrievalFlow(contract_client=contract_client, subquery_planner=_FakePlanner())
+    items = await flow.execute(
+        query="compara iso 9001 vs iso 14001",
+        tenant_id="t1",
+        collection_id=None,
+        plan=_plan(),
+        user_id="u1",
+    )
+
+    assert len(items) == 1
+    assert items[0].content == "hybrid after refine fail"
+    assert flow.last_diagnostics is not None
+    assert flow.last_diagnostics.strategy == "hybrid"
+    assert "multi_query_primary_error" in flow.last_diagnostics.trace.get("hybrid_trace", {})
+
+
+@pytest.mark.asyncio
+async def test_coverage_step_back_error_is_best_effort(monkeypatch: pytest.MonkeyPatch):
+    _set_retrieval_defaults(monkeypatch)
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_MULTI_QUERY_PRIMARY", False)
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_COVERAGE_GATE_ENABLED", True)
+
+    contract_client = AsyncMock()
+    contract_client.hybrid = AsyncMock(
+        return_value={
+            "items": [
+                {
+                    "content": "item base",
+                    "source": "B1",
+                    "score": 0.7,
+                    "metadata": {"row": {"source_standard": "ISO 9001", "content": "item base"}},
+                }
+            ],
+            "trace": {},
+        }
+    )
+    contract_client.multi_query = AsyncMock(
+        side_effect=[
+            {
+                "items": [
+                    {
+                        "content": "repair item",
+                        "source": "R1",
+                        "score": 0.6,
+                        "metadata": {
+                            "row": {"source_standard": "ISO 9001", "content": "repair item"}
+                        },
+                    }
+                ]
+            },
+            RuntimeError("retrieval_timeout:coverage_gate_step_back_multi_query"),
+        ]
+    )
+
+    flow = RetrievalFlow(contract_client=contract_client, subquery_planner=_FakePlanner())
+    items = await flow.execute(
+        query="compara iso 9001 vs iso 14001",
+        tenant_id="t1",
+        collection_id=None,
+        plan=_plan(),
+        user_id="u1",
+    )
+
+    assert len(items) >= 1
+    assert flow.last_diagnostics is not None
+    assert flow.last_diagnostics.strategy == "hybrid"
+    coverage_gate = flow.last_diagnostics.trace.get("coverage_gate", {})
+    assert "step_back_error" in coverage_gate
