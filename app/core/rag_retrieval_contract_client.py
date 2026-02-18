@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import time
 from typing import Any
 from uuid import uuid4
 
@@ -20,10 +21,39 @@ class RagContractNotSupportedError(RuntimeError):
     pass
 
 
+def _rag_http_timeout(timeout_seconds: float | None = None) -> httpx.Timeout:
+    read_timeout = (
+        float(timeout_seconds)
+        if timeout_seconds is not None and float(timeout_seconds) > 0
+        else float(settings.RAG_HTTP_READ_TIMEOUT_SECONDS)
+    )
+    return httpx.Timeout(
+        timeout=float(settings.RAG_HTTP_TIMEOUT_SECONDS),
+        connect=float(settings.RAG_HTTP_CONNECT_TIMEOUT_SECONDS),
+        read=read_timeout,
+        write=float(settings.RAG_HTTP_WRITE_TIMEOUT_SECONDS),
+        pool=float(settings.RAG_HTTP_POOL_TIMEOUT_SECONDS),
+    )
+
+
+def _rag_http_limits() -> httpx.Limits:
+    return httpx.Limits(
+        max_connections=int(settings.RAG_HTTP_MAX_CONNECTIONS),
+        max_keepalive_connections=int(settings.RAG_HTTP_MAX_KEEPALIVE_CONNECTIONS),
+        keepalive_expiry=float(settings.RAG_HTTP_KEEPALIVE_EXPIRY_SECONDS),
+    )
+
+
+def build_rag_http_client(timeout_seconds: float | None = None) -> httpx.AsyncClient:
+    return httpx.AsyncClient(timeout=_rag_http_timeout(timeout_seconds), limits=_rag_http_limits())
+
+
 @dataclass
 class RagRetrievalContractClient:
     timeout_seconds: float = 20.0
     backend_selector: RagBackendSelector | None = None
+    http_client: httpx.AsyncClient | None = None
+    _owns_http_client: bool = False
 
     def __post_init__(self) -> None:
         if self.backend_selector is None:
@@ -38,6 +68,15 @@ class RagRetrievalContractClient:
 
         if not settings.RAG_SERVICE_SECRET:
             raise RuntimeError("RAG_SERVICE_SECRET must be configured for production security")
+
+        if self.http_client is None:
+            self.http_client = build_rag_http_client(timeout_seconds=self.timeout_seconds)
+            self._owns_http_client = True
+
+    async def aclose(self) -> None:
+        if self._owns_http_client and self.http_client is not None:
+            await self.http_client.aclose()
+            self._owns_http_client = False
 
     async def validate_scope(
         self,
@@ -309,10 +348,31 @@ class RagRetrievalContractClient:
             headers["X-Request-ID"] = str(request_id)
         if user_id:
             headers["X-User-ID"] = user_id
-        async with httpx.AsyncClient(timeout=self.timeout_seconds, headers=headers) as client:
-            response = await client.post(url, json=payload)
+        client = self.http_client
+        if client is None:
+            client = build_rag_http_client(timeout_seconds=self.timeout_seconds)
+            self.http_client = client
+            self._owns_http_client = True
+
+        started_at = time.perf_counter()
+        try:
+            response = await client.post(url, json=payload, headers=headers)
             response.raise_for_status()
             data = response.json()
             if isinstance(data, dict):
                 return data
             return {"items": data}
+        except httpx.TimeoutException:
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            timeout_cfg = client.timeout
+            logger.warning(
+                "rag_contract_request_timeout",
+                endpoint=path,
+                base_url=base_url,
+                elapsed_ms=elapsed_ms,
+                timeout_connect_s=float(timeout_cfg.connect or 0.0),
+                timeout_read_s=float(timeout_cfg.read or 0.0),
+                timeout_write_s=float(timeout_cfg.write or 0.0),
+                timeout_pool_s=float(timeout_cfg.pool or 0.0),
+            )
+            raise

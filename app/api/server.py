@@ -9,8 +9,11 @@ from fastapi.responses import JSONResponse
 from app.api.v1.api_router import v1_router
 from app.cartridges.loader import get_cartridge_loader
 from app.core.config import settings
+from app.core.rag_retrieval_contract_client import build_rag_http_client
 
-logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO), format="%(message)s")
+logging.basicConfig(
+    level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO), format="%(message)s"
+)
 structlog.configure(
     processors=[
         structlog.processors.add_log_level,
@@ -23,9 +26,14 @@ logger = structlog.get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    del app
     get_cartridge_loader().validate_cartridge_files_strict()
-    yield
+    app.state.rag_http_client = build_rag_http_client()
+    try:
+        yield
+    finally:
+        rag_http_client = getattr(app.state, "rag_http_client", None)
+        if rag_http_client is not None:
+            await rag_http_client.aclose()
 
 
 app = FastAPI(
@@ -47,7 +55,10 @@ async def response_validation_exception_handler(request: Request, exc: ResponseV
     )
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Internal Server Error: Data Contract Breach", "type": "backend_contract_breach"},
+        content={
+            "detail": "Internal Server Error: Data Contract Breach",
+            "type": "backend_contract_breach",
+        },
     )
 
 

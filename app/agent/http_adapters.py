@@ -36,9 +36,10 @@ logger = structlog.get_logger(__name__)
 @dataclass
 class RagEngineRetrieverAdapter:
     base_url: str | None = None
-    timeout_seconds: float = 8.0
+    timeout_seconds: float = 45.0
     backend_selector: RagBackendSelector | None = None
     contract_client: RagRetrievalContractClient | None = None
+    http_client: httpx.AsyncClient | None = None
     subquery_planner: SubqueryPlanner | None = None
 
     # last diagnostics are read by the use case (duck typing).
@@ -65,7 +66,9 @@ class RagEngineRetrieverAdapter:
 
         if self.contract_client is None:
             self.contract_client = RagRetrievalContractClient(
+                timeout_seconds=self.timeout_seconds,
                 backend_selector=self.backend_selector,
+                http_client=self.http_client,
             )
         if self.subquery_planner is None:
             self.subquery_planner = HybridSubqueryPlanner.from_settings()
@@ -214,7 +217,7 @@ class RagEngineRetrieverAdapter:
             return []
         if int(plan.summary_k or 0) <= 0:
             return []
-            
+
         # Optional: Advanced contract typically handles everything in hybrid/mq,
         # but if we keep specific summary calls, they should also go through advanced contract if available.
         # For now, following the plan to simplify and favor the advanced orchestration.
@@ -252,8 +255,6 @@ class RagEngineRetrieverAdapter:
         self.last_retrieval_diagnostics = flow.last_diagnostics
         return items
 
-
-
     async def _with_timeout(
         self,
         *,
@@ -267,7 +268,6 @@ class RagEngineRetrieverAdapter:
             logger.warning("retrieval_budget_timeout", operation=op_name, timeout_ms=timeout_ms)
             raise RuntimeError(f"retrieval_timeout:{op_name}") from exc
 
-
     @staticmethod
     def _to_evidence(items: Any) -> list[EvidenceItem]:
         if not isinstance(items, list):
@@ -279,7 +279,7 @@ class RagEngineRetrieverAdapter:
             content = str(item.get("content") or "").strip()
             if not content:
                 continue
-            
+
             raw_meta = item.get("metadata") or {}
             if isinstance(raw_meta, dict) and "row" in raw_meta:
                 final_metadata = raw_meta
@@ -291,7 +291,7 @@ class RagEngineRetrieverAdapter:
                         "similarity": item.get("score"),
                     }
                 }
-                
+
             out.append(
                 EvidenceItem(
                     source=str(item.get("source") or "C1"),

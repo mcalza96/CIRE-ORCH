@@ -1,10 +1,9 @@
 import pytest
+from typing import Any, cast
 
 
 @pytest.mark.asyncio
-async def test_contract_client_sends_trace_headers(monkeypatch):
-    import httpx
-
+async def test_contract_client_sends_trace_headers():
     from app.core.rag_retrieval_contract_client import RagRetrievalContractClient
 
     sent_headers = {}
@@ -20,21 +19,18 @@ async def test_contract_client_sends_trace_headers(monkeypatch):
             return {"items": []}
 
     class _FakeClient:
-        def __init__(self, timeout, headers):
+        timeout = type(
+            "_Timeout",
+            (),
+            {"connect": 0.5, "read": 1.0, "write": 1.0, "pool": 0.5},
+        )()
+
+        async def post(self, url, json, headers):
+            del url, json
             sent_headers.update(headers)
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        async def post(self, url, json):
             return _FakeResponse()
 
-    monkeypatch.setattr(httpx, "AsyncClient", _FakeClient)
-
-    client = RagRetrievalContractClient()
+    client = RagRetrievalContractClient(http_client=cast(Any, _FakeClient()))
     await client._post_once(
         base_url="http://local",
         path="/api/v1/retrieval/hybrid",

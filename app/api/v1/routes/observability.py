@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
 import httpx
@@ -10,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from app.api.deps import UserContext, get_current_user
 from app.clients.backend_selector import RagBackendSelector
 from app.core.config import settings
+from app.core.rag_retrieval_contract_client import build_rag_http_client
 from app.security.tenant_authorizer import authorize_requested_tenant
 
 
@@ -36,6 +38,20 @@ def _s2s_headers(*, tenant_id: str, user_id: str) -> dict[str, str]:
     }
 
 
+@asynccontextmanager
+async def _rag_http_client_ctx(http_request: Request):
+    shared_client = getattr(http_request.app.state, "rag_http_client", None)
+    if isinstance(shared_client, httpx.AsyncClient):
+        yield shared_client
+        return
+
+    client = build_rag_http_client()
+    try:
+        yield client
+    finally:
+        await client.aclose()
+
+
 def _map_upstream_http_error(exc: httpx.HTTPStatusError, *, operation: str) -> HTTPException:
     upstream_status = exc.response.status_code if exc.response is not None else 502
     if upstream_status in {401, 403}:
@@ -54,12 +70,16 @@ def _map_upstream_http_error(exc: httpx.HTTPStatusError, *, operation: str) -> H
         ) from exc
     raise HTTPException(
         status_code=upstream_status,
-        detail={"code": "RAG_UPSTREAM_CLIENT_ERROR", "message": f"RAG rejected {operation} request"},
+        detail={
+            "code": "RAG_UPSTREAM_CLIENT_ERROR",
+            "message": f"RAG rejected {operation} request",
+        },
     ) from exc
 
 
 async def _proxy_json_get(
     *,
+    http_request: Request,
     path: str,
     params: dict[str, Any],
     tenant_id: str,
@@ -69,7 +89,7 @@ async def _proxy_json_get(
     base_url = await _selector().resolve_base_url()
     url = f"{base_url.rstrip('/')}{path}"
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=3.0)) as client:
+        async with _rag_http_client_ctx(http_request) as client:
             response = await client.get(
                 url,
                 params=params,
@@ -81,10 +101,18 @@ async def _proxy_json_get(
     except httpx.HTTPStatusError as exc:
         raise _map_upstream_http_error(exc, operation=operation)
     except httpx.RequestError as exc:
-        logger.warning("observability_proxy_unreachable", operation=operation, tenant_id=tenant_id, error=str(exc))
+        logger.warning(
+            "observability_proxy_unreachable",
+            operation=operation,
+            tenant_id=tenant_id,
+            error=str(exc),
+        )
         raise HTTPException(
             status_code=502,
-            detail={"code": "RAG_UPSTREAM_UNREACHABLE", "message": f"RAG endpoint unreachable for {operation}"},
+            detail={
+                "code": "RAG_UPSTREAM_UNREACHABLE",
+                "message": f"RAG endpoint unreachable for {operation}",
+            },
         ) from exc
 
 
@@ -97,6 +125,7 @@ async def get_batch_progress_proxy(
 ) -> dict[str, Any]:
     authorized_tenant = await authorize_requested_tenant(http_request, current_user, tenant_id)
     return await _proxy_json_get(
+        http_request=http_request,
         path=f"/api/v1/ingestion/batches/{batch_id}/progress",
         params={"tenant_id": authorized_tenant},
         tenant_id=authorized_tenant,
@@ -119,6 +148,7 @@ async def get_batch_events_proxy(
     if cursor:
         params["cursor"] = cursor
     return await _proxy_json_get(
+        http_request=http_request,
         path=f"/api/v1/ingestion/batches/{batch_id}/events",
         params=params,
         tenant_id=authorized_tenant,
@@ -136,6 +166,7 @@ async def list_active_batches_proxy(
 ) -> dict[str, Any]:
     authorized_tenant = await authorize_requested_tenant(http_request, current_user, tenant_id)
     return await _proxy_json_get(
+        http_request=http_request,
         path="/api/v1/ingestion/batches/active",
         params={"tenant_id": authorized_tenant, "limit": limit},
         tenant_id=authorized_tenant,
@@ -168,9 +199,7 @@ async def _proxy_sse(
             headers=_s2s_headers(tenant_id=tenant_id, user_id=user_id),
         ) as response:
             if response.status_code < 200 or response.status_code >= 300:
-                detail = (
-                    f'event: error\ndata: {{"type":"error","status":{response.status_code},"message":"upstream stream failed"}}\n\n'
-                )
+                detail = f'event: error\ndata: {{"type":"error","status":{response.status_code},"message":"upstream stream failed"}}\n\n'
                 yield detail.encode("utf-8")
                 return
             async for chunk in response.aiter_bytes():
@@ -191,6 +220,7 @@ async def stream_batch_proxy(
 
     # Handshake to fail fast with proper HTTP status before opening stream.
     await _proxy_json_get(
+        http_request=http_request,
         path=f"/api/v1/ingestion/batches/{batch_id}/progress",
         params={"tenant_id": authorized_tenant},
         tenant_id=authorized_tenant,

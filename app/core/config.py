@@ -29,6 +29,16 @@ class Settings(BaseSettings):
     RAG_ENGINE_BACKEND_TTL_SECONDS: int = 20
     RAG_ENGINE_FORCE_BACKEND: str | None = None
 
+    # Shared HTTP transport for ORCH -> RAG retrieval traffic.
+    RAG_HTTP_TIMEOUT_SECONDS: float = 45.0
+    RAG_HTTP_CONNECT_TIMEOUT_SECONDS: float = 3.0
+    RAG_HTTP_READ_TIMEOUT_SECONDS: float = 45.0
+    RAG_HTTP_WRITE_TIMEOUT_SECONDS: float = 10.0
+    RAG_HTTP_POOL_TIMEOUT_SECONDS: float = 5.0
+    RAG_HTTP_MAX_CONNECTIONS: int = 200
+    RAG_HTTP_MAX_KEEPALIVE_CONNECTIONS: int = 50
+    RAG_HTTP_KEEPALIVE_EXPIRY_SECONDS: float = 30.0
+
     # Retrieval contract orchestration.
     ORCH_MULTIHOP_FALLBACK: bool = True
     ORCH_SEMANTIC_PLANNER: bool = False
@@ -51,16 +61,16 @@ class Settings(BaseSettings):
 
     # Hard latency budgets (milliseconds). Timeouts are fail-fast and traced.
     # Calibrated 2026-02-18 based on real pipeline observations.
-    ORCH_TIMEOUT_CLASSIFY_MS: int = 2000       # Local rule-based classifier (~0.4ms real)
-    ORCH_TIMEOUT_PLAN_MS: int = 3000           # Local thread-based planner (~0.5ms real)
+    ORCH_TIMEOUT_CLASSIFY_MS: int = 2000  # Local rule-based classifier (~0.4ms real)
+    ORCH_TIMEOUT_PLAN_MS: int = 3000  # Local thread-based planner (~0.5ms real)
     ORCH_TIMEOUT_EXECUTE_TOOL_MS: int = 30000  # Retrieval: simple=4s, cross-standard=18s
-    ORCH_TIMEOUT_GENERATE_MS: int = 15000      # LLM generation: simple=5s, complex=10s
-    ORCH_TIMEOUT_VALIDATE_MS: int = 5000       # Citation validation: typically <1s
-    ORCH_TIMEOUT_TOTAL_MS: int = 60000         # Full pipeline: worst case ~40s + 20s headroom
+    ORCH_TIMEOUT_GENERATE_MS: int = 15000  # LLM generation: simple=5s, complex=10s
+    ORCH_TIMEOUT_VALIDATE_MS: int = 5000  # Citation validation: typically <1s
+    ORCH_TIMEOUT_TOTAL_MS: int = 60000  # Full pipeline: worst case ~40s + 20s headroom
 
     # Retrieval-stage budgets for advanced contract orchestration.
     # These are INNER timeouts within EXECUTE_TOOL, must be < ORCH_TIMEOUT_EXECUTE_TOOL_MS.
-    ORCH_TIMEOUT_RETRIEVAL_HYBRID_MS: int = 25000      # Single hybrid call: simple=3s, multihop=18s
+    ORCH_TIMEOUT_RETRIEVAL_HYBRID_MS: int = 25000  # Single hybrid call: simple=3s, multihop=18s
     ORCH_TIMEOUT_RETRIEVAL_MULTI_QUERY_MS: int = 25000  # Multi-query refinement: up to 6 subqueries
     ORCH_TIMEOUT_RETRIEVAL_COVERAGE_REPAIR_MS: int = 15000  # Coverage gate repair: 2-4 extra calls
 

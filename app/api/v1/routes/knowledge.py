@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 import json
 import time
 from typing import Any, Dict, Optional
@@ -21,6 +22,7 @@ from app.cartridges.deps import resolve_agent_profile
 from app.cartridges.loader import get_cartridge_loader
 from app.clients.backend_selector import RagBackendSelector
 from app.core.config import settings
+from app.core.rag_retrieval_contract_client import build_rag_http_client
 from app.core.scope_metrics import scope_metrics_store
 from app.security.tenant_authorizer import (
     authorize_requested_tenant,
@@ -110,8 +112,9 @@ class TenantProfileUpdateRequest(BaseModel):
     clear: bool = False
 
 
-def _build_use_case() -> HandleQuestionUseCase:
-    retriever = RagEngineRetrieverAdapter()
+def _build_use_case(http_request: Request) -> HandleQuestionUseCase:
+    shared_client = getattr(http_request.app.state, "rag_http_client", None)
+    retriever = RagEngineRetrieverAdapter(http_client=shared_client)
     answer_generator = GroundedAnswerAdapter(service=GroundedAnswerService())
     validator = LiteralEvidenceValidator()
     return HandleQuestionUseCase(
@@ -141,6 +144,7 @@ def _s2s_headers(
 
 async def _fetch_collections_from_rag(
     tenant_id: str,
+    client: httpx.AsyncClient,
     *,
     request_id: str | None = None,
     correlation_id: str | None = None,
@@ -157,18 +161,17 @@ async def _fetch_collections_from_rag(
 
     url = f"{base_url.rstrip('/')}/api/v1/ingestion/collections"
     params = {"tenant_id": tenant_id}
-    async with httpx.AsyncClient(timeout=httpx.Timeout(6.0, connect=2.0)) as client:
-        response = await client.get(
-            url,
-            params=params,
-            headers=_s2s_headers(
-                tenant_id,
-                request_id=request_id,
-                correlation_id=correlation_id,
-            ),
-        )
-        response.raise_for_status()
-        payload = response.json()
+    response = await client.get(
+        url,
+        params=params,
+        headers=_s2s_headers(
+            tenant_id,
+            request_id=request_id,
+            correlation_id=correlation_id,
+        ),
+    )
+    response.raise_for_status()
+    payload = response.json()
     raw_items = payload if isinstance(payload, list) else payload.get("items", [])
     out: list[CollectionItem] = []
     for item in raw_items:
@@ -181,6 +184,20 @@ async def _fetch_collections_from_rag(
         cname = str(item.get("name") or item.get("collection_name") or ckey or cid).strip()
         out.append(CollectionItem(id=cid, name=cname or cid, collection_key=ckey))
     return out
+
+
+@asynccontextmanager
+async def _rag_http_client_ctx(http_request: Request):
+    shared_client = getattr(http_request.app.state, "rag_http_client", None)
+    if isinstance(shared_client, httpx.AsyncClient):
+        yield shared_client
+        return
+
+    client = build_rag_http_client()
+    try:
+        yield client
+    finally:
+        await client.aclose()
 
 
 @router.post("/answer", response_model=Dict[str, Any])
@@ -493,11 +510,13 @@ async def list_authorized_collections(
             http_request.headers.get("X-Request-ID") or http_request.headers.get("X-Trace-ID") or ""
         ).strip()
         corr_id = str(http_request.headers.get("X-Correlation-ID") or "").strip()
-        items = await _fetch_collections_from_rag(
-            authorized_tenant,
-            request_id=req_id or None,
-            correlation_id=corr_id or None,
-        )
+        async with _rag_http_client_ctx(http_request) as client:
+            items = await _fetch_collections_from_rag(
+                authorized_tenant,
+                client,
+                request_id=req_id or None,
+                correlation_id=corr_id or None,
+            )
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code if exc.response is not None else 502
         logger.warning(
@@ -681,7 +700,7 @@ async def validate_scope_proxy(
         correlation_id=corr_id or None,
     )
     headers["X-User-ID"] = current_user.user_id
-    async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=3.0)) as client:
+    async with _rag_http_client_ctx(http_request) as client:
         resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         data = resp.json()
@@ -726,7 +745,7 @@ async def explain_retrieval_proxy(
         correlation_id=corr_id or None,
     )
     headers["X-User-ID"] = current_user.user_id
-    async with httpx.AsyncClient(timeout=httpx.Timeout(12.0, connect=3.0)) as client:
+    async with _rag_http_client_ctx(http_request) as client:
         resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         data = resp.json()
