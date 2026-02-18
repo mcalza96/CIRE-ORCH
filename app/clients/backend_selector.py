@@ -6,6 +6,11 @@ from time import monotonic
 import httpx
 import structlog
 
+from app.agent.interfaces import EmbeddingProvider, RerankingProvider
+from app.core.config import settings
+from app.infrastructure.providers.cohere_adapter import CohereAdapter
+from app.infrastructure.providers.jina_adapter import JinaAdapter
+
 
 logger = structlog.get_logger(__name__)
 
@@ -119,3 +124,29 @@ class RagBackendSelector:
         if normalized in {"local", "docker"}:
             return normalized
         return None
+
+
+class RagProviderFactory:
+    @staticmethod
+    def create_embedding_provider(
+        *,
+        http_client: httpx.AsyncClient | None = None,
+    ) -> EmbeddingProvider:
+        provider = str(settings.RAG_PROVIDER or "jina").strip().lower()
+        if provider == "cohere":
+            return CohereAdapter(
+                api_key=str(settings.COHERE_API_KEY or ""), http_client=http_client
+            )
+        return JinaAdapter(api_key=str(settings.JINA_API_KEY or ""), http_client=http_client)
+
+    @staticmethod
+    def create_reranking_provider(
+        *,
+        http_client: httpx.AsyncClient | None = None,
+    ) -> RerankingProvider:
+        provider = str(settings.RAG_PROVIDER or "jina").strip().lower()
+        if provider == "cohere":
+            return CohereAdapter(
+                api_key=str(settings.COHERE_API_KEY or ""), http_client=http_client
+            )
+        return JinaAdapter(api_key=str(settings.JINA_API_KEY or ""), http_client=http_client)

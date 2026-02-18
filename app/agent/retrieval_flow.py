@@ -17,7 +17,12 @@ from app.agent.error_codes import (
     merge_error_codes,
 )
 from app.agent.retrieval_filters import filter_items_by_min_score
-from app.agent.interfaces import SubqueryPlanner, SubqueryPlanningContext
+from app.agent.interfaces import (
+    EmbeddingProvider,
+    RerankingProvider,
+    SubqueryPlanner,
+    SubqueryPlanningContext,
+)
 from app.agent.components.query_decomposer import HybridSubqueryPlanner
 from app.agent.models import EvidenceItem, RetrievalDiagnostics, RetrievalPlan
 from app.cartridges.models import AgentProfile, QueryModeConfig
@@ -46,11 +51,15 @@ class RetrievalFlow:
         self,
         contract_client: RagRetrievalContractClient,
         subquery_planner: SubqueryPlanner | None = None,
+        embedding_provider: EmbeddingProvider | None = None,
+        reranking_provider: RerankingProvider | None = None,
         profile_context: AgentProfile | None = None,
         profile_resolution_context: dict[str, Any] | None = None,
     ):
         self.contract_client = contract_client
         self.subquery_planner = subquery_planner or HybridSubqueryPlanner.from_settings()
+        self.embedding_provider = embedding_provider
+        self.reranking_provider = reranking_provider
         self.profile_context = profile_context
         self.profile_resolution_context = profile_resolution_context
         self.last_diagnostics: RetrievalDiagnostics | None = None

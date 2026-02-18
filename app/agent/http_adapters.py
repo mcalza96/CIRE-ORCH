@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 import structlog
-from app.clients.backend_selector import RagBackendSelector
+from app.clients.backend_selector import RagBackendSelector, RagProviderFactory
 from app.core.config import settings
 from app.core.rag_retrieval_contract_client import (
     RagRetrievalContractClient,
@@ -13,7 +13,7 @@ from app.core.rag_retrieval_contract_client import (
 
 # New Strategy Imports
 from app.agent.retrieval_flow import RetrievalFlow
-from app.agent.interfaces import SubqueryPlanner
+from app.agent.interfaces import EmbeddingProvider, RerankingProvider, SubqueryPlanner
 from app.agent.components.query_decomposer import HybridSubqueryPlanner
 from app.agent.models import EvidenceItem, RetrievalDiagnostics, RetrievalPlan
 from app.cartridges.models import AgentProfile
@@ -30,6 +30,8 @@ class RagEngineRetrieverAdapter:
     contract_client: RagRetrievalContractClient | None = None
     http_client: httpx.AsyncClient | None = None
     subquery_planner: SubqueryPlanner | None = None
+    embedding_provider: EmbeddingProvider | None = None
+    reranking_provider: RerankingProvider | None = None
 
     # last diagnostics are read by the use case (duck typing).
     last_retrieval_diagnostics: RetrievalDiagnostics | None = None
@@ -61,6 +63,22 @@ class RagEngineRetrieverAdapter:
             )
         if self.subquery_planner is None:
             self.subquery_planner = HybridSubqueryPlanner.from_settings()
+
+        if self.embedding_provider is None:
+            try:
+                self.embedding_provider = RagProviderFactory.create_embedding_provider(
+                    http_client=self.http_client
+                )
+            except Exception as exc:
+                logger.warning("embedding_provider_not_initialized", error=str(exc)[:160])
+
+        if self.reranking_provider is None:
+            try:
+                self.reranking_provider = RagProviderFactory.create_reranking_provider(
+                    http_client=self.http_client
+                )
+            except Exception as exc:
+                logger.warning("reranking_provider_not_initialized", error=str(exc)[:160])
 
     def set_profile_context(
         self,
@@ -160,6 +178,8 @@ class RagEngineRetrieverAdapter:
         flow = RetrievalFlow(
             contract_client=self.contract_client,
             subquery_planner=self.subquery_planner,
+            embedding_provider=self.embedding_provider,
+            reranking_provider=self.reranking_provider,
             profile_context=self._profile_context,
             profile_resolution_context=self._profile_resolution_context,
         )

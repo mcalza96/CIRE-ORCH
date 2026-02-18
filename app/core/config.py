@@ -28,6 +28,17 @@ class Settings(BaseSettings):
     RAG_ENGINE_PROBE_TIMEOUT_MS: int = 300
     RAG_ENGINE_BACKEND_TTL_SECONDS: int = 20
     RAG_ENGINE_FORCE_BACKEND: str | None = None
+    RAG_PROVIDER: str = "jina"  # jina | cohere
+    JINA_API_KEY: str | None = None
+    JINA_EMBED_URL: str = "https://api.jina.ai/v1/embeddings"
+    JINA_RERANK_URL: str = "https://api.jina.ai/v1/rerank"
+    JINA_EMBED_MODEL: str = "jina-embeddings-v3"
+    JINA_RERANK_MODEL: str = "jina-reranker-v2-base-multilingual"
+    COHERE_API_KEY: str | None = None
+    COHERE_EMBED_URL: str = "https://api.cohere.com/v2/embed"
+    COHERE_RERANK_URL: str = "https://api.cohere.com/v2/rerank"
+    COHERE_EMBED_MODEL: str = "embed-multilingual-v3.0"
+    COHERE_RERANK_MODEL: str = "rerank-multilingual-v3.0"
 
     # Shared HTTP transport for ORCH -> RAG retrieval traffic.
     RAG_HTTP_TIMEOUT_SECONDS: float = 45.0
