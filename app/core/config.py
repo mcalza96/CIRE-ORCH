@@ -42,13 +42,13 @@ class Settings(BaseSettings):
     # Retrieval contract orchestration.
     ORCH_MULTIHOP_FALLBACK: bool = True
     ORCH_SEMANTIC_PLANNER: bool = False
-    ORCH_PLANNER_MAX_QUERIES: int = 5
+    ORCH_PLANNER_MAX_QUERIES: int = 3
     ORCH_PLANNER_MODEL: str | None = None
     ORCH_DETERMINISTIC_SUBQUERY_SEMANTIC_TAIL: bool = True
     ORCH_LIGHT_PLANNER_ENABLED: bool = False
     ORCH_LIGHT_PLANNER_MODEL: str | None = None
     ORCH_LIGHT_PLANNER_TIMEOUT_MS: int = 600
-    ORCH_LIGHT_PLANNER_MAX_SUBQUERIES: int = 4
+    ORCH_LIGHT_PLANNER_MAX_SUBQUERIES: int = 3
 
     # Multi-query promotion/iteration (agentic kernel guardrails)
     ORCH_MULTI_QUERY_PRIMARY: bool = False

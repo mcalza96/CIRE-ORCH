@@ -160,7 +160,11 @@ class RetrievalFlow:
             mode_max_subqueries = int(decomposition_policy.get("max_subqueries", 6))
         except (TypeError, ValueError):
             mode_max_subqueries = 6
-        mode_max_subqueries = max(2, min(12, mode_max_subqueries))
+        global_max_subqueries = max(
+            2,
+            int(getattr(settings, "ORCH_PLANNER_MAX_QUERIES", 3) or 3),
+        )
+        mode_max_subqueries = max(2, min(mode_max_subqueries, global_max_subqueries))
 
         literal_mode = mode_requires_literal_evidence(
             mode=plan.mode,
@@ -894,15 +898,6 @@ class RetrievalFlow:
                         "filters": clause_filters,
                     }
                 )
-
-        if (
-            (remaining or remaining_clauses)
-            and settings.ORCH_COVERAGE_GATE_STEP_BACK
-            and not allow_step_back
-        ):
-            if isinstance(base_trace.get("coverage_gate"), dict):
-                base_trace["coverage_gate"]["step_back_skipped_by_budget"] = True
-
             t_sb = time.perf_counter()
             try:
                 sb_payload = await self._with_timeout(
@@ -955,6 +950,14 @@ class RetrievalFlow:
                         base_trace["coverage_gate"]["step_back_queries"] = [
                             q.get("id") for q in step_back_queries
                         ]
+
+        if (
+            (remaining or remaining_clauses)
+            and settings.ORCH_COVERAGE_GATE_STEP_BACK
+            and not allow_step_back
+        ):
+            if isinstance(base_trace.get("coverage_gate"), dict):
+                base_trace["coverage_gate"]["step_back_skipped_by_budget"] = True
 
         final_missing = find_missing_scopes(
             merged, plan.requested_standards, enforce=require_all_scopes
