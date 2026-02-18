@@ -403,20 +403,39 @@ class RetrievalFlow:
             subqueries = subqueries[:mode_max_subqueries]
 
             merge = {"strategy": "rrf", "rrf_k": 60, "top_k": min(16, max(12, k))}
-            mq_payload, mq_error_code, mq_error_detail = await self._safe_execute(
-                op_name="multi_query_fallback",
-                timeout_ms=budgeted_timeout(timeout_multi_query_ms),
-                operation=contract_client.multi_query(
+            mq_timeout_ms = budgeted_timeout(timeout_multi_query_ms)
+            use_client_fanout = bool(
+                getattr(settings, "ORCH_MULTI_QUERY_CLIENT_FANOUT_ENABLED", False)
+            )
+            if use_client_fanout:
+                mq_payload, mq_error_code, mq_error_detail = await self._execute_multi_query_fanout(
+                    op_name="multi_query_fallback",
+                    timeout_ms=mq_timeout_ms,
                     tenant_id=tenant_id,
                     collection_id=collection_id,
                     user_id=user_id,
                     request_id=request_id,
                     correlation_id=correlation_id,
                     queries=subqueries,
-                    merge=merge,
-                ),
-                timings_ms=timings_ms,
-            )
+                    default_k=k,
+                    default_fetch_k=fetch_k,
+                    timings_ms=timings_ms,
+                )
+            else:
+                mq_payload, mq_error_code, mq_error_detail = await self._safe_execute(
+                    op_name="multi_query_fallback",
+                    timeout_ms=mq_timeout_ms,
+                    operation=contract_client.multi_query(
+                        tenant_id=tenant_id,
+                        collection_id=collection_id,
+                        user_id=user_id,
+                        request_id=request_id,
+                        correlation_id=correlation_id,
+                        queries=subqueries,
+                        merge=merge,
+                    ),
+                    timings_ms=timings_ms,
+                )
             mq_items_raw = mq_payload.get("items") if isinstance(mq_payload, dict) else []
             mq_items = mq_items_raw if isinstance(mq_items_raw, list) else []
             mq_trace = mq_payload.get("trace") if isinstance(mq_payload, dict) else {}
@@ -428,6 +447,9 @@ class RetrievalFlow:
             if mq_error_code:
                 diag_trace_local = {
                     "strategy_path": "hybrid_then_multi_query_failed",
+                    "multi_query_execution_mode": (
+                        "client_fanout" if use_client_fanout else "contract_multi_query"
+                    ),
                     "hybrid_trace": trace,
                     "timings_ms": dict(timings_ms),
                     "fallback_reason": insufficient_reasons,
@@ -500,6 +522,9 @@ class RetrievalFlow:
                     [fallback_code] if fallback_code else [],
                 ),
                 "deterministic_subquery_semantic_tail": semantic_tail_enabled,
+                "multi_query_execution_mode": (
+                    "client_fanout" if use_client_fanout else "contract_multi_query"
+                ),
                 "mode_policy": {
                     "require_all_requested_scopes": require_all_scopes,
                     "min_clause_refs": min_clause_refs_required,
@@ -680,6 +705,157 @@ class RetrievalFlow:
             logger.warning("retrieval_strategy_invalid_payload", strategy=op_name)
             return {}, RETRIEVAL_CODE_INVALID_RESPONSE, "invalid_payload"
         return payload, None, None
+
+    async def _execute_multi_query_fanout(
+        self,
+        *,
+        op_name: str,
+        timeout_ms: int,
+        tenant_id: str,
+        collection_id: str | None,
+        user_id: str | None,
+        request_id: str | None,
+        correlation_id: str | None,
+        queries: list[dict[str, Any]],
+        default_k: int,
+        default_fetch_k: int,
+        timings_ms: dict[str, float],
+    ) -> tuple[dict[str, Any], str | None, str | None]:
+        max_parallel = max(
+            1,
+            int(getattr(settings, "ORCH_MULTI_QUERY_CLIENT_FANOUT_MAX_PARALLEL", 2) or 2),
+        )
+        per_query_timeout_ms = max(
+            200,
+            int(
+                getattr(settings, "ORCH_MULTI_QUERY_CLIENT_FANOUT_PER_QUERY_TIMEOUT_MS", 8000)
+                or 8000
+            ),
+        )
+        per_query_timeout_ms = min(per_query_timeout_ms, timeout_ms)
+        rerank_enabled = bool(
+            getattr(settings, "ORCH_MULTI_QUERY_CLIENT_FANOUT_RERANK_ENABLED", False)
+        )
+        graph_max_hops = max(
+            0,
+            int(getattr(settings, "ORCH_MULTI_QUERY_CLIENT_FANOUT_GRAPH_MAX_HOPS", 2) or 2),
+        )
+
+        semaphore = asyncio.Semaphore(max_parallel)
+        t0 = time.perf_counter()
+
+        async def run_subquery(idx: int, subquery: dict[str, Any]) -> dict[str, Any]:
+            sq_id = str(subquery.get("id") or f"q{idx + 1}")
+            sq_query = str(subquery.get("query") or "").strip()
+            if not sq_query:
+                return {
+                    "id": sq_id,
+                    "ok": False,
+                    "error_code": RETRIEVAL_CODE_INVALID_RESPONSE,
+                    "error_detail": "empty_query",
+                    "items": [],
+                }
+
+            try:
+                sq_k = int(subquery.get("k") or default_k)
+            except (TypeError, ValueError):
+                sq_k = default_k
+            try:
+                sq_fetch_k = int(subquery.get("fetch_k") or default_fetch_k)
+            except (TypeError, ValueError):
+                sq_fetch_k = default_fetch_k
+            sq_filters = normalize_query_filters(
+                subquery.get("filters") if isinstance(subquery.get("filters"), dict) else None
+            )
+
+            async with semaphore:
+                payload, error_code, error_detail = await self._safe_execute(
+                    op_name=f"{op_name}_fanout_{idx + 1}",
+                    timeout_ms=per_query_timeout_ms,
+                    operation=self.contract_client.hybrid(
+                        query=sq_query,
+                        tenant_id=tenant_id,
+                        collection_id=collection_id,
+                        user_id=user_id,
+                        request_id=request_id,
+                        correlation_id=correlation_id,
+                        k=max(1, sq_k),
+                        fetch_k=max(1, sq_fetch_k),
+                        filters=sq_filters,
+                        rerank={"enabled": rerank_enabled},
+                        graph={"max_hops": graph_max_hops},
+                    ),
+                    timings_ms=timings_ms,
+                )
+
+            sq_items_raw = payload.get("items") if isinstance(payload, dict) else []
+            sq_items = sq_items_raw if isinstance(sq_items_raw, list) else []
+            return {
+                "id": sq_id,
+                "ok": error_code is None,
+                "error_code": error_code,
+                "error_detail": error_detail,
+                "items": [it for it in sq_items if isinstance(it, dict)],
+            }
+
+        tasks = [asyncio.create_task(run_subquery(idx, sq)) for idx, sq in enumerate(queries)]
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks),
+                timeout=max(0.2, timeout_ms / 1000.0),
+            )
+        except TimeoutError:
+            for task in tasks:
+                task.cancel()
+            timings_ms[op_name] = round((time.perf_counter() - t0) * 1000, 2)
+            return {}, RETRIEVAL_CODE_TIMEOUT, f"retrieval_timeout:{op_name}_fanout"
+
+        timings_ms[op_name] = round((time.perf_counter() - t0) * 1000, 2)
+
+        all_items: list[dict[str, Any]] = []
+        subqueries_trace: list[dict[str, Any]] = []
+        error_codes: list[str] = []
+        first_error_code: str | None = None
+        first_error_detail: str | None = None
+        for result in results:
+            sq_items = [it for it in result.get("items") or [] if isinstance(it, dict)]
+            all_items.extend(sq_items)
+            sq_error_code = result.get("error_code")
+            sq_error_detail = result.get("error_detail")
+            if isinstance(sq_error_code, str) and sq_error_code:
+                error_codes.append(sq_error_code)
+                if first_error_code is None:
+                    first_error_code = sq_error_code
+                    first_error_detail = (
+                        str(sq_error_detail)[:160] if isinstance(sq_error_detail, str) else None
+                    )
+            subqueries_trace.append(
+                {
+                    "id": str(result.get("id") or ""),
+                    "ok": bool(result.get("ok")),
+                    "item_count": len(sq_items),
+                    "error_code": sq_error_code,
+                }
+            )
+
+        merged_items = self._merge_and_deduplicate([], all_items)
+        has_success = any(bool(r.get("ok")) for r in results)
+        partial = any(not bool(r.get("ok")) for r in results)
+        payload: dict[str, Any] = {
+            "items": merged_items,
+            "partial": partial,
+            "subqueries": subqueries_trace,
+            "trace": {
+                "fanout": True,
+                "max_parallel": max_parallel,
+                "rerank_enabled": rerank_enabled,
+                "graph_max_hops": graph_max_hops,
+                "error_codes": merge_error_codes([], error_codes),
+            },
+        }
+        if has_success:
+            return payload, None, None
+        return payload, first_error_code or RETRIEVAL_CODE_INVALID_RESPONSE, first_error_detail
 
     @staticmethod
     def _merge_and_deduplicate(
