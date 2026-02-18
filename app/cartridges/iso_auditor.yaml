@@ -115,32 +115,32 @@ query_modes:
     literal_list_extract:
       require_literal_evidence: true
       allow_inference: false
-      retrieval_profile: literal_lista
+      retrieval_profile: literal_list_extract
       tool_hints: [semantic_retrieval, structural_extraction, citation_validator]
     literal_clause_check:
       require_literal_evidence: true
       allow_inference: false
-      retrieval_profile: literal_normativa
+      retrieval_profile: literal_clause_check
       tool_hints: [semantic_retrieval, citation_validator]
     cross_standard_analysis:
       require_literal_evidence: false
       allow_inference: true
-      retrieval_profile: comparativa
+      retrieval_profile: cross_standard_analysis
       tool_hints: [semantic_retrieval, logical_comparison, citation_validator]
     explanatory_audit:
       require_literal_evidence: false
       allow_inference: true
-      retrieval_profile: explicativa
+      retrieval_profile: explanatory_audit
       tool_hints: [semantic_retrieval, citation_validator]
     scope_ambiguity:
       require_literal_evidence: true
       allow_inference: false
-      retrieval_profile: ambigua_scope
+      retrieval_profile: scope_ambiguity
       tool_hints: [citation_validator]
   intent_rules:
     - id: iso_ambiguous_scope
       mode: scope_ambiguity
-      any_markers: ["__mode__=ambigua_scope"]
+      any_markers: ["__mode__=scope_ambiguity"]
     - id: iso_literal_list
       mode: literal_list_extract
       any_keywords: [entradas, salidas, lista, enumera, listado, vinetas]
@@ -284,27 +284,27 @@ retrieval:
         - 5.2 política de la seguridad y salud en el trabajo
         - compromiso de eliminar peligros
   by_mode:
-    literal_lista:
+    literal_list_extract:
       chunk_k: 45
       chunk_fetch_k: 220
       summary_k: 3
       require_literal_evidence: true
-    literal_normativa:
+    literal_clause_check:
       chunk_k: 55
       chunk_fetch_k: 300
       summary_k: 3
       require_literal_evidence: true
-    comparativa:
+    cross_standard_analysis:
       chunk_k: 35
       chunk_fetch_k: 140
       summary_k: 5
       require_literal_evidence: false
-    ambigua_scope:
+    scope_ambiguity:
       chunk_k: 0
       chunk_fetch_k: 0
       summary_k: 0
       require_literal_evidence: true
-    explicativa:
+    explanatory_audit:
       chunk_k: 30
       chunk_fetch_k: 120
       summary_k: 5

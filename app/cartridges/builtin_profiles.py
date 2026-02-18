@@ -33,7 +33,7 @@ BUILTIN_PROFILES: dict[str, dict] = {
                 "literal_list_extract": {
                     "require_literal_evidence": True,
                     "allow_inference": False,
-                    "retrieval_profile": "literal_lista",
+                    "retrieval_profile": "literal_list_extract",
                     "tool_hints": [
                         "semantic_retrieval",
                         "structural_extraction",
@@ -43,13 +43,13 @@ BUILTIN_PROFILES: dict[str, dict] = {
                 "literal_clause_check": {
                     "require_literal_evidence": True,
                     "allow_inference": False,
-                    "retrieval_profile": "literal_normativa",
+                    "retrieval_profile": "literal_clause_check",
                     "tool_hints": ["semantic_retrieval", "citation_validator"],
                 },
                 "cross_scope_analysis": {
                     "require_literal_evidence": False,
                     "allow_inference": True,
-                    "retrieval_profile": "comparativa",
+                    "retrieval_profile": "cross_scope_analysis",
                     "tool_hints": [
                         "semantic_retrieval",
                         "logical_comparison",
@@ -59,13 +59,13 @@ BUILTIN_PROFILES: dict[str, dict] = {
                 "scope_clarification": {
                     "require_literal_evidence": True,
                     "allow_inference": False,
-                    "retrieval_profile": "ambigua_scope",
+                    "retrieval_profile": "scope_clarification",
                     "tool_hints": ["citation_validator"],
                 },
                 "explanatory_response": {
                     "require_literal_evidence": False,
                     "allow_inference": True,
-                    "retrieval_profile": "explicativa",
+                    "retrieval_profile": "explanatory_response",
                     "tool_hints": ["semantic_retrieval", "citation_validator"],
                 },
             },
@@ -124,7 +124,7 @@ BUILTIN_PROFILES: dict[str, dict] = {
                 "literal_list_extract": {
                     "require_literal_evidence": True,
                     "allow_inference": False,
-                    "retrieval_profile": "literal_lista",
+                    "retrieval_profile": "literal_list_extract",
                     "tool_hints": [
                         "semantic_retrieval",
                         "structural_extraction",
@@ -134,13 +134,13 @@ BUILTIN_PROFILES: dict[str, dict] = {
                 "literal_clause_check": {
                     "require_literal_evidence": True,
                     "allow_inference": False,
-                    "retrieval_profile": "literal_normativa",
+                    "retrieval_profile": "literal_clause_check",
                     "tool_hints": ["semantic_retrieval", "citation_validator"],
                 },
                 "cross_standard_analysis": {
                     "require_literal_evidence": False,
                     "allow_inference": True,
-                    "retrieval_profile": "comparativa",
+                    "retrieval_profile": "cross_standard_analysis",
                     "tool_hints": [
                         "semantic_retrieval",
                         "logical_comparison",
@@ -150,13 +150,13 @@ BUILTIN_PROFILES: dict[str, dict] = {
                 "scope_ambiguity": {
                     "require_literal_evidence": True,
                     "allow_inference": False,
-                    "retrieval_profile": "ambigua_scope",
+                    "retrieval_profile": "scope_ambiguity",
                     "tool_hints": ["citation_validator"],
                 },
                 "explanatory_audit": {
                     "require_literal_evidence": False,
                     "allow_inference": True,
-                    "retrieval_profile": "explicativa",
+                    "retrieval_profile": "explanatory_audit",
                     "tool_hints": ["semantic_retrieval", "citation_validator"],
                 },
             },
@@ -164,7 +164,7 @@ BUILTIN_PROFILES: dict[str, dict] = {
                 {
                     "id": "iso_ambiguous",
                     "mode": "scope_ambiguity",
-                    "any_markers": ["__mode__=ambigua_scope"],
+                    "any_markers": ["__mode__=scope_ambiguity"],
                 },
                 {
                     "id": "iso_list",
@@ -227,7 +227,7 @@ BUILTIN_PROFILES: dict[str, dict] = {
             },
             {
                 "rule_id": "structural_ambiguity",
-                "all_markers": ["__mode__=ambigua_scope"],
+                "all_markers": ["__mode__=scope_ambiguity"],
                 "question_template": "Necesito desambiguar el alcance antes de responder con trazabilidad. Indica el alcance objetivo (sugeridos: {scopes}).",
                 "options": [],
             },

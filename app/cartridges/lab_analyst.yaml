@@ -123,7 +123,12 @@ router:
 clarification_rules:
   - rule_id: arsenico_scope_metodo
     all_markers: [arsenico, __low_confidence__]
-    any_markers: [__mode__=explicativa, __mode__=literal_lista, __mode__=literal_normativa]
+    any_markers:
+      [
+        __mode__=explanatory_response,
+        __mode__=literal_list_extract,
+        __mode__=literal_clause_check,
+      ]
     question_template: >-
       Para arsenico necesito acotar el metodo antes de calcular o detallar pasos.
       Deseas trabajar con horno de grafito, generacion de hidruros (SM 3114) u otro metodo?
@@ -179,27 +184,27 @@ retrieval:
       chunk_fetch_k: 220
       summary_k: 3
       require_literal_evidence: true
-    literal_lista:
+    literal_list_extract:
       chunk_k: 55
       chunk_fetch_k: 260
       summary_k: 4
       require_literal_evidence: true
-    literal_normativa:
+    literal_clause_check:
       chunk_k: 45
       chunk_fetch_k: 220
       summary_k: 3
       require_literal_evidence: true
-    comparativa:
+    cross_scope_analysis:
       chunk_k: 36
       chunk_fetch_k: 150
       summary_k: 5
       require_literal_evidence: false
-    ambigua_scope:
+    scope_clarification:
       chunk_k: 0
       chunk_fetch_k: 0
       summary_k: 0
       require_literal_evidence: true
-    explicativa:
+    explanatory_response:
       chunk_k: 60
       chunk_fetch_k: 280
       summary_k: 4

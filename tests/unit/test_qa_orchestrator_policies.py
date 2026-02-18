@@ -38,7 +38,7 @@ def test_build_retrieval_plan_literal_is_strict():
 
 def test_classify_intent_ambiguous_scope_without_standard():
     intent = classify_intent(
-        "__mode__=ambigua_scope Que exige la clausula 9.1.2?", profile=ISO_PROFILE
+        "__mode__=scope_ambiguity Que exige la clausula 9.1.2?", profile=ISO_PROFILE
     )
     assert intent.mode == "scope_ambiguity"
 
