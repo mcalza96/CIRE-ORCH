@@ -109,3 +109,22 @@ def test_build_deterministic_subqueries_semantic_tail_disabled() -> None:
     )
     assert subqueries
     assert str(subqueries[0]["query"]).strip() == "ISO 9001"
+
+
+def test_build_deterministic_subqueries_adds_clause_focused_queries_for_dense_query() -> None:
+    query = "ISO 9001 5.3 analiza impacto cruzado en 10.3 y 9.1.2"
+    requested = ("ISO 9001",)
+    subqueries = build_deterministic_subqueries(
+        query=query,
+        requested_standards=requested,
+        max_queries=8,
+        require_literal_evidence=False,
+    )
+    clause_ids = [
+        str(item.get("id") or "")
+        for item in subqueries
+        if str(item.get("id") or "").startswith("clause_")
+    ]
+    assert clause_ids
+    assert any("10_3" in cid for cid in clause_ids)
+    assert any("9_1_2" in cid for cid in clause_ids)

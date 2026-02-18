@@ -30,6 +30,30 @@ BUILTIN_PROFILES: dict[str, dict] = {
         "query_modes": {
             "default_mode": "explanatory_response",
             "modes": {
+                "literal_cross_scope_check": {
+                    "require_literal_evidence": True,
+                    "allow_inference": False,
+                    "retrieval_profile": "literal_cross_scope_check",
+                    "tool_hints": [
+                        "semantic_retrieval",
+                        "logical_comparison",
+                        "citation_validator",
+                    ],
+                    "execution_plan": [
+                        "semantic_retrieval",
+                        "logical_comparison",
+                        "citation_validator",
+                    ],
+                    "coverage_requirements": {
+                        "require_all_requested_scopes": True,
+                        "min_clause_refs": 0,
+                    },
+                    "decomposition_policy": {
+                        "max_subqueries": 12,
+                        "clause_focus": True,
+                        "scope_focus": True,
+                    },
+                },
                 "literal_list_extract": {
                     "require_literal_evidence": True,
                     "allow_inference": False,
@@ -121,6 +145,30 @@ BUILTIN_PROFILES: dict[str, dict] = {
         "query_modes": {
             "default_mode": "explanatory_audit",
             "modes": {
+                "literal_cross_scope_check": {
+                    "require_literal_evidence": True,
+                    "allow_inference": False,
+                    "retrieval_profile": "literal_cross_scope_check",
+                    "tool_hints": [
+                        "semantic_retrieval",
+                        "logical_comparison",
+                        "citation_validator",
+                    ],
+                    "execution_plan": [
+                        "semantic_retrieval",
+                        "logical_comparison",
+                        "citation_validator",
+                    ],
+                    "coverage_requirements": {
+                        "require_all_requested_scopes": True,
+                        "min_clause_refs": 0,
+                    },
+                    "decomposition_policy": {
+                        "max_subqueries": 12,
+                        "clause_focus": True,
+                        "scope_focus": True,
+                    },
+                },
                 "literal_list_extract": {
                     "require_literal_evidence": True,
                     "allow_inference": False,
@@ -165,6 +213,23 @@ BUILTIN_PROFILES: dict[str, dict] = {
                     "id": "iso_ambiguous",
                     "mode": "scope_ambiguity",
                     "any_markers": ["__mode__=scope_ambiguity"],
+                },
+                {
+                    "id": "iso_literal_triscope",
+                    "mode": "literal_cross_scope_check",
+                    "any_keywords": [
+                        "textualmente",
+                        "literal",
+                        "c#/r#",
+                        "cita",
+                        "citas",
+                        "que exige",
+                    ],
+                    "all_patterns": [
+                        "\\biso\\s*[-:]?\\s*9001\\b",
+                        "\\biso\\s*[-:]?\\s*14001\\b",
+                        "\\biso\\s*[-:]?\\s*45001\\b",
+                    ],
                 },
                 {
                     "id": "iso_list",
@@ -232,6 +297,48 @@ BUILTIN_PROFILES: dict[str, dict] = {
                 "options": [],
             },
         ],
+        "retrieval": {
+            "min_score": 0.72,
+            "search_hints": [],
+            "by_mode": {
+                "literal_cross_scope_check": {
+                    "chunk_k": 60,
+                    "chunk_fetch_k": 340,
+                    "summary_k": 3,
+                    "require_literal_evidence": True,
+                },
+                "literal_list_extract": {
+                    "chunk_k": 45,
+                    "chunk_fetch_k": 220,
+                    "summary_k": 3,
+                    "require_literal_evidence": True,
+                },
+                "literal_clause_check": {
+                    "chunk_k": 55,
+                    "chunk_fetch_k": 300,
+                    "summary_k": 3,
+                    "require_literal_evidence": True,
+                },
+                "cross_standard_analysis": {
+                    "chunk_k": 35,
+                    "chunk_fetch_k": 140,
+                    "summary_k": 5,
+                    "require_literal_evidence": False,
+                },
+                "scope_ambiguity": {
+                    "chunk_k": 0,
+                    "chunk_fetch_k": 0,
+                    "summary_k": 0,
+                    "require_literal_evidence": True,
+                },
+                "explanatory_audit": {
+                    "chunk_k": 30,
+                    "chunk_fetch_k": 120,
+                    "summary_k": 5,
+                    "require_literal_evidence": False,
+                },
+            },
+        },
     },
     "legal_cl": {
         "profile_id": "legal_cl",

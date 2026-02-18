@@ -10,13 +10,7 @@ class ScopePattern(BaseModel):
     regex: str
 
 
-ToolName = Literal[
-    "semantic_retrieval",
-    "structural_extraction",
-    "logical_comparison",
-    "python_calculator",
-    "citation_validator",
-]
+ToolName = str
 
 
 class RouterHeuristics(BaseModel):
@@ -50,6 +44,9 @@ class QueryModeConfig(BaseModel):
     allow_inference: bool = True
     retrieval_profile: str | None = None
     tool_hints: list[ToolName] = Field(default_factory=list)
+    execution_plan: list[ToolName] = Field(default_factory=list)
+    coverage_requirements: dict[str, Any] = Field(default_factory=dict)
+    decomposition_policy: dict[str, Any] = Field(default_factory=dict)
 
 
 class QueryModesPolicy(BaseModel):
@@ -59,9 +56,9 @@ class QueryModesPolicy(BaseModel):
 
 
 class RetrievalModeConfig(BaseModel):
-    chunk_k: int
-    chunk_fetch_k: int
-    summary_k: int
+    chunk_k: int = Field(ge=0, le=120)
+    chunk_fetch_k: int = Field(ge=0, le=500)
+    summary_k: int = Field(ge=0, le=30)
     require_literal_evidence: bool = False
 
 

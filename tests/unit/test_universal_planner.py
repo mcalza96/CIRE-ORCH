@@ -1,4 +1,11 @@
-from app.cartridges.models import AgentProfile, CapabilitiesPolicy, RouterHeuristics
+from app.cartridges.models import (
+    AgentProfile,
+    CapabilitiesPolicy,
+    IntentRule,
+    QueryModeConfig,
+    QueryModesPolicy,
+    RouterHeuristics,
+)
 from app.graph.nodes.universal_planner import build_universal_plan
 
 
@@ -66,3 +73,41 @@ def test_universal_planner_does_not_use_language_hardcoded_patterns() -> None:
         allowed_tools=["semantic_retrieval", "python_calculator"],
     )
     assert {step.tool for step in plan.steps} == {"semantic_retrieval"}
+
+
+def test_universal_planner_respects_mode_execution_plan_order() -> None:
+    profile = AgentProfile(
+        profile_id="p",
+        query_modes=QueryModesPolicy(
+            default_mode="ops_mode",
+            modes={
+                "ops_mode": QueryModeConfig(
+                    execution_plan=[
+                        "semantic_retrieval",
+                        "structural_extraction",
+                        "citation_validator",
+                    ],
+                    retrieval_profile="explanatory_response",
+                )
+            },
+            intent_rules=[IntentRule(id="ops", mode="ops_mode", any_keywords=["ops"])],
+        ),
+        capabilities=CapabilitiesPolicy(
+            reasoning_level="high",
+            allowed_tools=[
+                "semantic_retrieval",
+                "structural_extraction",
+                "citation_validator",
+            ],
+        ),
+    )
+    _, _, plan, _ = build_universal_plan(
+        query="ops check",
+        profile=profile,
+        allowed_tools=["semantic_retrieval", "structural_extraction", "citation_validator"],
+    )
+    assert [step.tool for step in plan.steps] == [
+        "semantic_retrieval",
+        "structural_extraction",
+        "citation_validator",
+    ]

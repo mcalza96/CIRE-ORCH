@@ -112,35 +112,65 @@ router:
 query_modes:
   default_mode: explanatory_audit
   modes:
+    literal_cross_scope_check:
+      require_literal_evidence: true
+      allow_inference: false
+      retrieval_profile: literal_cross_scope_check
+      tool_hints: [semantic_retrieval, logical_comparison, citation_validator]
+      execution_plan: [semantic_retrieval, logical_comparison, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: true, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 12, clause_focus: true, scope_focus: true }
     literal_list_extract:
       require_literal_evidence: true
       allow_inference: false
       retrieval_profile: literal_list_extract
       tool_hints: [semantic_retrieval, structural_extraction, citation_validator]
+      execution_plan: [semantic_retrieval, structural_extraction, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 1 }
+      decomposition_policy: { max_subqueries: 8, clause_focus: true, scope_focus: true }
     literal_clause_check:
       require_literal_evidence: true
       allow_inference: false
       retrieval_profile: literal_clause_check
       tool_hints: [semantic_retrieval, citation_validator]
+      execution_plan: [semantic_retrieval, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 1 }
+      decomposition_policy: { max_subqueries: 10, clause_focus: true, scope_focus: true }
     cross_standard_analysis:
       require_literal_evidence: false
       allow_inference: true
       retrieval_profile: cross_standard_analysis
       tool_hints: [semantic_retrieval, logical_comparison, citation_validator]
+      execution_plan: [semantic_retrieval, logical_comparison, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: true, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 12, clause_focus: true, scope_focus: true }
     explanatory_audit:
       require_literal_evidence: false
       allow_inference: true
       retrieval_profile: explanatory_audit
       tool_hints: [semantic_retrieval, citation_validator]
+      execution_plan: [semantic_retrieval, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 8, clause_focus: true, scope_focus: true }
     scope_ambiguity:
       require_literal_evidence: true
       allow_inference: false
       retrieval_profile: scope_ambiguity
       tool_hints: [citation_validator]
+      execution_plan: [citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 2, clause_focus: false, scope_focus: true }
   intent_rules:
     - id: iso_ambiguous_scope
       mode: scope_ambiguity
       any_markers: ["__mode__=scope_ambiguity"]
+    - id: iso_literal_triscope
+      mode: literal_cross_scope_check
+      any_keywords: [textualmente, literal, c#/r#, cita, citas, que exige]
+      all_patterns:
+        - "\\biso\\s*[-:]?\\s*9001\\b"
+        - "\\biso\\s*[-:]?\\s*14001\\b"
+        - "\\biso\\s*[-:]?\\s*45001\\b"
     - id: iso_literal_list
       mode: literal_list_extract
       any_keywords: [entradas, salidas, lista, enumera, listado, vinetas]
@@ -284,6 +314,11 @@ retrieval:
         - 5.2 política de la seguridad y salud en el trabajo
         - compromiso de eliminar peligros
   by_mode:
+    literal_cross_scope_check:
+      chunk_k: 60
+      chunk_fetch_k: 340
+      summary_k: 3
+      require_literal_evidence: true
     literal_list_extract:
       chunk_k: 45
       chunk_fetch_k: 220

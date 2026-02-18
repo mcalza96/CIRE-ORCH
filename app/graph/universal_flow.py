@@ -15,6 +15,13 @@ from app.agent.application import (
     RetrieverPort,
     ValidatorPort,
 )
+from app.agent.error_codes import (
+    RETRIEVAL_CODE_CLAUSE_MISSING,
+    RETRIEVAL_CODE_EMPTY_RETRIEVAL,
+    RETRIEVAL_CODE_GRAPH_FALLBACK_NO_MULTIHOP,
+    RETRIEVAL_CODE_LOW_SCORE,
+    RETRIEVAL_CODE_SCOPE_MISMATCH,
+)
 from app.agent.models import (
     AnswerDraft,
     EvidenceItem,
@@ -41,11 +48,11 @@ from app.graph.nodes.universal_planner import build_universal_plan
 logger = structlog.get_logger(__name__)
 
 _RETRYABLE_REASONS = {
-    "empty_retrieval",
-    "scope_mismatch",
-    "clause_missing",
-    "low_score",
-    "graph_fallback_no_multihop",
+    RETRIEVAL_CODE_EMPTY_RETRIEVAL,
+    RETRIEVAL_CODE_SCOPE_MISMATCH,
+    RETRIEVAL_CODE_CLAUSE_MISSING,
+    RETRIEVAL_CODE_LOW_SCORE,
+    RETRIEVAL_CODE_GRAPH_FALLBACK_NO_MULTIHOP,
 }
 
 DEFAULT_MAX_STEPS = 4
@@ -53,6 +60,8 @@ DEFAULT_MAX_REFLECTIONS = 2
 MAX_PLAN_ATTEMPTS = 3
 ANSWER_PREVIEW_LIMIT = 180
 RETRY_REASON_LIMIT = 120
+HARD_MAX_STEPS = 12
+HARD_MAX_REFLECTIONS = 6
 
 
 def _non_negative_int(value: object, *, default: int = 0) -> int:
@@ -101,7 +110,7 @@ def _is_retryable_reason(reason: str) -> bool:
     text = str(reason or "").strip().lower()
     if not text:
         return False
-    return any(token in text for token in _RETRYABLE_REASONS)
+    return text in _RETRYABLE_REASONS
 
 
 def _extract_retry_signal_from_retrieval(state: UniversalState, last: ToolResult | None) -> str:
@@ -114,7 +123,7 @@ def _extract_retry_signal_from_retrieval(state: UniversalState, last: ToolResult
     chunk_count = _non_negative_int(output.get("chunk_count"), default=0)
     summary_count = _non_negative_int(output.get("summary_count"), default=0)
     if chunk_count + summary_count <= 0:
-        return "empty_retrieval"
+        return RETRIEVAL_CODE_EMPTY_RETRIEVAL
 
     retrieval = state.get("retrieval")
     if not isinstance(retrieval, RetrievalDiagnostics):
@@ -122,33 +131,27 @@ def _extract_retry_signal_from_retrieval(state: UniversalState, last: ToolResult
 
     scope_validation = dict(retrieval.scope_validation or {})
     if scope_validation.get("valid") is False:
-        return "scope_mismatch"
+        return RETRIEVAL_CODE_SCOPE_MISMATCH
 
     trace = dict(retrieval.trace or {})
     missing_scopes = trace.get("missing_scopes")
     if isinstance(missing_scopes, list) and missing_scopes:
-        return "scope_mismatch"
+        return RETRIEVAL_CODE_SCOPE_MISMATCH
 
-    warning_codes_raw = trace.get("warning_codes")
-    warnings_raw = trace.get("warnings")
-    warning_codes = warning_codes_raw if isinstance(warning_codes_raw, list) else []
-    warnings = warnings_raw if isinstance(warnings_raw, list) else []
-    reason = trace.get("reason")
-    fallback_reason = trace.get("fallback_reason")
-    combined = " | ".join(
-        [
-            *(str(x) for x in warning_codes),
-            *(str(x) for x in warnings),
-            str(reason or ""),
-            str(fallback_reason or ""),
-        ]
-    ).lower()
-    if "missing_clause_refs" in combined or "clause mismatch" in combined:
-        return "clause_missing"
-    if "low_score" in combined or "min_score" in combined:
-        return "low_score"
-    if "graph_fallback_no_multihop" in combined:
-        return "graph_fallback_no_multihop"
+    missing_clause_refs = trace.get("missing_clause_refs")
+    if isinstance(missing_clause_refs, list) and missing_clause_refs:
+        return RETRIEVAL_CODE_CLAUSE_MISSING
+
+    error_codes_raw = trace.get("error_codes")
+    error_codes = error_codes_raw if isinstance(error_codes_raw, list) else []
+    for code in (
+        RETRIEVAL_CODE_SCOPE_MISMATCH,
+        RETRIEVAL_CODE_CLAUSE_MISSING,
+        RETRIEVAL_CODE_LOW_SCORE,
+        RETRIEVAL_CODE_GRAPH_FALLBACK_NO_MULTIHOP,
+    ):
+        if code in error_codes:
+            return code
     return ""
 
 
@@ -277,8 +280,11 @@ class UniversalReasoningOrchestrator:
         max_steps = DEFAULT_MAX_STEPS
         max_reflections = DEFAULT_MAX_REFLECTIONS
         if isinstance(profile, AgentProfile):
-            max_steps = int(profile.capabilities.reasoning_budget.max_steps)
-            max_reflections = int(profile.capabilities.reasoning_budget.max_reflections)
+            max_steps = min(HARD_MAX_STEPS, int(profile.capabilities.reasoning_budget.max_steps))
+            max_reflections = min(
+                HARD_MAX_REFLECTIONS,
+                int(profile.capabilities.reasoning_budget.max_reflections),
+            )
         reasoning_plan = ReasoningPlan(
             goal=reasoning_plan.goal,
             steps=list(reasoning_plan.steps[: max(1, max_steps)]),
@@ -322,7 +328,7 @@ class UniversalReasoningOrchestrator:
                 ),
             }
 
-        max_steps = int(state.get("max_steps") or DEFAULT_MAX_STEPS)
+        max_steps = min(HARD_MAX_STEPS, int(state.get("max_steps") or DEFAULT_MAX_STEPS))
         tool_results = list(state.get("tool_results") or [])
         if len(tool_results) >= max_steps:
             return {
@@ -414,7 +420,10 @@ class UniversalReasoningOrchestrator:
 
         cursor = int(state.get("tool_cursor") or 0)
         reflections = int(state.get("reflections") or 0)
-        max_reflections = int(state.get("max_reflections") or DEFAULT_MAX_REFLECTIONS)
+        max_reflections = min(
+            HARD_MAX_REFLECTIONS,
+            int(state.get("max_reflections") or DEFAULT_MAX_REFLECTIONS),
+        )
         plan_attempts = int(state.get("plan_attempts") or 1)
         tool_results = list(state.get("tool_results") or [])
         last = tool_results[-1] if tool_results else None

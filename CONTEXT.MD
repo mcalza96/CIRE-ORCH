@@ -22,22 +22,31 @@ Capas:
 
 Implementacion vigente en `/Users/mcalzadilla/cire/orch`:
 
-- Cartuchos v2 estrictos (sin legacy):
+- Cartuchos v2 estrictos (sin legacy), profile-driven:
   - `meta { id, description, owner }`
   - `identity { role, tone, style_guide[] }`
-  - `router` (heuristicas)
+  - `router` (heuristicas y patrones)
+  - `query_modes { default_mode, modes{}, intent_rules[] }`
   - `retrieval { by_mode, search_hints[], min_score }`
   - `validation { require_citations, forbidden_concepts[], fallback_message }`
-  - `synthesis`
-- Carga fail-fast al startup: si un YAML de `app/cartridges/*.yaml` no cumple esquema v2, la API no levanta.
+  - `synthesis` (templates de prompts/estilo)
+- Tooling agnostico:
+  - `ToolName` es dinamico (`str`), no enum cerrado en core.
+  - Validacion de herramientas ocurre en runtime (registry/policies), no por hardcode en esquema.
+- QueryMode agnostico:
+  - Clasificacion de intencion y planificacion guiadas por `query_modes` del cartucho.
+  - Core sin ramas `if mode == literal_*`.
+- Carga fail-fast al startup:
+  - Si un YAML de `app/cartridges/*.yaml` no cumple esquema v2, la API no levanta.
+  - `base.yaml` es fallback obligatorio de cartucho.
 - Resolucion de perfil auditable por request:
-  - `source`: `db | header | tenant_map | tenant_yaml | base`
+  - `source`: `db | header | dev_map | tenant_map | tenant_yaml | base`
   - `requested_profile_id`
   - `applied_profile_id`
   - `decision_reason`
 - Cascada obligatoria de cartucho:
   1) DB (`tenant_configs`)
-  2) Header autorizado o tenant->profile map
+  2) Header autorizado o tenant->profile map/dev map
   3) `app/cartridges/{tenant_id}.yaml`
   4) `app/cartridges/base.yaml`
 - Seguridad de override por header:
@@ -50,11 +59,15 @@ Implementacion vigente en `/Users/mcalzadilla/cire/orch`:
 - Retrieval profile-driven:
   - `search_hints` aplicados a query/subqueries
   - `min_score` aplicado al pipeline
-  - traza de expansiones y filtrado
-- Validacion declarativa profile-driven:
-  - enforcement de citas
-  - deteccion de conceptos prohibidos
-  - fallback message por cartucho cuando no hay evidencia
+  - decomposition por scope y clausula para consultas densas
+  - coverage gate por scope y clausula
+  - traza con `missing_scopes`, `missing_clause_refs`
+- Control-flow robusto por codigos:
+  - Retry/replan usa `error_codes` estructurados de retrieval
+  - Evitar parseo por substrings de mensajes de log
+- Hard limits de infraestructura:
+  - `ReasoningBudget` y `RetrievalModeConfig` con cotas de seguridad
+  - clamps runtime para `max_steps` y `max_reflections`
 
 ### RAG
 
@@ -63,16 +76,17 @@ Implementacion vigente en `/Users/mcalzadilla/cire/rag`:
 - RAG se mantiene agnostico a verticales.
 - No se incorporan reglas de negocio de cartuchos en el motor.
 - Mantiene contrato de retrieval y aislamiento por tenant.
+- Expone trazas y codigos estructurados consumidos por ORCH (`error_codes`, coverage diagnostics).
 
 ## 3. Flujo Canonico E2E
 
 1. Llega request con `query` + `tenant_id`.
 2. Se autoriza tenant para el usuario.
-3. Se resuelve cartucho por cascada (DB -> header/map -> tenant yaml -> base).
-4. Router clasifica intencion usando chasis + profile hints.
+3. Se resuelve cartucho por cascada (DB -> header/dev_map/map -> tenant yaml -> base).
+4. Router/intent rules clasifican intencion desde `query_modes`.
 5. Planner arma estrategia retrieval profile-driven.
 6. ORCH consulta RAG con headers S2S y contexto de traza.
-7. Se aplica validacion/auto-correccion si corresponde.
+7. Se aplica validacion/auto-correccion y coverage repair si corresponde.
 8. Se emite clarificacion declarativa cuando hay ambiguedad.
 9. Se sintetiza con identidad/reglas/formato del cartucho.
 10. Respuesta incluye metadata de perfil y observabilidad.
@@ -84,6 +98,7 @@ Implementacion vigente en `/Users/mcalzadilla/cire/rag`:
 3. Politicas de dominio viven en cartuchos YAML versionados.
 4. Todo fallback debe ser seguro y trazable.
 5. Toda decision de tenancy/profile debe quedar auditada.
+6. Control-flow operativo debe basarse en codigos estructurados, no en parsing de strings.
 
 ## 5. Handshake ORCH <-> RAG
 

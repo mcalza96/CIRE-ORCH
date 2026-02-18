@@ -116,6 +116,55 @@ def _rewrite_query_with_clarification(original_query: str, clarification_answer:
     )
 
 
+def _apply_mode_override(query: str, forced_mode: str | None) -> str:
+    mode = str(forced_mode or "").strip()
+    if not mode:
+        return query
+    lowered = mode.lower()
+    if not re.fullmatch(r"[a-z][a-z0-9_:-]{1,63}", lowered):
+        return query
+    return f"__mode__={lowered} {query}".strip()
+
+
+def _print_profile_snapshot(last_result: dict[str, Any], forced_mode: str | None = None) -> None:
+    profile_resolution = (
+        last_result.get("profile_resolution")
+        if isinstance(last_result.get("profile_resolution"), dict)
+        else {}
+    )
+    retrieval_plan = (
+        last_result.get("retrieval_plan")
+        if isinstance(last_result.get("retrieval_plan"), dict)
+        else {}
+    )
+    retrieval = (
+        last_result.get("retrieval") if isinstance(last_result.get("retrieval"), dict) else {}
+    )
+    trace = retrieval.get("trace") if isinstance(retrieval.get("trace"), dict) else {}
+    print("🧩 Profile Snapshot")
+    if profile_resolution:
+        print(f"   source={profile_resolution.get('source')}")
+        print(f"   applied_profile_id={profile_resolution.get('applied_profile_id')}")
+        if profile_resolution.get("decision_reason"):
+            print(f"   decision_reason={profile_resolution.get('decision_reason')}")
+    if forced_mode:
+        print(f"   forced_mode={forced_mode}")
+    mode = str(last_result.get("mode") or retrieval_plan.get("mode") or "").strip()
+    if mode:
+        print(f"   active_mode={mode}")
+    if retrieval_plan:
+        print(
+            "   retrieval_plan="
+            f"chunk_k={retrieval_plan.get('chunk_k')} "
+            f"fetch_k={retrieval_plan.get('chunk_fetch_k')} "
+            f"summary_k={retrieval_plan.get('summary_k')} "
+            f"literal={retrieval_plan.get('require_literal_evidence')}"
+        )
+    error_codes = trace.get("error_codes") if isinstance(trace.get("error_codes"), list) else []
+    if error_codes:
+        print("   error_codes=" + ", ".join(str(code) for code in error_codes))
+
+
 def _parse_error_payload(response: httpx.Response) -> dict[str, Any]:
     try:
         data = response.json()
@@ -1061,10 +1110,11 @@ async def main(argv: list[str] | None = None) -> None:
         print(f"🌐 Orchestrator URL: {args.orchestrator_url}")
         print(f"🔐 Auth: {'Bearer token' if access_token else 'sin token'}")
         print("💡 Escribe tu pregunta (o 'salir')")
-        print("🔭 Comandos: /ingestion , /watch <batch_id> , /trace , /explain")
+        print("🔭 Comandos: /ingestion , /watch <batch_id> , /trace , /explain , /profile , /mode")
 
         last_result: dict[str, Any] = {}
         last_query: str = ""
+        forced_mode: str | None = None
 
         while True:
             query = input("❓ > ").strip()
@@ -1100,6 +1150,31 @@ async def main(argv: list[str] | None = None) -> None:
                 else:
                     print("ℹ️ No hay un resultado previo para mostrar trace.")
                 continue
+            if query.lower() == "/profile":
+                if isinstance(last_result, dict) and last_result:
+                    _print_profile_snapshot(last_result, forced_mode=forced_mode)
+                else:
+                    print("ℹ️ Aun no hay respuesta previa. Haz una consulta primero.")
+                    if forced_mode:
+                        print(f"   forced_mode={forced_mode}")
+                continue
+            if query.lower().startswith("/mode"):
+                raw = query.split(" ", 1)
+                arg = raw[1].strip() if len(raw) > 1 else ""
+                if not arg:
+                    print(f"ℹ️ forced_mode={forced_mode or '(none)'}")
+                    print("   Uso: /mode <mode_name> | /mode clear")
+                    continue
+                if arg.lower() in {"clear", "off", "none"}:
+                    forced_mode = None
+                    print("✅ forced_mode desactivado")
+                    continue
+                if not re.fullmatch(r"[a-z][a-z0-9_:-]{1,63}", arg.lower()):
+                    print("❌ mode invalido. Usa [a-z][a-z0-9_:-]")
+                    continue
+                forced_mode = arg.lower()
+                print(f"✅ forced_mode={forced_mode}")
+                continue
             if query.lower() == "/explain":
                 if not last_query:
                     print("ℹ️ No hay una consulta previa para explicar.")
@@ -1124,14 +1199,14 @@ async def main(argv: list[str] | None = None) -> None:
                     client=client,
                     orchestrator_url=args.orchestrator_url,
                     tenant_context=tenant_context,
-                    query=query,
+                    query=_apply_mode_override(query, forced_mode),
                     collection_id=collection_id,
                     access_token=access_token,
                 )
                 latency_ms = (time.perf_counter() - t0) * 1000.0
                 _print_answer(result)
                 last_result = result if isinstance(result, dict) else {}
-                last_query = query
+                last_query = _apply_mode_override(query, forced_mode)
                 if args.obs:
                     _print_obs_answer(result, latency_ms)
 
@@ -1175,13 +1250,13 @@ async def main(argv: list[str] | None = None) -> None:
                         client=client,
                         orchestrator_url=args.orchestrator_url,
                         tenant_context=tenant_context,
-                        query=clarified_query,
+                        query=_apply_mode_override(clarified_query, forced_mode),
                         collection_id=collection_id,
                         access_token=access_token,
                     )
                     _print_answer(result)
                     last_result = result if isinstance(result, dict) else {}
-                    last_query = clarified_query
+                    last_query = _apply_mode_override(clarified_query, forced_mode)
                     if args.obs:
                         _print_obs_answer(result, 0.0)
                     clarification = (

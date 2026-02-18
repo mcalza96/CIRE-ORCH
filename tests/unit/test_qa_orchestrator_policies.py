@@ -26,6 +26,16 @@ def test_classify_intent_comparativa():
     assert intent.mode == "cross_standard_analysis"
 
 
+def test_classify_intent_literal_triscope_query_uses_strict_mode():
+    query = (
+        "Que exige textualmente la ISO 9001 sobre control de la informacion documentada, "
+        "que exige la ISO 14001 sobre comunicacion documentada y que exige la ISO 45001 "
+        "sobre participacion y consulta. Responde con citas C#/R# por cada afirmacion."
+    )
+    intent = classify_intent(query, profile=ISO_PROFILE)
+    assert intent.mode == "literal_cross_scope_check"
+
+
 def test_build_retrieval_plan_literal_is_strict():
     query = "Que documento obligatorio exige ISO 9001 en la clausula 6.1.3"
     intent = classify_intent(query, profile=ISO_PROFILE)
@@ -34,6 +44,18 @@ def test_build_retrieval_plan_literal_is_strict():
     # Validamos que los parametros sean robustos para busqueda literal
     assert plan.chunk_k >= 30
     assert plan.summary_k <= 5
+
+
+def test_build_retrieval_plan_triscope_mode_requires_full_coverage_profile() -> None:
+    query = (
+        "Que exige textualmente la ISO 9001 sobre control de la informacion documentada, "
+        "ISO 14001 sobre comunicacion documentada e ISO 45001 sobre participacion y consulta"
+    )
+    intent = classify_intent(query, profile=ISO_PROFILE)
+    plan = build_retrieval_plan(intent, query=query, profile=ISO_PROFILE)
+    assert plan.mode == "literal_cross_scope_check"
+    assert plan.require_literal_evidence is True
+    assert plan.chunk_k >= 50
 
 
 def test_classify_intent_ambiguous_scope_without_standard():

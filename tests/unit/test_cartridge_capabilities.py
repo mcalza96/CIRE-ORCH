@@ -1,3 +1,5 @@
+import pytest
+
 from app.cartridges.models import AgentProfile
 
 
@@ -38,3 +40,40 @@ def test_capabilities_accept_high_reasoning_payload() -> None:
     assert profile.capabilities.reasoning_level == "high"
     assert "python_calculator" in profile.capabilities.allowed_tools
     assert profile.capabilities.tool_policies["python_calculator"].enabled is True
+
+
+def test_capabilities_accepts_dynamic_tool_names() -> None:
+    profile = AgentProfile.model_validate(
+        {
+            "profile_id": "dyn-tools",
+            "capabilities": {
+                "allowed_tools": ["semantic_retrieval", "external_sql"],
+                "tool_policies": {
+                    "external_sql": {
+                        "enabled": True,
+                        "max_input_chars": 2048,
+                    }
+                },
+            },
+        }
+    )
+    assert "external_sql" in profile.capabilities.allowed_tools
+    assert profile.capabilities.tool_policies["external_sql"].enabled is True
+
+
+def test_retrieval_mode_config_enforces_hard_limits() -> None:
+    with pytest.raises(Exception):
+        AgentProfile.model_validate(
+            {
+                "profile_id": "bad-profile",
+                "retrieval": {
+                    "by_mode": {
+                        "m": {
+                            "chunk_k": 999,
+                            "chunk_fetch_k": 999,
+                            "summary_k": 99,
+                        }
+                    }
+                },
+            }
+        )

@@ -74,6 +74,16 @@ def _needs_calculation(query: str, profile: AgentProfile | None) -> bool:
     return has_math or procedural_math
 
 
+def _default_tool_input(tool: str, query: str) -> dict[str, str]:
+    if tool == "semantic_retrieval":
+        return {"query": query}
+    if tool == "logical_comparison":
+        return {"topic": query}
+    if tool == "structural_extraction":
+        return {"schema_definition": "entity, value, unit"}
+    return {}
+
+
 def build_universal_plan(
     *,
     query: str,
@@ -85,13 +95,31 @@ def build_universal_plan(
     complexity = "complex" if _is_complex_query(query, intent, profile) else "simple"
     allowed_tool_set = set(allowed_tools)
     mode_tool_hints: set[str] = set()
+    mode_execution_plan: list[str] = []
     if profile is not None:
         mode_config = profile.query_modes.modes.get(str(intent.mode))
         if isinstance(mode_config, QueryModeConfig):
             mode_tool_hints = set(mode_config.tool_hints)
+            mode_execution_plan = [
+                str(tool) for tool in mode_config.execution_plan if str(tool).strip()
+            ]
     steps: list[ToolCall] = []
 
-    if "semantic_retrieval" in allowed_tool_set:
+    if mode_execution_plan:
+        seen: set[str] = set()
+        for tool in mode_execution_plan:
+            if tool in seen or tool not in allowed_tool_set:
+                continue
+            seen.add(tool)
+            steps.append(
+                ToolCall(
+                    tool=tool,
+                    input=_default_tool_input(tool, query),
+                    rationale="mode_execution_plan",
+                )
+            )
+
+    if not steps and "semantic_retrieval" in allowed_tool_set:
         steps.append(
             ToolCall(
                 tool="semantic_retrieval",
@@ -103,7 +131,7 @@ def build_universal_plan(
     if (
         complexity == "complex"
         and "logical_comparison" in allowed_tool_set
-        and ("logical_comparison" in mode_tool_hints or intent.mode == "comparativa")
+        and "logical_comparison" in mode_tool_hints
     ):
         steps.append(
             ToolCall(

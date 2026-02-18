@@ -9,8 +9,15 @@ import structlog
 import time
 
 from app.agent.grounded_answer_service import GroundedAnswerService
+from app.agent.error_codes import (
+    RETRIEVAL_CODE_CLAUSE_MISSING,
+    RETRIEVAL_CODE_GRAPH_FALLBACK_NO_MULTIHOP,
+    RETRIEVAL_CODE_LOW_SCORE,
+    RETRIEVAL_CODE_SCOPE_MISMATCH,
+    merge_error_codes,
+)
 from app.agent.models import AnswerDraft, EvidenceItem, RetrievalDiagnostics, RetrievalPlan
-from app.cartridges.models import AgentProfile
+from app.cartridges.models import AgentProfile, QueryModeConfig
 from app.agent.retrieval_planner import (
     apply_search_hints,
     build_deterministic_subqueries,
@@ -85,6 +92,12 @@ class RagEngineRetrieverAdapter:
         except Exception:
             return None
 
+    def _mode_config(self, mode: str) -> QueryModeConfig | None:
+        if self._profile_context is None:
+            return None
+        cfg = self._profile_context.query_modes.modes.get(str(mode or "").strip())
+        return cfg if isinstance(cfg, QueryModeConfig) else None
+
     def _filter_items_by_min_score(
         self,
         items: list[dict[str, Any]],
@@ -131,6 +144,11 @@ class RagEngineRetrieverAdapter:
                 "backstop_applied": backstop_applied,
                 "backstop_top_n": (backstop_top_n if backstop_applied else 0),
             }
+            if dropped > 0 and not kept:
+                trace_target["error_codes"] = merge_error_codes(
+                    trace_target.get("error_codes"),
+                    [RETRIEVAL_CODE_LOW_SCORE],
+                )
         return kept
 
     async def validate_scope(
@@ -342,6 +360,34 @@ class RagEngineRetrieverAdapter:
         expanded_query, hint_trace = apply_search_hints(query, profile=self._profile_context)
         clause_refs = extract_clause_refs(query, profile=self._profile_context)
         multihop_hint = len(plan.requested_standards) >= 2 or len(clause_refs) >= 2
+        mode_cfg = self._mode_config(plan.mode)
+        coverage_requirements = (
+            dict(mode_cfg.coverage_requirements) if isinstance(mode_cfg, QueryModeConfig) else {}
+        )
+        decomposition_policy = (
+            dict(mode_cfg.decomposition_policy) if isinstance(mode_cfg, QueryModeConfig) else {}
+        )
+        require_all_scopes = bool(
+            coverage_requirements.get(
+                "require_all_requested_scopes",
+                len(plan.requested_standards) >= 2,
+            )
+        )
+        try:
+            min_clause_refs_required = int(
+                coverage_requirements.get(
+                    "min_clause_refs",
+                    1 if bool(plan.require_literal_evidence) else 0,
+                )
+            )
+        except (TypeError, ValueError):
+            min_clause_refs_required = 0
+        min_clause_refs_required = max(0, min(6, min_clause_refs_required))
+        try:
+            mode_max_subqueries = int(decomposition_policy.get("max_subqueries", 6))
+        except (TypeError, ValueError):
+            mode_max_subqueries = 6
+        mode_max_subqueries = max(2, min(12, mode_max_subqueries))
         literal_mode = mode_requires_literal_evidence(
             mode=plan.mode,
             profile=self._profile_context,
@@ -395,7 +441,14 @@ class RagEngineRetrieverAdapter:
                 return value2.strip().upper()
             return ""
 
-        def _missing_scopes(items: list[dict[str, Any]], requested: tuple[str, ...]) -> list[str]:
+        def _missing_scopes(
+            items: list[dict[str, Any]],
+            requested: tuple[str, ...],
+            *,
+            enforce: bool,
+        ) -> list[str]:
+            if not enforce:
+                return []
             if len(requested) < 2:
                 return []
             top_n = max(1, int(settings.ORCH_COVERAGE_GATE_TOP_N or 12))
@@ -412,6 +465,62 @@ class RagEngineRetrieverAdapter:
                     present.add(scope)
             req_upper = [s.upper() for s in requested if s]
             return [s for s in req_upper if s not in present]
+
+        def _row_matches_clause_ref(row: dict[str, Any], clause_ref: str) -> bool:
+            clause = str(clause_ref or "").strip()
+            if not clause:
+                return False
+            clause_re = re.compile(rf"\b{re.escape(clause)}(?:\.\d+)*\b")
+            content = str(row.get("content") or "")
+            if clause_re.search(content):
+                return True
+            row_meta_raw = row.get("metadata")
+            row_meta: dict[str, Any] = row_meta_raw if isinstance(row_meta_raw, dict) else {}
+            for key in ("clause_id", "clause_ref", "clause"):
+                value = row_meta.get(key)
+                if isinstance(value, str) and value.strip():
+                    val = value.strip()
+                    if val == clause or val.startswith(f"{clause}."):
+                        return True
+            refs = row_meta.get("clause_refs")
+            if isinstance(refs, list):
+                for value in refs:
+                    if isinstance(value, str) and value.strip():
+                        val = value.strip()
+                        if val == clause or val.startswith(f"{clause}."):
+                            return True
+            return False
+
+        def _missing_clause_refs(
+            items: list[dict[str, Any]],
+            refs: list[str],
+            *,
+            min_required: int,
+        ) -> list[str]:
+            if min_required <= 0:
+                return []
+            required = [str(ref).strip() for ref in refs if str(ref).strip()]
+            if not required:
+                return []
+            top_n = max(1, int(settings.ORCH_COVERAGE_GATE_TOP_N or 12))
+            present: set[str] = set()
+            for it in items[:top_n]:
+                meta_raw = it.get("metadata")
+                meta: dict[str, Any] = meta_raw if isinstance(meta_raw, dict) else {}
+                row_raw = meta.get("row")
+                row = row_raw if isinstance(row_raw, dict) else None
+                if not isinstance(row, dict):
+                    continue
+                for ref in required:
+                    if ref in present:
+                        continue
+                    if _row_matches_clause_ref(row, ref):
+                        present.add(ref)
+            if len(present) >= min_required:
+                return []
+            missing = [ref for ref in required if ref not in present]
+            shortfall = max(0, min_required - len(present))
+            return missing[:shortfall] if shortfall else missing
 
         def _looks_structural_toc(item: dict[str, Any]) -> bool:
             content = str(item.get("content") or "").strip().lower()
@@ -524,16 +633,27 @@ class RagEngineRetrieverAdapter:
         ) -> list[dict[str, Any]]:
             if not settings.ORCH_COVERAGE_GATE_ENABLED:
                 return items
-            missing = _missing_scopes(items, plan.requested_standards)
-            if not missing:
+            missing_scopes = _missing_scopes(
+                items,
+                plan.requested_standards,
+                enforce=require_all_scopes,
+            )
+            missing_clauses = _missing_clause_refs(
+                items,
+                clause_refs,
+                min_required=min_clause_refs_required,
+            )
+            if not missing_scopes and not missing_clauses:
                 base_trace["missing_scopes"] = []
+                base_trace["missing_clause_refs"] = []
                 return items
             cap = max(1, int(settings.ORCH_COVERAGE_GATE_MAX_MISSING or 2))
-            missing = missing[:cap]
+            missing_scopes = missing_scopes[:cap]
+            missing_clauses = missing_clauses[:cap]
 
-            # Build one focused subquery per missing scope (agnostic: treat scope labels as strings).
+            # Build focused subqueries per missing scope and clause refs.
             focused: list[dict[str, Any]] = []
-            for idx, scope in enumerate(missing, start=1):
+            for idx, scope in enumerate(missing_scopes, start=1):
                 qtext = " ".join(
                     part for part in [scope, *clause_refs[:3], expanded_query] if part
                 ).strip()
@@ -544,6 +664,23 @@ class RagEngineRetrieverAdapter:
                         "k": None,
                         "fetch_k": None,
                         "filters": {"source_standard": scope},
+                    }
+                )
+            for idx, clause in enumerate(missing_clauses, start=1):
+                focused.append(
+                    {
+                        "id": f"clause_repair_{idx}",
+                        "query": f"{expanded_query} clausula {clause}"[:900],
+                        "k": None,
+                        "fetch_k": None,
+                        "filters": {
+                            **(
+                                {"source_standards": list(plan.requested_standards)}
+                                if plan.requested_standards
+                                else {}
+                            ),
+                            "metadata": {"clause_id": clause},
+                        },
                     }
                 )
 
@@ -564,11 +701,20 @@ class RagEngineRetrieverAdapter:
             if not isinstance(cov_items, list) or not cov_items:
                 base_trace["coverage_gate"] = {
                     "trigger_reason": reason,
-                    "missing_scopes": missing,
+                    "missing_scopes": missing_scopes,
+                    "missing_clause_refs": missing_clauses,
                     "added_queries": [q.get("id") for q in focused],
-                    "final_missing_scopes": list(missing),
+                    "final_missing_scopes": list(missing_scopes),
+                    "final_missing_clause_refs": list(missing_clauses),
                 }
-                base_trace["missing_scopes"] = list(missing)
+                base_trace["missing_scopes"] = list(missing_scopes)
+                base_trace["missing_clause_refs"] = list(missing_clauses)
+                codes: list[str] = []
+                if missing_scopes:
+                    codes.append(RETRIEVAL_CODE_SCOPE_MISMATCH)
+                if missing_clauses:
+                    codes.append(RETRIEVAL_CODE_CLAUSE_MISSING)
+                base_trace["error_codes"] = merge_error_codes(base_trace.get("error_codes"), codes)
                 return items
 
             # Merge and dedupe by source id.
@@ -586,14 +732,25 @@ class RagEngineRetrieverAdapter:
 
             base_trace["coverage_gate"] = {
                 "trigger_reason": reason,
-                "missing_scopes": missing,
+                "missing_scopes": missing_scopes,
+                "missing_clause_refs": missing_clauses,
                 "added_queries": [q.get("id") for q in focused],
             }
 
             # If still missing after focused queries, optionally try a step-back pass per missing scope.
-            remaining = _missing_scopes(merged, plan.requested_standards)
-            if remaining and settings.ORCH_COVERAGE_GATE_STEP_BACK:
+            remaining = _missing_scopes(
+                merged,
+                plan.requested_standards,
+                enforce=require_all_scopes,
+            )
+            remaining_clauses = _missing_clause_refs(
+                merged,
+                clause_refs,
+                min_required=min_clause_refs_required,
+            )
+            if (remaining or remaining_clauses) and settings.ORCH_COVERAGE_GATE_STEP_BACK:
                 remaining = remaining[:cap]
+                remaining_clauses = remaining_clauses[:cap]
                 step_back_queries: list[dict[str, Any]] = []
                 for idx, scope in enumerate(remaining, start=1):
                     step_back_queries.append(
@@ -606,6 +763,26 @@ class RagEngineRetrieverAdapter:
                             "k": None,
                             "fetch_k": None,
                             "filters": {"source_standard": scope},
+                        }
+                    )
+                for idx, clause in enumerate(remaining_clauses, start=1):
+                    step_back_queries.append(
+                        {
+                            "id": f"clause_step_back_{idx}",
+                            "query": (
+                                "principios generales y requisitos clave relacionados con: "
+                                f"{expanded_query} clausula {clause}"
+                            )[:900],
+                            "k": None,
+                            "fetch_k": None,
+                            "filters": {
+                                **(
+                                    {"source_standards": list(plan.requested_standards)}
+                                    if plan.requested_standards
+                                    else {}
+                                ),
+                                "metadata": {"clause_id": clause},
+                            },
                         }
                     )
                 t_sb = time.perf_counter()
@@ -634,20 +811,41 @@ class RagEngineRetrieverAdapter:
                         merged.append(it)
                     if isinstance(base_trace.get("coverage_gate"), dict):
                         base_trace["coverage_gate"]["step_back_missing_scopes"] = remaining
+                        base_trace["coverage_gate"]["step_back_missing_clause_refs"] = (
+                            remaining_clauses
+                        )
                         base_trace["coverage_gate"]["step_back_queries"] = [
                             q.get("id") for q in step_back_queries
                         ]
 
-            final_missing = _missing_scopes(merged, plan.requested_standards)
+            final_missing = _missing_scopes(
+                merged,
+                plan.requested_standards,
+                enforce=require_all_scopes,
+            )
+            final_missing_clauses = _missing_clause_refs(
+                merged,
+                clause_refs,
+                min_required=min_clause_refs_required,
+            )
             if isinstance(base_trace.get("coverage_gate"), dict):
                 base_trace["coverage_gate"]["final_missing_scopes"] = final_missing
+                base_trace["coverage_gate"]["final_missing_clause_refs"] = final_missing_clauses
             base_trace["missing_scopes"] = list(final_missing)
+            base_trace["missing_clause_refs"] = list(final_missing_clauses)
+            codes: list[str] = []
+            if final_missing:
+                codes.append(RETRIEVAL_CODE_SCOPE_MISMATCH)
+            if final_missing_clauses:
+                codes.append(RETRIEVAL_CODE_CLAUSE_MISSING)
+            base_trace["error_codes"] = merge_error_codes(base_trace.get("error_codes"), codes)
             return merged
 
         async def build_subqueries(*, purpose: str = "primary") -> list[dict[str, Any]]:
             subqueries_local = build_deterministic_subqueries(
                 query=query,
                 requested_standards=plan.requested_standards,
+                max_queries=mode_max_subqueries,
                 mode=plan.mode,
                 require_literal_evidence=plan.require_literal_evidence,
                 include_semantic_tail=semantic_tail_enabled,
@@ -657,6 +855,7 @@ class RagEngineRetrieverAdapter:
                 2,
                 int(getattr(settings, "ORCH_MULTI_QUERY_FALLBACK_MAX_QUERIES", 3) or 3),
             )
+            fallback_max = min(mode_max_subqueries, fallback_max)
             if purpose == "fallback" and len(subqueries_local) > fallback_max:
                 subqueries_local = subqueries_local[:fallback_max]
             if settings.ORCH_SEMANTIC_PLANNER:
@@ -868,7 +1067,11 @@ class RagEngineRetrieverAdapter:
                 bool(getattr(settings, "EARLY_EXIT_COVERAGE_ENABLED", True))
                 and len(plan.requested_standards) >= 2
             ):
-                missing_before_fallback = _missing_scopes(items, plan.requested_standards)
+                missing_before_fallback = _missing_scopes(
+                    items,
+                    plan.requested_standards,
+                    enforce=require_all_scopes,
+                )
                 if not missing_before_fallback:
                     if isinstance(trace, dict):
                         trace["multi_query_fallback_skipped"] = "coverage_already_satisfied"
@@ -918,7 +1121,11 @@ class RagEngineRetrieverAdapter:
                 top_k=12,
             )
             if decision.needs_fallback:
-                missing_before_fallback = _missing_scopes(items, plan.requested_standards)
+                missing_before_fallback = _missing_scopes(
+                    items,
+                    plan.requested_standards,
+                    enforce=require_all_scopes,
+                )
                 subqueries = await build_subqueries(purpose="fallback")
                 merge = {"strategy": "rrf", "rrf_k": 60, "top_k": min(16, max(12, k))}
                 t_mq = time.perf_counter()
@@ -943,7 +1150,13 @@ class RagEngineRetrieverAdapter:
                 subq = mq_payload.get("subqueries") if isinstance(mq_payload, dict) else None
                 diag_trace: dict[str, Any] = {
                     "fallback_reason": decision.reason,
+                    "error_codes": [decision.code or RETRIEVAL_CODE_GRAPH_FALLBACK_NO_MULTIHOP],
                     "deterministic_subquery_semantic_tail": semantic_tail_enabled,
+                    "mode_policy": {
+                        "require_all_requested_scopes": require_all_scopes,
+                        "min_clause_refs": min_clause_refs_required,
+                        "max_subqueries": mode_max_subqueries,
+                    },
                     "hybrid_trace": trace,
                     "multi_query_trace": mq_trace if isinstance(mq_trace, dict) else {},
                     "subqueries": subq if isinstance(subq, list) else [],
@@ -957,6 +1170,7 @@ class RagEngineRetrieverAdapter:
                 missing_after_fallback = _missing_scopes(
                     [it for it in mq_items if isinstance(it, dict)],
                     plan.requested_standards,
+                    enforce=require_all_scopes,
                 )
                 if (
                     bool(getattr(settings, "EARLY_EXIT_COVERAGE_ENABLED", True))
@@ -966,6 +1180,11 @@ class RagEngineRetrieverAdapter:
                         diag_trace["multi_query_fallback_early_exit"] = "no_coverage_improvement"
                         diag_trace["missing_scopes_before"] = list(missing_before_fallback)
                         diag_trace["missing_scopes_after"] = list(missing_after_fallback)
+                        if missing_after_fallback:
+                            diag_trace["error_codes"] = merge_error_codes(
+                                diag_trace.get("error_codes"),
+                                [RETRIEVAL_CODE_SCOPE_MISMATCH],
+                            )
                         self.last_retrieval_diagnostics = RetrievalDiagnostics(
                             contract="advanced",
                             strategy="multi_query",
@@ -1008,6 +1227,11 @@ class RagEngineRetrieverAdapter:
                 "hybrid_trace": trace,
                 "timings_ms": dict(timings_ms),
                 "deterministic_subquery_semantic_tail": semantic_tail_enabled,
+                "mode_policy": {
+                    "require_all_requested_scopes": require_all_scopes,
+                    "min_clause_refs": min_clause_refs_required,
+                    "max_subqueries": mode_max_subqueries,
+                },
             },
             scope_validation=self._validated_scope_payload or {},
         )

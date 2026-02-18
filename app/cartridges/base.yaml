@@ -94,26 +94,41 @@ query_modes:
       allow_inference: false
       retrieval_profile: literal_list_extract
       tool_hints: [semantic_retrieval, structural_extraction, citation_validator]
+      execution_plan: [semantic_retrieval, structural_extraction, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 6, clause_focus: true, scope_focus: true }
     literal_clause_check:
       require_literal_evidence: true
       allow_inference: false
       retrieval_profile: literal_clause_check
       tool_hints: [semantic_retrieval, citation_validator]
+      execution_plan: [semantic_retrieval, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 1 }
+      decomposition_policy: { max_subqueries: 8, clause_focus: true, scope_focus: true }
     cross_scope_analysis:
       require_literal_evidence: false
       allow_inference: true
       retrieval_profile: cross_scope_analysis
       tool_hints: [semantic_retrieval, logical_comparison, citation_validator]
+      execution_plan: [semantic_retrieval, logical_comparison, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: true, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 10, clause_focus: true, scope_focus: true }
     scope_clarification:
       require_literal_evidence: true
       allow_inference: false
       retrieval_profile: scope_clarification
       tool_hints: [citation_validator]
+      execution_plan: [citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 2, clause_focus: false, scope_focus: true }
     explanatory_response:
       require_literal_evidence: false
       allow_inference: true
       retrieval_profile: explanatory_response
       tool_hints: [semantic_retrieval, citation_validator]
+      execution_plan: [semantic_retrieval, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 6, clause_focus: true, scope_focus: true }
   intent_rules:
     - id: base_literal_list
       mode: literal_list_extract

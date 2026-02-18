@@ -4,6 +4,10 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from app.agent.error_codes import (
+    RETRIEVAL_CODE_CLAUSE_MISSING,
+    RETRIEVAL_CODE_SCOPE_MISMATCH,
+)
 from app.cartridges.models import AgentProfile
 from app.agent.policies import extract_requested_scopes
 
@@ -213,6 +217,7 @@ def _row_mentions_clause(row: dict[str, Any], clause: str) -> bool:
 class CoverageDecision:
     needs_fallback: bool
     reason: str = ""
+    code: str = ""
 
 
 def decide_multihop_fallback(
@@ -245,6 +250,7 @@ def decide_multihop_fallback(
                 return CoverageDecision(
                     needs_fallback=True,
                     reason=f"missing_standards_in_topk: {', '.join(missing[:3])}",
+                    code=RETRIEVAL_CODE_SCOPE_MISMATCH,
                 )
 
     if clause_refs:
@@ -258,9 +264,10 @@ def decide_multihop_fallback(
                 return CoverageDecision(
                     needs_fallback=True,
                     reason=f"missing_clause_refs_in_topk: {', '.join(missing_clauses[:3])}",
+                    code=RETRIEVAL_CODE_CLAUSE_MISSING,
                 )
 
-    return CoverageDecision(needs_fallback=False, reason="coverage_ok")
+    return CoverageDecision(needs_fallback=False, reason="coverage_ok", code="")
 
 
 def build_initial_scope_filters(
@@ -314,6 +321,7 @@ def build_deterministic_subqueries(
     effective_query, _ = apply_search_hints(raw_query, profile=profile)
     clause_refs = extract_clause_refs(raw_query, profile=profile)
     out: list[dict[str, Any]] = []
+    used_clause_refs: set[str] = set()
 
     # Per-standard subqueries (bounded).
     for standard in requested_standards[:3]:
@@ -334,6 +342,7 @@ def build_deterministic_subqueries(
         filters: dict[str, Any] = {"source_standard": standard}
         if clause:
             filters["metadata"] = {"clause_id": clause}
+            used_clause_refs.add(clause)
         out.append(
             {
                 "id": f"scope_{key}_{(clause or 'general').replace('.', '_')}",
@@ -346,6 +355,30 @@ def build_deterministic_subqueries(
         if len(out) >= max_queries:
             return out
 
+    # Clause-centric decomposition: force one focused query per missing clause reference.
+    # This improves retrieval for dense prompts that cite several clauses at once.
+    shared_filters: dict[str, Any] | None = (
+        {"source_standards": list(requested_standards)} if requested_standards else None
+    )
+    for clause in clause_refs[:4]:
+        clause_norm = str(clause or "").strip()
+        if not clause_norm or clause_norm in used_clause_refs:
+            continue
+        if len(out) >= max_queries:
+            return out
+        out.append(
+            {
+                "id": f"clause_{clause_norm.replace('.', '_')}",
+                "query": f"{effective_query} clausula {clause_norm}"[:900],
+                "k": None,
+                "fetch_k": None,
+                "filters": {
+                    **(shared_filters or {}),
+                    "metadata": {"clause_id": clause_norm},
+                },
+            }
+        )
+
     literal_mode = mode_requires_literal_evidence(
         mode=mode,
         profile=profile,
@@ -353,10 +386,6 @@ def build_deterministic_subqueries(
     )
 
     # Bridge/documentation impact query.
-    shared_filters: dict[str, Any] | None = (
-        {"source_standards": list(requested_standards)} if requested_standards else None
-    )
-
     if len(out) < max_queries and (not literal_mode or not out):
         out.append(
             {
