@@ -112,7 +112,7 @@ class HandleQuestionResult:
 
 
 class HandleQuestionUseCase:
-    """Compatibility wrapper that delegates orchestration to LangGraph flow."""
+    """Entry point for question handling, delegating to the Universal Reasoning Orchestrator."""
 
     def __init__(
         self,
@@ -123,25 +123,106 @@ class HandleQuestionUseCase:
         self._retriever = retriever
         self._answer_generator = answer_generator
         self._validator = validator
-        self._runner: Any | None = None
-        self._universal_runner: Any | None = None
+        self._orchestrator: Any | None = None
+        from app.agent.policies.query_splitter import QuerySplitter
+        self._splitter = QuerySplitter()
 
-    def _get_universal_runner(self) -> Any:
-        if self._universal_runner is None:
+    def _get_orchestrator(self) -> Any:
+        if self._orchestrator is None:
             from app.graph.universal_flow import UniversalReasoningOrchestrator
 
-            self._universal_runner = UniversalReasoningOrchestrator(
+            self._orchestrator = UniversalReasoningOrchestrator(
                 retriever=self._retriever,
                 answer_generator=self._answer_generator,
                 validator=self._validator,
             )
             logger.info(
-                "orchestrator_universal_flow_active",
-                graph="universal_flow",
+                "orchestrator_instance_initialized",
+                engine="universal_flow",
             )
-        return self._universal_runner
+        return self._orchestrator
+
+    async def _execute_compound(
+        self, cmd: HandleQuestionCommand, parts: list[str]
+    ) -> HandleQuestionResult:
+        """Executes split parts of a compound query in parallel and synthesizes results."""
+        tasks = []
+        for part in parts:
+            child_cmd = HandleQuestionCommand(
+                query=part,
+                tenant_id=cmd.tenant_id,
+                collection_id=cmd.collection_id,
+                scope_label=cmd.scope_label,
+                user_id=cmd.user_id,
+                agent_profile=cmd.agent_profile,
+                profile_resolution=cmd.profile_resolution,
+                request_id=cmd.request_id,
+                correlation_id=cmd.correlation_id,
+                split_depth=cmd.split_depth + 1,
+            )
+            tasks.append(self.execute(child_cmd))
+
+        from app.agent.models import AnswerDraft, QueryIntent, ValidationResult
+
+        sub_results = await asyncio.gather(*tasks, return_exceptions=True)
+        valid_results: list[HandleQuestionResult] = []
+
+        for res in sub_results:
+            if isinstance(res, HandleQuestionResult):
+                if res.clarification is not None:
+                    return res
+                valid_results.append(res)
+            else:
+                logger.error("compound_query_part_failed", error=str(res))
+
+        if not valid_results:
+            # Fallback for total failure
+            runner = self._get_orchestrator()
+            return await runner.execute(cmd)
+
+        sections = [
+            f"**Sección {idx + 1}**\n{result.answer.text}"
+            for idx, result in enumerate(valid_results)
+        ]
+        combined_text = "\n\n".join(sections)
+
+        from app.agent.models import EvidenceItem
+
+        combined_evidence: list[EvidenceItem] = []
+        seen_ids: set[str] = set()
+        for res in valid_results:
+            for ev in res.answer.evidence:
+                eid = str(ev.metadata.get("id") if ev.metadata else "") or ev.content[:32]
+                if eid not in seen_ids:
+                    seen_ids.add(eid)
+                    combined_evidence.append(ev)
+
+        # Determine mode: if all are same, use it, else fallback to explanatory
+        modes = [res.plan.mode for res in valid_results]
+        mode = modes[0] if len(set(modes)) == 1 else "explicativa"
+
+        combined_answer = AnswerDraft(
+            text=combined_text,
+            mode=mode,
+            evidence=combined_evidence,
+        )
+
+        return HandleQuestionResult(
+            intent=QueryIntent(mode=mode, rationale="compound_synthesis"),
+            plan=valid_results[0].plan,  # Representative plan
+            answer=combined_answer,
+            validation=ValidationResult(accepted=True, issues=[]),
+            retrieval=RetrievalDiagnostics(
+                contract="virtual", strategy="compound", partial=False, trace={}
+            ),
+        )
 
     async def execute(self, cmd: HandleQuestionCommand) -> HandleQuestionResult:
-        runner = self._get_universal_runner()
-        self._runner = runner
+        # Handle splitting for top-level queries
+        if cmd.split_depth == 0:
+            parts = self._splitter.split(cmd.query)
+            if len(parts) >= 2:
+                return await self._execute_compound(cmd, parts)
+
+        runner = self._get_orchestrator()
         return await runner.execute(cmd)
