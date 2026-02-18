@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import asdict, dataclass
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 import structlog
 from langgraph.graph import END, START, StateGraph
@@ -17,6 +17,7 @@ from app.agent.application import (
 )
 from app.agent.models import (
     AnswerDraft,
+    EvidenceItem,
     QueryIntent,
     ReasoningPlan,
     ReasoningStep,
@@ -40,6 +41,30 @@ _RETRYABLE_REASONS = {
     "low_score",
     "graph_fallback_no_multihop",
 }
+
+DEFAULT_MAX_STEPS = 4
+DEFAULT_MAX_REFLECTIONS = 2
+MAX_PLAN_ATTEMPTS = 3
+ANSWER_PREVIEW_LIMIT = 180
+RETRY_REASON_LIMIT = 120
+
+
+def _non_negative_int(value: object, *, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return 1 if value else 0
+    if isinstance(value, int):
+        return max(0, value)
+    if isinstance(value, float):
+        return max(0, int(value))
+    if isinstance(value, str):
+        try:
+            parsed = int(value.strip())
+        except ValueError:
+            return default
+        return max(0, parsed)
+    if value is None:
+        return default
+    return default
 
 
 def _append_stage_timing(
@@ -68,8 +93,8 @@ def _extract_retry_signal_from_retrieval(state: UniversalState, last: ToolResult
         return ""
 
     output = dict(last.output or {})
-    chunk_count = int(output.get("chunk_count") or 0)
-    summary_count = int(output.get("summary_count") or 0)
+    chunk_count = _non_negative_int(output.get("chunk_count"), default=0)
+    summary_count = _non_negative_int(output.get("summary_count"), default=0)
     if chunk_count + summary_count <= 0:
         return "empty_retrieval"
 
@@ -132,9 +157,9 @@ class UniversalState(TypedDict, total=False):
     max_reflections: int
     next_action: str
     stop_reason: str
-    chunks: list[object]
-    summaries: list[object]
-    retrieved_documents: list[object]
+    chunks: list[EvidenceItem]
+    summaries: list[EvidenceItem]
+    retrieved_documents: list[EvidenceItem]
     working_memory: dict[str, object]
     retrieval: RetrievalDiagnostics
     generation: AnswerDraft
@@ -219,7 +244,7 @@ class UniversalReasoningOrchestrator:
             validator=self.validator,
         )
 
-    async def _planner_node(self, state: UniversalState) -> UniversalState:
+    async def _planner_node(self, state: UniversalState) -> dict[str, object]:
         t0 = time.perf_counter()
         query = str(state.get("working_query") or state.get("user_query") or "").strip()
         profile = state.get("agent_profile")
@@ -230,8 +255,8 @@ class UniversalReasoningOrchestrator:
             allowed_tools=allowed_tools,
         )
 
-        max_steps = 4
-        max_reflections = 2
+        max_steps = DEFAULT_MAX_STEPS
+        max_reflections = DEFAULT_MAX_REFLECTIONS
         if isinstance(profile, AgentProfile):
             max_steps = int(profile.capabilities.reasoning_budget.max_steps)
             max_reflections = int(profile.capabilities.reasoning_budget.max_reflections)
@@ -241,7 +266,7 @@ class UniversalReasoningOrchestrator:
             complexity=reasoning_plan.complexity,
         )
         existing_steps = list(state.get("reasoning_steps") or [])
-        updates: UniversalState = {
+        updates: dict[str, object] = {
             "intent": intent,
             "retrieval_plan": retrieval_plan,
             "reasoning_plan": reasoning_plan,
@@ -257,7 +282,7 @@ class UniversalReasoningOrchestrator:
         )
         return updates
 
-    async def _execute_tool_node(self, state: UniversalState) -> UniversalState:
+    async def _execute_tool_node(self, state: UniversalState) -> dict[str, object]:
         t0 = time.perf_counter()
         plan = state.get("reasoning_plan")
         if not isinstance(plan, ReasoningPlan):
@@ -278,7 +303,7 @@ class UniversalReasoningOrchestrator:
                 ),
             }
 
-        max_steps = int(state.get("max_steps") or 4)
+        max_steps = int(state.get("max_steps") or DEFAULT_MAX_STEPS)
         tool_results = list(state.get("tool_results") or [])
         if len(tool_results) >= max_steps:
             return {
@@ -321,7 +346,7 @@ class UniversalReasoningOrchestrator:
             )
         )
 
-        updates: UniversalState = {
+        updates: dict[str, object] = {
             "tool_results": updated_results,
             "tool_cursor": cursor + 1,
             "reasoning_steps": trace_steps,
@@ -344,7 +369,7 @@ class UniversalReasoningOrchestrator:
         )
         return updates
 
-    async def _reflect_node(self, state: UniversalState) -> UniversalState:
+    async def _reflect_node(self, state: UniversalState) -> dict[str, object]:
         t0 = time.perf_counter()
         plan = state.get("reasoning_plan")
         if not isinstance(plan, ReasoningPlan):
@@ -358,7 +383,7 @@ class UniversalReasoningOrchestrator:
 
         cursor = int(state.get("tool_cursor") or 0)
         reflections = int(state.get("reflections") or 0)
-        max_reflections = int(state.get("max_reflections") or 2)
+        max_reflections = int(state.get("max_reflections") or DEFAULT_MAX_REFLECTIONS)
         plan_attempts = int(state.get("plan_attempts") or 1)
         tool_results = list(state.get("tool_results") or [])
         last = tool_results[-1] if tool_results else None
@@ -371,18 +396,20 @@ class UniversalReasoningOrchestrator:
         if isinstance(last, ToolResult) and not last.ok:
             retry_reason = str(last.error or "")
             retryable = _is_retryable_reason(retry_reason)
-            if retryable and reflections < max_reflections and plan_attempts < 3:
+            if retryable and reflections < max_reflections and plan_attempts < MAX_PLAN_ATTEMPTS:
                 reflections += 1
                 plan_attempts += 1
                 next_action = "replan"
             else:
                 next_action = "generate"
                 if not stop_reason:
-                    stop_reason = "tool_error_unrecoverable" if retryable else "tool_error_non_retryable"
+                    stop_reason = (
+                        "tool_error_unrecoverable" if retryable else "tool_error_non_retryable"
+                    )
         elif isinstance(last, ToolResult) and last.ok and cursor >= len(plan.steps):
             retry_reason = _extract_retry_signal_from_retrieval(state, last)
             retryable = _is_retryable_reason(retry_reason)
-            if retryable and reflections < max_reflections and plan_attempts < 3:
+            if retryable and reflections < max_reflections and plan_attempts < MAX_PLAN_ATTEMPTS:
                 reflections += 1
                 plan_attempts += 1
                 next_action = "replan"
@@ -402,13 +429,13 @@ class UniversalReasoningOrchestrator:
                     "reflections": reflections,
                     "last_tool_ok": bool(last.ok) if isinstance(last, ToolResult) else True,
                     "retryable": retryable,
-                    "retry_reason": (retry_reason[:120] if retry_reason else ""),
+                    "retry_reason": (retry_reason[:RETRY_REASON_LIMIT] if retry_reason else ""),
                 },
                 ok=True,
             )
         )
 
-        updates: UniversalState = {
+        updates: dict[str, object] = {
             "next_action": next_action,
             "plan_attempts": plan_attempts,
             "reflections": reflections,
@@ -420,14 +447,14 @@ class UniversalReasoningOrchestrator:
             reason = retry_reason or (str(last.error) if isinstance(last, ToolResult) else "retry")
             updates["working_query"] = (
                 str(state.get("user_query") or "")
-                + f"\n\n[REPLAN_REASON] {reason[:120]}"
+                + f"\n\n[REPLAN_REASON] {reason[:RETRY_REASON_LIMIT]}"
             )
         updates["stage_timings_ms"] = _append_stage_timing(
             state, stage="reflect", elapsed_ms=(time.perf_counter() - t0) * 1000.0
         )
         return updates
 
-    async def _generator_node(self, state: UniversalState) -> UniversalState:
+    async def _generator_node(self, state: UniversalState) -> dict[str, object]:
         t0 = time.perf_counter()
         plan = state.get("retrieval_plan")
         if not isinstance(plan, RetrievalPlan):
@@ -441,8 +468,8 @@ class UniversalReasoningOrchestrator:
             query=str(state.get("user_query") or ""),
             scope_label=str(state.get("scope_label") or ""),
             plan=plan,
-            chunks=list(state.get("chunks") or []),
-            summaries=list(state.get("summaries") or []),
+            chunks=cast(list[EvidenceItem], list(state.get("chunks") or [])),
+            summaries=cast(list[EvidenceItem], list(state.get("summaries") or [])),
             agent_profile=state.get("agent_profile"),
         )
         trace_steps = list(state.get("reasoning_steps") or [])
@@ -452,7 +479,7 @@ class UniversalReasoningOrchestrator:
                 type="synthesis",
                 description="synthesis_completed",
                 output={
-                    "answer_preview": _clip_text(answer.text, limit=180),
+                    "answer_preview": _clip_text(answer.text, limit=ANSWER_PREVIEW_LIMIT),
                     "evidence_count": len(answer.evidence),
                 },
             )
@@ -465,13 +492,15 @@ class UniversalReasoningOrchestrator:
             ),
         }
 
-    async def _citation_validate_node(self, state: UniversalState) -> UniversalState:
+    async def _citation_validate_node(self, state: UniversalState) -> dict[str, object]:
         t0 = time.perf_counter()
         answer = state.get("generation")
         plan = state.get("retrieval_plan")
         if not isinstance(answer, AnswerDraft) or not isinstance(plan, RetrievalPlan):
             return {
-                "validation": ValidationResult(accepted=False, issues=["missing_generation_or_plan"]),
+                "validation": ValidationResult(
+                    accepted=False, issues=["missing_generation_or_plan"]
+                ),
                 "stop_reason": "validation_failed",
                 "stage_timings_ms": _append_stage_timing(
                     state, stage="validation", elapsed_ms=(time.perf_counter() - t0) * 1000.0
@@ -483,7 +512,11 @@ class UniversalReasoningOrchestrator:
             tool = self.tool_registry.get("citation_validator")
             if tool is not None:
                 result = await tool.run({}, state=dict(state), context=self._runtime_context())
-                accepted = bool(result.output.get("accepted")) if isinstance(result.output, dict) else bool(result.ok)
+                accepted = (
+                    bool(result.output.get("accepted"))
+                    if isinstance(result.output, dict)
+                    else bool(result.ok)
+                )
                 issues = (
                     list(result.output.get("issues") or [])
                     if isinstance(result.output, dict)
@@ -491,7 +524,9 @@ class UniversalReasoningOrchestrator:
                 )
                 validation = ValidationResult(accepted=accepted, issues=issues)
             else:
-                validation = self.validator.validate(answer, plan, str(state.get("user_query") or ""))
+                validation = self.validator.validate(
+                    answer, plan, str(state.get("user_query") or "")
+                )
         else:
             validation = self.validator.validate(answer, plan, str(state.get("user_query") or ""))
 
@@ -606,7 +641,7 @@ class UniversalReasoningOrchestrator:
             )
 
         trace = dict(retrieval.trace or {})
-        reasoning_trace = self._build_reasoning_trace(final_state)
+        reasoning_trace = self._build_reasoning_trace(cast(UniversalState, final_state))
         trace_timings = dict(trace.get("timings_ms") or {})
         for key, value in dict(stage_timings).items():
             trace_timings[f"universal_{key}"] = value

@@ -13,50 +13,42 @@ from app.agent.policies import build_retrieval_plan, classify_intent
 from app.cartridges.models import AgentProfile
 
 
+MAX_SIMPLE_QUERY_LENGTH = 180
+
+_ARITHMETIC_PATTERN = re.compile(r"\d+\s*[\+\-\*/]\s*\d+")
+_COMPLEX_HINT_PATTERN = re.compile(
+    r"\b(?:analiza|relacion|relación|impact|compara)\b",
+    re.IGNORECASE,
+)
+_EXTRACTION_HINT_PATTERN = re.compile(
+    r"\b(?:extrae|extraer|estructura|json|tabla|reactivo|insumo|cantidad|bom)\b",
+    re.IGNORECASE,
+)
+_CALCULATION_HINT_PATTERN = re.compile(
+    r"\b(?:calcula|calcular|cuanto|cuánto|formula|lote|muestras)\b",
+    re.IGNORECASE,
+)
+
+
 def _is_complex_query(query: str, intent: QueryIntent) -> bool:
-    text = (query or "").lower()
+    text = query or ""
     if intent.mode in {"comparativa"}:
         return True
-    if len(text) > 180:
+    if len(text) > MAX_SIMPLE_QUERY_LENGTH:
         return True
-    if any(token in text for token in ("analiza", "relacion", "relación", "impact", "compara")):
+    if _COMPLEX_HINT_PATTERN.search(text):
         return True
     return False
 
 
 def _needs_extraction(query: str) -> bool:
-    text = (query or "").lower()
-    return any(
-        token in text
-        for token in (
-            "extrae",
-            "extraer",
-            "estructura",
-            "json",
-            "tabla",
-            "reactivo",
-            "insumo",
-            "cantidad",
-            "bom",
-        )
-    )
+    return bool(_EXTRACTION_HINT_PATTERN.search(query or ""))
 
 
 def _needs_calculation(query: str) -> bool:
-    text = (query or "").lower()
-    has_math = bool(re.search(r"\d+\s*[\+\-\*/]\s*\d+", text))
-    procedural_math = any(
-        token in text
-        for token in (
-            "calcula",
-            "calcular",
-            "cuanto",
-            "cuánto",
-            "formula",
-            "lote",
-            "muestras",
-        )
-    )
+    text = query or ""
+    has_math = bool(_ARITHMETIC_PATTERN.search(text))
+    procedural_math = bool(_CALCULATION_HINT_PATTERN.search(text))
     return has_math or procedural_math
 
 
@@ -69,9 +61,10 @@ def build_universal_plan(
     intent = classify_intent(query, profile=profile)
     retrieval_plan = build_retrieval_plan(intent, query=query, profile=profile)
     complexity = "complex" if _is_complex_query(query, intent) else "simple"
+    allowed_tool_set = set(allowed_tools)
     steps: list[ToolCall] = []
 
-    if "semantic_retrieval" in allowed_tools:
+    if "semantic_retrieval" in allowed_tool_set:
         steps.append(
             ToolCall(
                 tool="semantic_retrieval",
@@ -80,7 +73,11 @@ def build_universal_plan(
             )
         )
 
-    if complexity == "complex" and "logical_comparison" in allowed_tools and intent.mode == "comparativa":
+    if (
+        complexity == "complex"
+        and "logical_comparison" in allowed_tool_set
+        and intent.mode == "comparativa"
+    ):
         steps.append(
             ToolCall(
                 tool="logical_comparison",
@@ -89,7 +86,7 @@ def build_universal_plan(
             )
         )
 
-    if "structural_extraction" in allowed_tools and _needs_extraction(query):
+    if "structural_extraction" in allowed_tool_set and _needs_extraction(query):
         steps.append(
             ToolCall(
                 tool="structural_extraction",
@@ -98,7 +95,7 @@ def build_universal_plan(
             )
         )
 
-    if "python_calculator" in allowed_tools and _needs_calculation(query):
+    if "python_calculator" in allowed_tool_set and _needs_calculation(query):
         steps.append(
             ToolCall(
                 tool="python_calculator",
@@ -107,8 +104,12 @@ def build_universal_plan(
             )
         )
 
-    if not steps and "semantic_retrieval" in allowed_tools:
-        steps = [ToolCall(tool="semantic_retrieval", input={"query": query}, rationale="default_retrieval")]
+    if not steps and "semantic_retrieval" in allowed_tool_set:
+        steps = [
+            ToolCall(
+                tool="semantic_retrieval", input={"query": query}, rationale="default_retrieval"
+            )
+        ]
 
     trace_steps = [
         ReasoningStep(

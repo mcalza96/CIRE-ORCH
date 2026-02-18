@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 from app.agent.tools.base import AgentTool
 from app.agent.tools.citation_validator import CitationValidatorTool
@@ -8,16 +9,16 @@ from app.agent.tools.logical_comparison import LogicalComparisonTool
 from app.agent.tools.python_calculator import PythonCalculatorTool
 from app.agent.tools.semantic_retrieval import SemanticRetrievalTool
 from app.agent.tools.structural_extraction import StructuralExtractionTool
-from app.cartridges.models import AgentProfile, ToolName
+from app.cartridges.models import AgentProfile
 
 
 @dataclass(frozen=True)
 class ToolRegistry:
-    _tools: dict[str, AgentTool]
+    _tools: dict[str, object]
 
     @classmethod
     def create_default(cls) -> "ToolRegistry":
-        tools: dict[str, AgentTool] = {
+        tools = {
             "semantic_retrieval": SemanticRetrievalTool(),
             "structural_extraction": StructuralExtractionTool(),
             "logical_comparison": LogicalComparisonTool(),
@@ -27,7 +28,7 @@ class ToolRegistry:
         return cls(_tools=tools)
 
     def get(self, name: str) -> AgentTool | None:
-        return self._tools.get(name)
+        return cast(AgentTool | None, self._tools.get(name))
 
     def allowed_tools(self, profile: AgentProfile | None) -> list[str]:
         if profile is None:
@@ -35,13 +36,13 @@ class ToolRegistry:
 
         out: list[str] = []
         seen: set[str] = set()
-        for raw in list(profile.capabilities.allowed_tools):
-            name = str(raw).strip()
+        for configured_name in list(profile.capabilities.allowed_tools):
+            name = str(configured_name).strip()
             if not name or name in seen:
                 continue
-            if name not in self._tools:
+            if self.get(name) is None:
                 continue
-            policy = profile.capabilities.tool_policies.get(name)  # type: ignore[arg-type]
+            policy = profile.capabilities.tool_policies.get(configured_name)
             if policy is not None and not bool(policy.enabled):
                 continue
             seen.add(name)
@@ -50,6 +51,3 @@ class ToolRegistry:
         if not out:
             out = ["semantic_retrieval", "citation_validator"]
         return out
-
-    def has(self, name: ToolName) -> bool:
-        return str(name) in self._tools
