@@ -1,4 +1,8 @@
-from app.agent.retrieval_planner import decide_multihop_fallback, build_deterministic_subqueries
+from app.agent.retrieval_planner import (
+    build_deterministic_subqueries,
+    decide_multihop_fallback,
+    normalize_query_filters,
+)
 
 
 def test_decide_multihop_fallback_when_missing_standard_and_planner_not_multihop() -> None:
@@ -128,3 +132,36 @@ def test_build_deterministic_subqueries_adds_clause_focused_queries_for_dense_qu
     assert clause_ids
     assert any("10_3" in cid for cid in clause_ids)
     assert any("9_1_2" in cid for cid in clause_ids)
+
+
+def test_normalize_query_filters_enforces_single_standard_selector() -> None:
+    raw = {
+        "source_standard": "ISO 9001",
+        "source_standards": ["ISO 9001", "ISO 14001"],
+        "filters": {"clause_id": "8.1.2"},
+    }
+    normalized = normalize_query_filters(raw)
+    assert normalized is not None
+    assert normalized.get("source_standard") == "ISO 9001"
+    assert "source_standards" not in normalized
+    assert normalized.get("metadata", {}).get("clause_id") == "8.1.2"
+
+
+def test_clause_focused_subquery_avoids_global_clause_filter_when_ambiguous() -> None:
+    query = "compara requisitos de 8.1.2 entre ISO 9001 e ISO 14001"
+    requested = ("ISO 9001", "ISO 14001")
+    subqueries = build_deterministic_subqueries(
+        query=query,
+        requested_standards=requested,
+        max_queries=8,
+    )
+    clause_queries = [
+        item for item in subqueries if str(item.get("id") or "").startswith("clause_")
+    ]
+    assert clause_queries
+    for item in clause_queries:
+        filters = item.get("filters") or {}
+        assert isinstance(filters, dict)
+        assert not ("source_standard" in filters and "source_standards" in filters)
+        # Ambiguous cross-standard clause should not hard-lock metadata clause_id globally.
+        assert "metadata" not in filters

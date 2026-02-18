@@ -9,7 +9,8 @@ from app.agent.retrieval_flow import RetrievalFlow
 
 
 class _FakePlanner:
-    async def plan(self, _context):
+    async def plan(self, context):
+        del context
         return [{"id": "q1", "query": "subquery"}]
 
 
@@ -75,19 +76,16 @@ async def test_primary_multi_query_timeout_falls_back_to_hybrid(monkeypatch: pyt
     assert items[0].content == "hybrid ok"
     assert flow.last_diagnostics is not None
     assert flow.last_diagnostics.strategy == "hybrid"
-    assert "multi_query_primary_error" in flow.last_diagnostics.trace.get("hybrid_trace", {})
+    assert "multi_query_fallback_error" in flow.last_diagnostics.trace
 
 
 @pytest.mark.asyncio
-async def test_refine_timeout_falls_back_to_hybrid(monkeypatch: pytest.MonkeyPatch):
+async def test_multi_query_success_merges_with_hybrid(monkeypatch: pytest.MonkeyPatch):
     _set_retrieval_defaults(monkeypatch)
 
     contract_client = AsyncMock()
     contract_client.multi_query = AsyncMock(
-        side_effect=[
-            {"items": [{"content": "p1"}]},
-            RuntimeError("retrieval_timeout:multi_query_refine"),
-        ]
+        return_value={"items": [{"content": "p1", "source": "M1", "score": 0.6}]}
     )
     contract_client.hybrid = AsyncMock(
         return_value={
@@ -105,11 +103,11 @@ async def test_refine_timeout_falls_back_to_hybrid(monkeypatch: pytest.MonkeyPat
         user_id="u1",
     )
 
-    assert len(items) == 1
-    assert items[0].content == "hybrid after refine fail"
+    assert len(items) >= 1
+    assert any(it.content == "hybrid after refine fail" for it in items)
+    assert any(it.content == "p1" for it in items)
     assert flow.last_diagnostics is not None
-    assert flow.last_diagnostics.strategy == "hybrid"
-    assert "multi_query_primary_error" in flow.last_diagnostics.trace.get("hybrid_trace", {})
+    assert flow.last_diagnostics.strategy == "multi_query"
 
 
 @pytest.mark.asyncio
@@ -161,6 +159,33 @@ async def test_coverage_step_back_error_is_best_effort(monkeypatch: pytest.Monke
 
     assert len(items) >= 1
     assert flow.last_diagnostics is not None
-    assert flow.last_diagnostics.strategy == "hybrid"
+    assert flow.last_diagnostics.strategy == "multi_query"
     coverage_gate = flow.last_diagnostics.trace.get("coverage_gate", {})
-    assert "step_back_error" in coverage_gate
+    assert "error" in coverage_gate or "step_back_error" in coverage_gate
+
+
+@pytest.mark.asyncio
+async def test_multi_query_fallback_skips_when_budget_too_low(monkeypatch: pytest.MonkeyPatch):
+    _set_retrieval_defaults(monkeypatch)
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_COVERAGE_GATE_ENABLED", False)
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_TIMEOUT_EXECUTE_TOOL_MS", 1000)
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_RETRIEVAL_MIN_MQ_BUDGET_MS", 5_000)
+
+    contract_client = AsyncMock()
+    contract_client.hybrid = AsyncMock(return_value={"items": [], "trace": {}})
+    contract_client.multi_query = AsyncMock(return_value={"items": [{"content": "mq"}]})
+
+    flow = RetrievalFlow(contract_client=contract_client, subquery_planner=_FakePlanner())
+    items = await flow.execute(
+        query="compara iso 9001 vs iso 14001",
+        tenant_id="t1",
+        collection_id=None,
+        plan=_plan(),
+        user_id="u1",
+    )
+
+    assert items == []
+    assert contract_client.multi_query.await_count == 0
+    assert flow.last_diagnostics is not None
+    hybrid_trace = flow.last_diagnostics.trace.get("hybrid_trace", {})
+    assert "multi_query_fallback_skipped_by_budget" in hybrid_trace

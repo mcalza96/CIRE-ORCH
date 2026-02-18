@@ -26,6 +26,7 @@ from app.agent.retrieval_planner import (
     decide_multihop_fallback,
     extract_clause_refs,
     mode_requires_literal_evidence,
+    normalize_query_filters,
 )
 from app.core.config import settings
 from app.core.rag_retrieval_contract_client import RagRetrievalContractClient
@@ -80,6 +81,17 @@ class RetrievalFlow:
             trace_target=trace_target,
         )
 
+    @staticmethod
+    def _contains_rate_limit_hint(payload: Any) -> bool:
+        if isinstance(payload, str):
+            text = payload.lower()
+            return "rate_limit" in text or "429" in text
+        if isinstance(payload, dict):
+            return any(RetrievalFlow._contains_rate_limit_hint(v) for v in payload.values())
+        if isinstance(payload, list):
+            return any(RetrievalFlow._contains_rate_limit_hint(v) for v in payload)
+        return False
+
     async def execute(
         self,
         *,
@@ -94,9 +106,24 @@ class RetrievalFlow:
         validated_scope_payload: dict[str, Any] | None = None,
     ) -> list[EvidenceItem]:
         contract_client = self.contract_client
-        filters = validated_filters
+        execute_started_at = time.perf_counter()
+        total_budget_ms = max(
+            1000, int(getattr(settings, "ORCH_TIMEOUT_EXECUTE_TOOL_MS", 30000) or 30000)
+        )
+
+        def remaining_budget_ms() -> int:
+            elapsed = int((time.perf_counter() - execute_started_at) * 1000)
+            return max(0, total_budget_ms - elapsed)
+
+        def budgeted_timeout(default_timeout_ms: int) -> int:
+            remaining = remaining_budget_ms()
+            if remaining <= 300:
+                return 200
+            return max(200, min(default_timeout_ms, remaining - 200))
+
+        filters = normalize_query_filters(validated_filters)
         if filters is None:
-            filters = (
+            filters = normalize_query_filters(
                 {"source_standards": list(plan.requested_standards)}
                 if plan.requested_standards
                 else None
@@ -164,11 +191,18 @@ class RetrievalFlow:
 
         async def build_subqueries(*, purpose: str = "primary") -> list[dict[str, Any]]:
             planner = self.subquery_planner or HybridSubqueryPlanner.from_settings()
+            low_budget_cap = max(
+                2,
+                int(getattr(settings, "ORCH_RETRIEVAL_LOW_BUDGET_SUBQUERY_CAP", 2) or 2),
+            )
+            max_queries_for_plan = mode_max_subqueries
+            if remaining_budget_ms() < 8000:
+                max_queries_for_plan = min(max_queries_for_plan, low_budget_cap)
             subqueries_local = await planner.plan(
                 SubqueryPlanningContext(
                     query=query,
                     requested_standards=plan.requested_standards,
-                    max_queries=mode_max_subqueries,
+                    max_queries=max_queries_for_plan,
                     mode=plan.mode,
                     require_literal_evidence=plan.require_literal_evidence,
                     include_semantic_tail=semantic_tail_enabled,
@@ -185,6 +219,14 @@ class RetrievalFlow:
                 if not key or key in seen_keys:
                     continue
                 seen_keys.add(key)
+                raw_filters = sq.get("filters")
+                normalized_filters = normalize_query_filters(
+                    raw_filters if isinstance(raw_filters, dict) else None
+                )
+                if normalized_filters is None:
+                    sq.pop("filters", None)
+                else:
+                    sq["filters"] = normalized_filters
                 deduped.append(sq)
 
             subqueries_local = deduped
@@ -200,7 +242,7 @@ class RetrievalFlow:
         # 1) Hybrid first
         hybrid_payload, hybrid_error_code, hybrid_error_detail = await self._safe_execute(
             op_name="hybrid_primary",
-            timeout_ms=timeout_hybrid_ms,
+            timeout_ms=budgeted_timeout(timeout_hybrid_ms),
             operation=contract_client.hybrid(
                 query=expanded_query,
                 tenant_id=tenant_id,
@@ -285,7 +327,34 @@ class RetrievalFlow:
                 fallback_code = decision.code or RETRIEVAL_CODE_GRAPH_FALLBACK_NO_MULTIHOP
 
         if should_use_multi_query:
+            min_mq_budget_ms = max(
+                500,
+                int(getattr(settings, "ORCH_RETRIEVAL_MIN_MQ_BUDGET_MS", 1200) or 1200),
+            )
+            if remaining_budget_ms() < min_mq_budget_ms:
+                should_use_multi_query = False
+                trace["multi_query_fallback_skipped_by_budget"] = {
+                    "remaining_budget_ms": remaining_budget_ms(),
+                    "min_budget_ms": min_mq_budget_ms,
+                }
+                logger.warning(
+                    "multi_query_fallback_skipped_by_budget",
+                    remaining_budget_ms=remaining_budget_ms(),
+                    min_budget_ms=min_mq_budget_ms,
+                )
+
+        if should_use_multi_query:
             subqueries = await build_subqueries(purpose="fallback")
+            if self._contains_rate_limit_hint(hybrid_payload) or self._contains_rate_limit_hint(
+                trace
+            ):
+                rate_limit_cap = max(
+                    2,
+                    int(getattr(settings, "ORCH_RETRIEVAL_RATE_LIMIT_SUBQUERY_CAP", 3) or 3),
+                )
+                subqueries = subqueries[:rate_limit_cap]
+                trace["subquery_cap_reason"] = "rate_limit_hint"
+                trace["subquery_cap_applied"] = rate_limit_cap
             if missing_scopes:
                 for scope in missing_scopes[:2]:
                     subqueries.insert(
@@ -295,11 +364,19 @@ class RetrievalFlow:
                             "query": f"{expanded_query} {scope}",
                             "k": None,
                             "fetch_k": None,
-                            "filters": {"source_standard": scope},
+                            "filters": normalize_query_filters({"source_standard": scope}),
                         },
                     )
             if missing_clauses:
                 for clause in missing_clauses[:2]:
+                    clause_filters = normalize_query_filters(
+                        {
+                            "source_standard": plan.requested_standards[0],
+                            "metadata": {"clause_id": clause},
+                        }
+                        if len(plan.requested_standards) == 1 and plan.requested_standards[0]
+                        else {"source_standards": list(plan.requested_standards)}
+                    )
                     subqueries.insert(
                         0,
                         {
@@ -307,14 +384,7 @@ class RetrievalFlow:
                             "query": f"{expanded_query} clausula {clause}"[:900],
                             "k": None,
                             "fetch_k": None,
-                            "filters": {
-                                **(
-                                    {"source_standards": list(plan.requested_standards)}
-                                    if plan.requested_standards
-                                    else {}
-                                ),
-                                "metadata": {"clause_id": clause},
-                            },
+                            "filters": clause_filters,
                         },
                     )
             subqueries = subqueries[:mode_max_subqueries]
@@ -322,7 +392,7 @@ class RetrievalFlow:
             merge = {"strategy": "rrf", "rrf_k": 60, "top_k": min(16, max(12, k))}
             mq_payload, mq_error_code, mq_error_detail = await self._safe_execute(
                 op_name="multi_query_fallback",
-                timeout_ms=timeout_multi_query_ms,
+                timeout_ms=budgeted_timeout(timeout_multi_query_ms),
                 operation=contract_client.multi_query(
                     tenant_id=tenant_id,
                     collection_id=collection_id,
@@ -366,24 +436,35 @@ class RetrievalFlow:
                     trace=diag_trace_local,
                     scope_validation=validated_scope_payload or {},
                 )
-                items = await self._execute_coverage_repair(
-                    items=[it for it in items if isinstance(it, dict)],
-                    base_trace=diag_trace_local,
-                    reason="hybrid",
-                    plan=plan,
-                    require_all_scopes=require_all_scopes,
-                    clause_refs=clause_refs,
-                    min_clause_refs_required=min_clause_refs_required,
-                    expanded_query=expanded_query,
-                    tenant_id=tenant_id,
-                    collection_id=collection_id,
-                    user_id=user_id,
-                    request_id=request_id,
-                    correlation_id=correlation_id,
-                    timings_ms=timings_ms,
-                    timeout_cov_repair_ms=timeout_cov_repair_ms,
-                    k=k,
+                coverage_timeout_ms, allow_step_back = self._coverage_budget(
+                    default_timeout_ms=timeout_cov_repair_ms,
+                    remaining_budget_ms=remaining_budget_ms(),
                 )
+                if coverage_timeout_ms is None:
+                    diag_trace_local["coverage_gate_skipped_by_budget"] = {
+                        "remaining_budget_ms": remaining_budget_ms(),
+                    }
+                    items = [it for it in items if isinstance(it, dict)]
+                else:
+                    items = await self._execute_coverage_repair(
+                        items=[it for it in items if isinstance(it, dict)],
+                        base_trace=diag_trace_local,
+                        reason="hybrid",
+                        plan=plan,
+                        require_all_scopes=require_all_scopes,
+                        clause_refs=clause_refs,
+                        min_clause_refs_required=min_clause_refs_required,
+                        expanded_query=expanded_query,
+                        tenant_id=tenant_id,
+                        collection_id=collection_id,
+                        user_id=user_id,
+                        request_id=request_id,
+                        correlation_id=correlation_id,
+                        timings_ms=timings_ms,
+                        timeout_cov_repair_ms=coverage_timeout_ms,
+                        allow_step_back=allow_step_back,
+                        k=k,
+                    )
                 items = self._filter_items_by_min_score(
                     [it for it in items if isinstance(it, dict)],
                     trace_target=diag_trace_local,
@@ -426,24 +507,35 @@ class RetrievalFlow:
                     calculate_layer_stats([it for it in merged_items if isinstance(it, dict)])
                 )
 
-            repaired_items = await self._execute_coverage_repair(
-                items=[it for it in merged_items if isinstance(it, dict)],
-                base_trace=diag_trace_fb,
-                reason="hybrid_then_multi_query",
-                plan=plan,
-                require_all_scopes=require_all_scopes,
-                clause_refs=clause_refs,
-                min_clause_refs_required=min_clause_refs_required,
-                expanded_query=expanded_query,
-                tenant_id=tenant_id,
-                collection_id=collection_id,
-                user_id=user_id,
-                request_id=request_id,
-                correlation_id=correlation_id,
-                timings_ms=timings_ms,
-                timeout_cov_repair_ms=timeout_cov_repair_ms,
-                k=k,
+            coverage_timeout_ms, allow_step_back = self._coverage_budget(
+                default_timeout_ms=timeout_cov_repair_ms,
+                remaining_budget_ms=remaining_budget_ms(),
             )
+            if coverage_timeout_ms is None:
+                diag_trace_fb["coverage_gate_skipped_by_budget"] = {
+                    "remaining_budget_ms": remaining_budget_ms(),
+                }
+                repaired_items = [it for it in merged_items if isinstance(it, dict)]
+            else:
+                repaired_items = await self._execute_coverage_repair(
+                    items=[it for it in merged_items if isinstance(it, dict)],
+                    base_trace=diag_trace_fb,
+                    reason="hybrid_then_multi_query",
+                    plan=plan,
+                    require_all_scopes=require_all_scopes,
+                    clause_refs=clause_refs,
+                    min_clause_refs_required=min_clause_refs_required,
+                    expanded_query=expanded_query,
+                    tenant_id=tenant_id,
+                    collection_id=collection_id,
+                    user_id=user_id,
+                    request_id=request_id,
+                    correlation_id=correlation_id,
+                    timings_ms=timings_ms,
+                    timeout_cov_repair_ms=coverage_timeout_ms,
+                    allow_step_back=allow_step_back,
+                    k=k,
+                )
             repaired_items = self._filter_items_by_min_score(
                 [it for it in repaired_items if isinstance(it, dict)],
                 trace_target=diag_trace_fb,
@@ -486,30 +578,61 @@ class RetrievalFlow:
             if isinstance(self.profile_resolution_context, dict):
                 diag_trace_final["agent_profile_resolution"] = dict(self.profile_resolution_context)
 
-        items2 = await self._execute_coverage_repair(
-            items=[it for it in items if isinstance(it, dict)],
-            base_trace=diag_trace_final,
-            reason="hybrid",
-            plan=plan,
-            require_all_scopes=require_all_scopes,
-            clause_refs=clause_refs,
-            min_clause_refs_required=min_clause_refs_required,
-            expanded_query=expanded_query,
-            tenant_id=tenant_id,
-            collection_id=collection_id,
-            user_id=user_id,
-            request_id=request_id,
-            correlation_id=correlation_id,
-            timings_ms=timings_ms,
-            timeout_cov_repair_ms=timeout_cov_repair_ms,
-            k=k,
+        coverage_timeout_ms, allow_step_back = self._coverage_budget(
+            default_timeout_ms=timeout_cov_repair_ms,
+            remaining_budget_ms=remaining_budget_ms(),
         )
+        if coverage_timeout_ms is None:
+            diag_trace_final["coverage_gate_skipped_by_budget"] = {
+                "remaining_budget_ms": remaining_budget_ms(),
+            }
+            items2 = [it for it in items if isinstance(it, dict)]
+        else:
+            items2 = await self._execute_coverage_repair(
+                items=[it for it in items if isinstance(it, dict)],
+                base_trace=diag_trace_final,
+                reason="hybrid",
+                plan=plan,
+                require_all_scopes=require_all_scopes,
+                clause_refs=clause_refs,
+                min_clause_refs_required=min_clause_refs_required,
+                expanded_query=expanded_query,
+                tenant_id=tenant_id,
+                collection_id=collection_id,
+                user_id=user_id,
+                request_id=request_id,
+                correlation_id=correlation_id,
+                timings_ms=timings_ms,
+                timeout_cov_repair_ms=coverage_timeout_ms,
+                allow_step_back=allow_step_back,
+                k=k,
+            )
         items2 = self._filter_items_by_min_score(
             [it for it in items2 if isinstance(it, dict)],
             trace_target=diag_trace_final,
         )
         items2 = reduce_structural_noise(items2, query)
         return self._to_evidence(items2)
+
+    def _coverage_budget(
+        self,
+        *,
+        default_timeout_ms: int,
+        remaining_budget_ms: int,
+    ) -> tuple[int | None, bool]:
+        min_repair_budget_ms = max(
+            400,
+            int(getattr(settings, "ORCH_RETRIEVAL_MIN_REPAIR_BUDGET_MS", 800) or 800),
+        )
+        if remaining_budget_ms < min_repair_budget_ms:
+            return None, False
+        step_back_min_budget_ms = max(
+            min_repair_budget_ms,
+            int(getattr(settings, "ORCH_COVERAGE_GATE_STEP_BACK_MIN_BUDGET_MS", 1200) or 1200),
+        )
+        allow_step_back = remaining_budget_ms >= step_back_min_budget_ms
+        timeout_ms = max(200, min(default_timeout_ms, remaining_budget_ms - 200))
+        return timeout_ms, allow_step_back
 
     async def _safe_execute(
         self,
@@ -601,6 +724,7 @@ class RetrievalFlow:
         correlation_id: str | None,
         timings_ms: dict[str, float],
         timeout_cov_repair_ms: int,
+        allow_step_back: bool,
         k: int,
     ) -> list[dict[str, Any]]:
         if not settings.ORCH_COVERAGE_GATE_ENABLED:
@@ -636,24 +760,22 @@ class RetrievalFlow:
                     "query": qtext[:900],
                     "k": None,
                     "fetch_k": None,
-                    "filters": {"source_standard": scope},
+                    "filters": normalize_query_filters({"source_standard": scope}),
                 }
             )
         for idx, clause in enumerate(missing_clauses, start=1):
+            clause_filters = normalize_query_filters(
+                {"source_standard": plan.requested_standards[0], "metadata": {"clause_id": clause}}
+                if len(plan.requested_standards) == 1 and plan.requested_standards[0]
+                else {"source_standards": list(plan.requested_standards)}
+            )
             focused.append(
                 {
                     "id": f"clause_repair_{idx}",
                     "query": f"{expanded_query} clausula {clause}"[:900],
                     "k": None,
                     "fetch_k": None,
-                    "filters": {
-                        **(
-                            {"source_standards": list(plan.requested_standards)}
-                            if plan.requested_standards
-                            else {}
-                        ),
-                        "metadata": {"clause_id": clause},
-                    },
+                    "filters": clause_filters,
                 }
             )
 
@@ -734,7 +856,11 @@ class RetrievalFlow:
             merged, clause_refs, min_required=min_clause_refs_required
         )
 
-        if (remaining or remaining_clauses) and settings.ORCH_COVERAGE_GATE_STEP_BACK:
+        if (
+            (remaining or remaining_clauses)
+            and settings.ORCH_COVERAGE_GATE_STEP_BACK
+            and allow_step_back
+        ):
             remaining = remaining[:cap]
             remaining_clauses = remaining_clauses[:cap]
             step_back_queries: list[dict[str, Any]] = []
@@ -745,10 +871,18 @@ class RetrievalFlow:
                         "query": f"principios generales y requisitos clave relacionados con: {expanded_query}",
                         "k": None,
                         "fetch_k": None,
-                        "filters": {"source_standard": scope},
+                        "filters": normalize_query_filters({"source_standard": scope}),
                     }
                 )
             for idx, clause in enumerate(remaining_clauses, start=1):
+                clause_filters = normalize_query_filters(
+                    {
+                        "source_standard": plan.requested_standards[0],
+                        "metadata": {"clause_id": clause},
+                    }
+                    if len(plan.requested_standards) == 1 and plan.requested_standards[0]
+                    else {"source_standards": list(plan.requested_standards)}
+                )
                 step_back_queries.append(
                     {
                         "id": f"clause_step_back_{idx}",
@@ -757,16 +891,17 @@ class RetrievalFlow:
                         ],
                         "k": None,
                         "fetch_k": None,
-                        "filters": {
-                            **(
-                                {"source_standards": list(plan.requested_standards)}
-                                if plan.requested_standards
-                                else {}
-                            ),
-                            "metadata": {"clause_id": clause},
-                        },
+                        "filters": clause_filters,
                     }
                 )
+
+        if (
+            (remaining or remaining_clauses)
+            and settings.ORCH_COVERAGE_GATE_STEP_BACK
+            and not allow_step_back
+        ):
+            if isinstance(base_trace.get("coverage_gate"), dict):
+                base_trace["coverage_gate"]["step_back_skipped_by_budget"] = True
 
             t_sb = time.perf_counter()
             try:

@@ -73,6 +73,11 @@ class Settings(BaseSettings):
     ORCH_TIMEOUT_RETRIEVAL_HYBRID_MS: int = 25000  # Single hybrid call: simple=3s, multihop=18s
     ORCH_TIMEOUT_RETRIEVAL_MULTI_QUERY_MS: int = 25000  # Multi-query refinement: up to 6 subqueries
     ORCH_TIMEOUT_RETRIEVAL_COVERAGE_REPAIR_MS: int = 15000  # Coverage gate repair: 2-4 extra calls
+    ORCH_RETRIEVAL_MIN_MQ_BUDGET_MS: int = 1200
+    ORCH_RETRIEVAL_MIN_REPAIR_BUDGET_MS: int = 800
+    ORCH_RETRIEVAL_LOW_BUDGET_SUBQUERY_CAP: int = 2
+    ORCH_RETRIEVAL_RATE_LIMIT_SUBQUERY_CAP: int = 3
+    ORCH_COVERAGE_GATE_STEP_BACK_MIN_BUDGET_MS: int = 1200
 
     # Agnostic coverage gate: ensure multi-scope queries retrieve evidence per requested scope.
     ORCH_COVERAGE_GATE_ENABLED: bool = True

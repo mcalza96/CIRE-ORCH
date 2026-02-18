@@ -23,6 +23,38 @@ def _clause_ref_matches(requested: str, candidate: str) -> bool:
     return cand == req or cand.startswith(f"{req}.")
 
 
+def normalize_query_filters(raw_filters: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(raw_filters, dict):
+        return None
+
+    out: dict[str, Any] = {}
+
+    source_standard = raw_filters.get("source_standard")
+    if isinstance(source_standard, str) and source_standard.strip():
+        out["source_standard"] = source_standard.strip()
+
+    source_standards = raw_filters.get("source_standards")
+    if not out.get("source_standard") and isinstance(source_standards, list):
+        cleaned = [str(item).strip() for item in source_standards if str(item).strip()]
+        if cleaned:
+            out["source_standards"] = cleaned
+
+    metadata_raw = raw_filters.get("metadata")
+    if not isinstance(metadata_raw, dict):
+        nested_filters = raw_filters.get("filters")
+        metadata_raw = nested_filters if isinstance(nested_filters, dict) else None
+
+    if isinstance(metadata_raw, dict):
+        clause_id = metadata_raw.get("clause_id")
+        if isinstance(clause_id, str) and clause_id.strip():
+            out["metadata"] = {"clause_id": clause_id.strip()}
+
+    if "source_standard" in out and "source_standards" in out:
+        out.pop("source_standards", None)
+
+    return out or None
+
+
 def apply_search_hints(
     query: str,
     profile: AgentProfile | None = None,
@@ -322,6 +354,11 @@ def build_deterministic_subqueries(
     clause_refs = extract_clause_refs(raw_query, profile=profile)
     out: list[dict[str, Any]] = []
     used_clause_refs: set[str] = set()
+    clause_by_standard: dict[str, str] = {}
+    for standard in requested_standards:
+        maybe_clause = _clause_near_standard(raw_query, standard)
+        if maybe_clause:
+            clause_by_standard[str(standard)] = str(maybe_clause)
 
     # Per-standard subqueries (bounded).
     for standard in requested_standards[:3]:
@@ -343,13 +380,14 @@ def build_deterministic_subqueries(
         if clause:
             filters["metadata"] = {"clause_id": clause}
             used_clause_refs.add(clause)
+        normalized_filters = normalize_query_filters(filters)
         out.append(
             {
                 "id": f"scope_{key}_{(clause or 'general').replace('.', '_')}",
                 "query": qtext,
                 "k": None,
                 "fetch_k": None,
-                "filters": filters,
+                "filters": normalized_filters,
             }
         )
         if len(out) >= max_queries:
@@ -357,7 +395,7 @@ def build_deterministic_subqueries(
 
     # Clause-centric decomposition: force one focused query per missing clause reference.
     # This improves retrieval for dense prompts that cite several clauses at once.
-    shared_filters: dict[str, Any] | None = (
+    shared_filters: dict[str, Any] | None = normalize_query_filters(
         {"source_standards": list(requested_standards)} if requested_standards else None
     )
     for clause in clause_refs[:4]:
@@ -366,16 +404,41 @@ def build_deterministic_subqueries(
             continue
         if len(out) >= max_queries:
             return out
+
+        mapped_standard: str | None = None
+        for standard in requested_standards:
+            near_clause = clause_by_standard.get(str(standard))
+            if near_clause and _clause_ref_matches(clause_norm, near_clause):
+                mapped_standard = str(standard)
+                break
+
+        clause_filters: dict[str, Any] | None
+        if mapped_standard:
+            clause_filters = normalize_query_filters(
+                {
+                    "source_standard": mapped_standard,
+                    "metadata": {"clause_id": clause_norm},
+                }
+            )
+        elif len(requested_standards) == 1 and requested_standards[0]:
+            clause_filters = normalize_query_filters(
+                {
+                    "source_standard": requested_standards[0],
+                    "metadata": {"clause_id": clause_norm},
+                }
+            )
+        else:
+            # Ambiguous clause in cross-standard prompts: avoid hard clause filter
+            # that can over-constrain unrelated standards.
+            clause_filters = shared_filters
+
         out.append(
             {
                 "id": f"clause_{clause_norm.replace('.', '_')}",
                 "query": f"{effective_query} clausula {clause_norm}"[:900],
                 "k": None,
                 "fetch_k": None,
-                "filters": {
-                    **(shared_filters or {}),
-                    "metadata": {"clause_id": clause_norm},
-                },
+                "filters": clause_filters,
             }
         )
 
