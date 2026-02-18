@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import asdict, dataclass
-from typing import Any, TypedDict, cast
+from typing import Any, NotRequired, TypedDict, cast
 
 import structlog
 from langgraph.graph import END, START, StateGraph
@@ -27,7 +27,13 @@ from app.agent.models import (
     ValidationResult,
 )
 from app.agent.policies import classify_intent
-from app.agent.tools import ToolRegistry, ToolRuntimeContext
+from app.agent.tools import (
+    AgentTool,
+    ToolRuntimeContext,
+    create_default_tools,
+    get_tool,
+    resolve_allowed_tools,
+)
 from app.cartridges.models import AgentProfile
 from app.graph.nodes.universal_planner import build_universal_plan
 
@@ -76,6 +82,18 @@ def _append_stage_timing(
     current = state.get("stage_timings_ms")
     timings = dict(current) if isinstance(current, dict) else {}
     timings[stage] = round(float(timings.get(stage, 0.0)) + max(0.0, elapsed_ms), 2)
+    return timings
+
+
+def _append_tool_timing(
+    state: UniversalState | dict[str, object],
+    *,
+    tool: str,
+    elapsed_ms: float,
+) -> dict[str, float]:
+    current = state.get("tool_timings_ms")
+    timings = dict(current) if isinstance(current, dict) else {}
+    timings[tool] = round(float(timings.get(tool, 0.0)) + max(0.0, elapsed_ms), 2)
     return timings
 
 
@@ -134,7 +152,7 @@ def _extract_retry_signal_from_retrieval(state: UniversalState, last: ToolResult
     return ""
 
 
-class UniversalState(TypedDict, total=False):
+class UniversalState(TypedDict):
     user_query: str
     working_query: str
     tenant_id: str
@@ -144,27 +162,28 @@ class UniversalState(TypedDict, total=False):
     correlation_id: str | None
     scope_label: str
     agent_profile: AgentProfile | None
-    allowed_tools: list[str]
-    intent: object
-    retrieval_plan: RetrievalPlan
-    reasoning_plan: ReasoningPlan
-    reasoning_steps: list[ReasoningStep]
     tool_results: list[ToolResult]
     tool_cursor: int
     plan_attempts: int
     reflections: int
-    max_steps: int
-    max_reflections: int
-    next_action: str
-    stop_reason: str
+    reasoning_steps: list[ReasoningStep]
+    working_memory: dict[str, object]
     chunks: list[EvidenceItem]
     summaries: list[EvidenceItem]
     retrieved_documents: list[EvidenceItem]
-    working_memory: dict[str, object]
-    retrieval: RetrievalDiagnostics
-    generation: AnswerDraft
-    validation: ValidationResult
-    stage_timings_ms: dict[str, float]
+    allowed_tools: NotRequired[list[str]]
+    intent: NotRequired[object]
+    retrieval_plan: NotRequired[RetrievalPlan]
+    reasoning_plan: NotRequired[ReasoningPlan]
+    max_steps: NotRequired[int]
+    max_reflections: NotRequired[int]
+    next_action: NotRequired[str]
+    stop_reason: NotRequired[str]
+    retrieval: NotRequired[RetrievalDiagnostics]
+    generation: NotRequired[AnswerDraft]
+    validation: NotRequired[ValidationResult]
+    stage_timings_ms: NotRequired[dict[str, float]]
+    tool_timings_ms: NotRequired[dict[str, float]]
 
 
 def _clip_text(value: object, limit: int = 280) -> str:
@@ -202,11 +221,11 @@ class UniversalReasoningOrchestrator:
     retriever: RetrieverPort
     answer_generator: AnswerGeneratorPort
     validator: ValidatorPort
-    tool_registry: ToolRegistry | None = None
+    tools: dict[str, AgentTool] | None = None
 
     def __post_init__(self) -> None:
-        if self.tool_registry is None:
-            self.tool_registry = ToolRegistry.create_default()
+        if self.tools is None:
+            self.tools = create_default_tools()
         self._graph = self._build_graph().compile()
 
     def _build_graph(self) -> StateGraph:
@@ -248,7 +267,7 @@ class UniversalReasoningOrchestrator:
         t0 = time.perf_counter()
         query = str(state.get("working_query") or state.get("user_query") or "").strip()
         profile = state.get("agent_profile")
-        allowed_tools = self.tool_registry.allowed_tools(profile) if self.tool_registry else []
+        allowed_tools = resolve_allowed_tools(profile, self.tools or {})
         intent, retrieval_plan, reasoning_plan, trace_steps = build_universal_plan(
             query=query,
             profile=profile,
@@ -316,7 +335,8 @@ class UniversalReasoningOrchestrator:
 
         step_call = plan.steps[cursor]
         tool_name = str(step_call.tool or "").strip()
-        tool = self.tool_registry.get(tool_name) if self.tool_registry else None
+        tool = get_tool(self.tools or {}, tool_name)
+        tool_elapsed_ms = 0.0
         if tool is None:
             result = ToolResult(tool=tool_name, ok=False, error="tool_not_registered")
         else:
@@ -325,11 +345,13 @@ class UniversalReasoningOrchestrator:
                 inferred = _infer_expression_from_query(str(state.get("working_query") or ""))
                 if inferred:
                     payload["expression"] = inferred
+            t_tool = time.perf_counter()
             result = await tool.run(
                 payload,
                 state=dict(state),
                 context=self._runtime_context(),
             )
+            tool_elapsed_ms = (time.perf_counter() - t_tool) * 1000.0
 
         updated_results = [*tool_results, result]
         trace_steps = list(state.get("reasoning_steps") or [])
@@ -340,7 +362,10 @@ class UniversalReasoningOrchestrator:
                 tool=tool_name,
                 description=step_call.rationale or "tool_execution",
                 input=_sanitize_payload(dict(step_call.input or {})),
-                output=_sanitize_payload(dict(result.output or {})),
+                output={
+                    **_sanitize_payload(dict(result.output or {})),
+                    "duration_ms": round(tool_elapsed_ms, 2),
+                },
                 ok=bool(result.ok),
                 error=result.error,
             )
@@ -367,6 +392,12 @@ class UniversalReasoningOrchestrator:
         updates["stage_timings_ms"] = _append_stage_timing(
             state, stage="execute_tool", elapsed_ms=(time.perf_counter() - t0) * 1000.0
         )
+        if tool_name:
+            updates["tool_timings_ms"] = _append_tool_timing(
+                state,
+                tool=tool_name,
+                elapsed_ms=tool_elapsed_ms,
+            )
         return updates
 
     async def _reflect_node(self, state: UniversalState) -> dict[str, object]:
@@ -508,8 +539,8 @@ class UniversalReasoningOrchestrator:
             }
 
         allowed = list(state.get("allowed_tools") or [])
-        if "citation_validator" in allowed and self.tool_registry is not None:
-            tool = self.tool_registry.get("citation_validator")
+        if "citation_validator" in allowed:
+            tool = get_tool(self.tools or {}, "citation_validator")
             if tool is not None:
                 result = await tool.run({}, state=dict(state), context=self._runtime_context())
                 accepted = (
@@ -587,6 +618,7 @@ class UniversalReasoningOrchestrator:
             "tools_used": tools_used,
             "steps": steps,
             "stage_timings_ms": dict(state.get("stage_timings_ms") or {}),
+            "tool_timings_ms": dict(state.get("tool_timings_ms") or {}),
             "final_confidence": (1.0 if accepted else 0.45 if accepted is False else None),
         }
 
@@ -615,6 +647,10 @@ class UniversalReasoningOrchestrator:
             "tool_cursor": 0,
             "plan_attempts": 1,
             "reflections": 0,
+            "max_steps": DEFAULT_MAX_STEPS,
+            "max_reflections": DEFAULT_MAX_REFLECTIONS,
+            "next_action": "generate",
+            "stop_reason": "",
             "tool_results": [],
             "reasoning_steps": [],
             "working_memory": {},

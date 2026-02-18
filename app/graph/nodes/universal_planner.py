@@ -13,13 +13,12 @@ from app.agent.policies import build_retrieval_plan, classify_intent
 from app.cartridges.models import AgentProfile
 
 
-MAX_SIMPLE_QUERY_LENGTH = 180
-
 _ARITHMETIC_PATTERN = re.compile(r"\d+\s*[\+\-\*/]\s*\d+")
 _COMPLEX_HINT_PATTERN = re.compile(
-    r"\b(?:analiza|relacion|relación|impact|compara)\b",
+    r"\b(?:analiza|relacion|relación|impact|compara|calcula|calcular|extrae|extraer|formula)\b",
     re.IGNORECASE,
 )
+_CLAUSE_REFERENCE_PATTERN = re.compile(r"\b\d+(?:\.\d+)+\b")
 _EXTRACTION_HINT_PATTERN = re.compile(
     r"\b(?:extrae|extraer|estructura|json|tabla|reactivo|insumo|cantidad|bom)\b",
     re.IGNORECASE,
@@ -34,9 +33,9 @@ def _is_complex_query(query: str, intent: QueryIntent) -> bool:
     text = query or ""
     if intent.mode in {"comparativa"}:
         return True
-    if len(text) > MAX_SIMPLE_QUERY_LENGTH:
-        return True
     if _COMPLEX_HINT_PATTERN.search(text):
+        return True
+    if len(_CLAUSE_REFERENCE_PATTERN.findall(text)) >= 2:
         return True
     return False
 

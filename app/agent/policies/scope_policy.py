@@ -1,4 +1,5 @@
 import re
+from functools import lru_cache
 from typing import Any
 
 from app.agent.models import RetrievalPlan, EvidenceItem
@@ -20,6 +21,7 @@ def _normalize_scope(value: str) -> str:
     return " ".join(part for part in cleaned.split() if part)
 
 
+@lru_cache(maxsize=1024)
 def _scope_key(value: str) -> str:
     normalized = _normalize_scope(value)
     if not normalized:
@@ -50,11 +52,11 @@ class ScopePolicy:
         if not required_by_key:
             return []
 
-        found_keys: set[str] = set()
-        for item in evidence:
-            key = _scope_key(extract_row_standard(item))
-            if key and key in required_by_key:
-                found_keys.add(key)
+        found_keys = {
+            key
+            for key in (_scope_key(extract_row_standard(item)) for item in evidence)
+            if key and key in required_by_key
+        }
 
         missing = [required_by_key[key] for key in required_by_key if key not in found_keys]
         return sorted(missing)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import cast
+from typing import Mapping
 
 from app.agent.tools.base import AgentTool
 from app.agent.tools.citation_validator import CitationValidatorTool
@@ -12,42 +11,43 @@ from app.agent.tools.structural_extraction import StructuralExtractionTool
 from app.cartridges.models import AgentProfile
 
 
-@dataclass(frozen=True)
-class ToolRegistry:
-    _tools: dict[str, object]
+DEFAULT_ALLOWED_TOOLS = ("semantic_retrieval", "citation_validator")
 
-    @classmethod
-    def create_default(cls) -> "ToolRegistry":
-        tools = {
-            "semantic_retrieval": SemanticRetrievalTool(),
-            "structural_extraction": StructuralExtractionTool(),
-            "logical_comparison": LogicalComparisonTool(),
-            "python_calculator": PythonCalculatorTool(),
-            "citation_validator": CitationValidatorTool(),
-        }
-        return cls(_tools=tools)
 
-    def get(self, name: str) -> AgentTool | None:
-        return cast(AgentTool | None, self._tools.get(name))
+def create_default_tools() -> dict[str, AgentTool]:
+    return {
+        "semantic_retrieval": SemanticRetrievalTool(),
+        "structural_extraction": StructuralExtractionTool(),
+        "logical_comparison": LogicalComparisonTool(),
+        "python_calculator": PythonCalculatorTool(),
+        "citation_validator": CitationValidatorTool(),
+    }
 
-    def allowed_tools(self, profile: AgentProfile | None) -> list[str]:
-        if profile is None:
-            return ["semantic_retrieval", "citation_validator"]
 
-        out: list[str] = []
-        seen: set[str] = set()
-        for configured_name in list(profile.capabilities.allowed_tools):
-            name = str(configured_name).strip()
-            if not name or name in seen:
-                continue
-            if self.get(name) is None:
-                continue
-            policy = profile.capabilities.tool_policies.get(configured_name)
-            if policy is not None and not bool(policy.enabled):
-                continue
-            seen.add(name)
-            out.append(name)
+def get_tool(tools: Mapping[str, AgentTool], name: str) -> AgentTool | None:
+    return tools.get(name)
 
-        if not out:
-            out = ["semantic_retrieval", "citation_validator"]
-        return out
+
+def resolve_allowed_tools(
+    profile: AgentProfile | None, tools: Mapping[str, AgentTool]
+) -> list[str]:
+    if profile is None:
+        return [name for name in DEFAULT_ALLOWED_TOOLS if name in tools]
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for configured_name in list(profile.capabilities.allowed_tools):
+        name = str(configured_name).strip()
+        if not name or name in seen:
+            continue
+        if name not in tools:
+            continue
+        policy = profile.capabilities.tool_policies.get(configured_name)
+        if policy is not None and not bool(policy.enabled):
+            continue
+        seen.add(name)
+        out.append(name)
+
+    if not out:
+        out = [name for name in DEFAULT_ALLOWED_TOOLS if name in tools]
+    return out
