@@ -47,6 +47,7 @@ class QueryModeConfig(BaseModel):
     execution_plan: list[ToolName] = Field(default_factory=list)
     coverage_requirements: dict[str, Any] = Field(default_factory=dict)
     decomposition_policy: dict[str, Any] = Field(default_factory=dict)
+    response_contract: str | None = None
 
 
 class QueryModesPolicy(BaseModel):
@@ -85,6 +86,28 @@ class SynthesisPolicy(BaseModel):
     identity_role_prefix: str = ""
     identity_tone_prefix: str = ""
     user_prompt_template: str = ""
+    citation_schema_version: str = "v1"
+    citation_required_fields: list[str] = Field(
+        default_factory=lambda: ["id", "standard", "clause_id", "quote"]
+    )
+    citation_render_template: str = '{id} | {standard} | clausula {clause_id} | "{snippet}"'
+    citation_sort_policy: str = "completeness_then_score"
+    citation_noise_filters: list[str] = Field(default_factory=list)
+    citation_repair_enabled: bool = True
+    min_structured_citation_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
+    response_contracts: dict[str, list[str]] = Field(default_factory=dict)
+    default_response_contract: list[str] = Field(
+        default_factory=lambda: [
+            "Hechos citados",
+            "Inferencias",
+            "Brechas",
+            "Recomendaciones",
+            "Confianza y supuestos",
+        ]
+    )
+    grounded_inference_min_citations: int = Field(default=2, ge=1, le=8)
+    unsupported_claim_label: str = "Hipotesis"
+    confidence_scale: list[str] = Field(default_factory=lambda: ["alta", "media", "baja"])
     scope_hints: dict[str, list[str]] = Field(default_factory=dict)
     scope_patterns: list[str] = Field(default_factory=list)
     reference_patterns: list[str] = Field(
@@ -130,6 +153,31 @@ class ValidationPolicy(BaseModel):
     require_citations: bool = True
     forbidden_concepts: list[str] = Field(default_factory=list)
     fallback_message: str = "No tengo informacion suficiente en el contexto para responder."
+    require_structured_sections: bool = False
+    required_sections: list[str] = Field(default_factory=list)
+    min_citations_per_inference: int = Field(default=2, ge=1, le=8)
+    block_strong_claims_without_evidence: bool = True
+    strong_claim_markers: list[str] = Field(
+        default_factory=lambda: [
+            "riesgo critico",
+            "incumplimiento",
+            "no conformidad mayor",
+            "sancion",
+            "multa",
+        ]
+    )
+
+
+class ExpectationRule(BaseModel):
+    id: str
+    description: str
+    scopes: list[str] = Field(default_factory=list)
+    clause_refs: list[str] = Field(default_factory=list)
+    applies_to_modes: list[str] = Field(default_factory=list)
+    required_evidence_markers: list[str] = Field(default_factory=list)
+    optional_evidence_markers: list[str] = Field(default_factory=list)
+    missing_risk: str = "Riesgo operativo por ausencia de evidencia"
+    severity: Literal["low", "medium", "high", "critical"] = "medium"
 
 
 class ReasoningBudget(BaseModel):
@@ -173,6 +221,7 @@ class AgentProfile(BaseModel):
     domain_entities: list[str] = Field(default_factory=list)
     intent_examples: dict[str, list[str]] = Field(default_factory=dict)
     clarification_rules: list[dict[str, Any]] = Field(default_factory=list)
+    expectations: list[ExpectationRule] = Field(default_factory=list)
 
     router: RouterHeuristics = Field(default_factory=RouterHeuristics)
     query_modes: QueryModesPolicy = Field(default_factory=QueryModesPolicy)
@@ -197,3 +246,4 @@ SynthesisPolicy.model_rebuild()
 CapabilitiesPolicy.model_rebuild()
 ReasoningBudget.model_rebuild()
 ToolPolicy.model_rebuild()
+ExpectationRule.model_rebuild()

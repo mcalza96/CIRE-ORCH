@@ -1,16 +1,21 @@
-import re
+import asyncio
+import json
+import time
 from typing import Any, Dict, Optional
 
 import httpx
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.agent.adapters import LiteralEvidenceValidator
 from app.agent.application import HandleQuestionCommand, HandleQuestionUseCase
+from app.agent.components import build_citation_bundle
 from app.agent.errors import ScopeValidationError
 from app.agent.grounded_answer_service import GroundedAnswerService
-from app.agent.http_adapters import GroundedAnswerAdapter, RagEngineRetrieverAdapter
+from app.agent.http_adapters import RagEngineRetrieverAdapter
+from app.agent.answer_adapter import GroundedAnswerAdapter
 from app.api.deps import UserContext, get_current_user
 from app.cartridges.deps import resolve_agent_profile
 from app.cartridges.loader import get_cartridge_loader
@@ -25,65 +30,6 @@ from app.security.tenant_authorizer import (
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(tags=["knowledge"])
-
-
-def _compact_text(text: str, *, limit: int = 200) -> str:
-    raw = " ".join(str(text or "").split())
-    if len(raw) <= limit:
-        return raw
-    return raw[:limit].rstrip() + "..."
-
-
-def _build_citation_details(answer_text: str, evidence: list[Any]) -> list[dict[str, Any]]:
-    used_markers = {
-        marker.upper()
-        for marker in re.findall(r"\b[CR]\d+\b", str(answer_text or ""), flags=re.IGNORECASE)
-    }
-    out: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for item in evidence:
-        source = str(getattr(item, "source", "") or "").strip()
-        if not source:
-            continue
-        key = source.upper()
-        if key in seen:
-            continue
-        seen.add(key)
-
-        score = getattr(item, "score", None)
-        content = str(getattr(item, "content", "") or "")
-        metadata = getattr(item, "metadata", None)
-        row = metadata.get("row") if isinstance(metadata, dict) else None
-        row_meta_raw = row.get("metadata") if isinstance(row, dict) else None
-        row_meta: dict[str, Any] = row_meta_raw if isinstance(row_meta_raw, dict) else {}
-
-        standard = ""
-        for field in ("source_standard", "standard", "scope"):
-            value = str(row_meta.get(field) or "").strip()
-            if value:
-                standard = value
-                break
-
-        clause = ""
-        for field in ("clause_id", "clause_ref", "clause", "clause_anchor"):
-            value = str(row_meta.get(field) or "").strip()
-            if value:
-                clause = value
-                break
-
-        out.append(
-            {
-                "id": source,
-                "standard": standard,
-                "clause": clause,
-                "score": float(score) if isinstance(score, (int, float)) else None,
-                "snippet": _compact_text(content, limit=220),
-                "used_in_answer": key in used_markers,
-            }
-        )
-
-    out.sort(key=lambda item: (not bool(item.get("used_in_answer")), str(item.get("id") or "")))
-    return out
 
 
 def _classify_orchestrator_error(exc: Exception) -> str:
@@ -103,6 +49,10 @@ class OrchestratorQuestionRequest(BaseModel):
     query: str
     tenant_id: Optional[str] = None
     collection_id: Optional[str] = None
+
+
+def _sse(event: str, payload: dict[str, Any]) -> bytes:
+    return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=True)}\n\n".encode("utf-8")
 
 
 class OrchestratorValidateScopeRequest(BaseModel):
@@ -280,8 +230,11 @@ async def answer_with_orchestrator(
             scope_metrics_store.record_mismatch_blocked(authorized_tenant)
 
         context_chunks = [item.content for item in result.answer.evidence]
-        citations = [item.source for item in result.answer.evidence]
-        citations_detailed = _build_citation_details(result.answer.text, result.answer.evidence)
+        citations, citations_detailed, citation_quality = build_citation_bundle(
+            answer_text=result.answer.text,
+            evidence=result.answer.evidence,
+            profile=agent_profile,
+        )
         validation_accepted = bool(result.validation.accepted)
         clarification_present = bool(result.clarification)
         logger.info(
@@ -321,6 +274,7 @@ async def answer_with_orchestrator(
             },
             "citations": citations,
             "citations_detailed": citations_detailed,
+            "citation_quality": citation_quality,
             "context_chunks": context_chunks,
             "requested_scopes": list(result.plan.requested_standards),
             "retrieval_plan": {
@@ -405,6 +359,116 @@ async def answer_with_orchestrator(
                 "correlation_id": corr_id or None,
             },
         )
+
+
+@router.post("/answer/stream")
+async def answer_with_orchestrator_stream(
+    http_request: Request,
+    request: OrchestratorQuestionRequest,
+    current_user: UserContext = Depends(get_current_user),
+    use_case: HandleQuestionUseCase = Depends(_build_use_case),
+):
+    authorized_tenant = await authorize_requested_tenant(
+        http_request, current_user, request.tenant_id
+    )
+    req_id = str(
+        http_request.headers.get("X-Request-ID") or http_request.headers.get("X-Trace-ID") or ""
+    ).strip()
+    corr_id = str(http_request.headers.get("X-Correlation-ID") or "").strip()
+    resolved_profile = await resolve_agent_profile(
+        tenant_id=authorized_tenant, request=http_request
+    )
+    agent_profile = resolved_profile.profile
+
+    command = HandleQuestionCommand(
+        query=request.query,
+        tenant_id=authorized_tenant,
+        user_id=current_user.user_id,
+        collection_id=request.collection_id,
+        scope_label=f"tenant={authorized_tenant}",
+        agent_profile=agent_profile,
+        profile_resolution=resolved_profile.resolution.model_dump(),
+        request_id=req_id or None,
+        correlation_id=corr_id or None,
+    )
+
+    async def _event_stream():
+        started = time.perf_counter()
+        yield _sse(
+            "status",
+            {
+                "type": "accepted",
+                "tenant_id": authorized_tenant,
+                "request_id": req_id or None,
+                "correlation_id": corr_id or None,
+            },
+        )
+        task = asyncio.create_task(use_case.execute(command))
+        pulse = 0
+        while not task.done():
+            pulse += 1
+            elapsed_ms = round((time.perf_counter() - started) * 1000.0, 2)
+            yield _sse(
+                "status",
+                {
+                    "type": "working",
+                    "phase": "retrieve_and_synthesize",
+                    "elapsed_ms": elapsed_ms,
+                    "pulse": pulse,
+                },
+            )
+            await asyncio.sleep(0.4)
+
+        try:
+            result = await task
+            citations, citations_detailed, citation_quality = build_citation_bundle(
+                answer_text=result.answer.text,
+                evidence=result.answer.evidence,
+                profile=agent_profile,
+            )
+            payload = {
+                "type": "final_answer",
+                "elapsed_ms": round((time.perf_counter() - started) * 1000.0, 2),
+                "answer": result.answer.text,
+                "mode": result.plan.mode,
+                "engine": str(result.engine or "universal_flow"),
+                "citations": citations,
+                "citations_detailed": citations_detailed,
+                "citation_quality": citation_quality,
+                "retrieval": {
+                    "contract": result.retrieval.contract,
+                    "strategy": result.retrieval.strategy,
+                    "partial": bool(result.retrieval.partial),
+                    "trace": dict(result.retrieval.trace or {}),
+                },
+                "validation": {
+                    "accepted": result.validation.accepted,
+                    "issues": list(result.validation.issues),
+                },
+            }
+            yield _sse("result", payload)
+            yield _sse("done", {"ok": True})
+        except Exception as exc:
+            error_code = _classify_orchestrator_error(exc)
+            logger.error(
+                "orchestrator_answer_stream_failed",
+                error_code=error_code,
+                error=str(exc),
+                request_id=req_id or None,
+                correlation_id=corr_id or None,
+                exc_info=True,
+            )
+            yield _sse(
+                "error",
+                {
+                    "code": error_code,
+                    "message": "Orchestrator stream failed",
+                    "request_id": req_id or None,
+                    "correlation_id": corr_id or None,
+                },
+            )
+
+    return StreamingResponse(_event_stream(), media_type="text/event-stream")
 
 
 @router.get("/tenants", response_model=TenantListResponse)

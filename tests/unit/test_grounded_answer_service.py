@@ -77,3 +77,5 @@ def test_grounded_answer_service_uses_profile_templates_and_not_mode_name() -> N
     assert "Role: Auditor" in system_message
     assert "Tone: Neutral" in system_message
     assert "INTERP_STYLE::REF#" in user_message
+    assert "## Hechos citados" in user_message
+    assert "## Inferencias" in user_message

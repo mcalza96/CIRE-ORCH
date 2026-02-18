@@ -1,0 +1,1613 @@
+{
+  "timestamp": 1771434962.34899,
+  "metrics": {
+    "count": 200,
+    "p50_ms": 2565.0647500006016,
+    "p95_ms": 4715.652149649577,
+    "empty_context_rate": 20.0,
+    "tool_timeout_rate": 8.0,
+    "multi_query_all_failed_rate": 0.0
+  },
+  "results": [
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 45001?",
+      "duration_ms": 2147.3244999997405,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 9001?",
+      "duration_ms": 1318.9257499998348,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 50001 sobre liderazgo.",
+      "duration_ms": 1650.345041998662,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 9001?",
+      "duration_ms": 845.5192080000415,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 14001 sobre liderazgo.",
+      "duration_ms": 1817.1901249988878,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 27001 sobre liderazgo.",
+      "duration_ms": 2196.472999999969,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 50001?",
+      "duration_ms": 2251.6194580002775,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 7.5 de ISO 45001?",
+      "duration_ms": 700.4099999994651,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 50001 sobre auditor\u00eda interna.",
+      "duration_ms": 2516.025917000661,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define acci\u00f3n correctiva en ISO 45001?",
+      "duration_ms": 1200.6795839988627,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 14001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 3145.648624999012,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define riesgos y oportunidades en ISO 27001?",
+      "duration_ms": 1552.6633329991455,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 4.1 de ISO 27001?",
+      "duration_ms": 573.8925839996227,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 45001 sobre control operacional.",
+      "duration_ms": 1912.0139999995445,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 14001?",
+      "duration_ms": 1189.4489160004014,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 4.1 de ISO 14001?",
+      "duration_ms": 573.3603749995382,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 27001?",
+      "duration_ms": 1420.4580839996197,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define no conformidad en ISO 14001?",
+      "duration_ms": 1283.4968749994005,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define riesgos y oportunidades en ISO 27001?",
+      "duration_ms": 950.008166999396,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 45001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 3207.338042000629,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 9001 sobre mejora continua.",
+      "duration_ms": 2148.055999999997,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 4.1 de ISO 9001?",
+      "duration_ms": 579.4770419997803,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define acci\u00f3n correctiva en ISO 50001?",
+      "duration_ms": 1485.8800420006446,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 4.1 de ISO 50001?",
+      "duration_ms": 602.9035000010481,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 27001 sobre liderazgo.",
+      "duration_ms": 1397.4491669996496,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 5.2 de ISO 45001?",
+      "duration_ms": 709.145749999152,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 9001 sobre control operacional.",
+      "duration_ms": 4821.844750000309,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 45001?",
+      "duration_ms": 775.6835830005002,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define partes interesadas en ISO 50001?",
+      "duration_ms": 1358.1823340009578,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 50001?",
+      "duration_ms": 784.7300410012394,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define no conformidad en ISO 27001?",
+      "duration_ms": 1507.170082999437,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 27001?",
+      "duration_ms": 1053.3690409993142,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 9001?",
+      "duration_ms": 891.7546249995212,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 45001 sobre auditor\u00eda interna.",
+      "duration_ms": 2084.5998330005386,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 14001?",
+      "duration_ms": 1304.233208998994,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 50001?",
+      "duration_ms": 947.4974170007044,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define acci\u00f3n correctiva en ISO 50001?",
+      "duration_ms": 869.0926670005865,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 4.1 de ISO 14001?",
+      "duration_ms": 231.04270799922233,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 5.2 de ISO 14001?",
+      "duration_ms": 589.0080829994986,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 5.2 de ISO 50001?",
+      "duration_ms": 611.0007500010397,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 45001 sobre control operacional.",
+      "duration_ms": 3518.2652919993416,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 27001 sobre liderazgo.",
+      "duration_ms": 1850.7541660001152,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define riesgos y oportunidades en ISO 45001?",
+      "duration_ms": 1413.9050419998966,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 6.1 de ISO 9001?",
+      "duration_ms": 648.8364159995399,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 9001?",
+      "duration_ms": 1090.275708000263,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 14001 sobre auditor\u00eda interna.",
+      "duration_ms": 2299.306416000036,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define no conformidad en ISO 27001?",
+      "duration_ms": 1367.2877500011964,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 50001 sobre control operacional.",
+      "duration_ms": 4682.055875000515,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 6.1 de ISO 50001?",
+      "duration_ms": 893.2605830013927,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 8.1 de ISO 45001?",
+      "duration_ms": 562.5775410007918,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 9001?",
+      "duration_ms": 1196.8799589994887,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 50001?",
+      "duration_ms": 750.9708750003483,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 9001?",
+      "duration_ms": 1088.0137920012203,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define partes interesadas en ISO 45001?",
+      "duration_ms": 1423.8526659992203,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 50001 sobre mejora continua.",
+      "duration_ms": 7354.134416998932,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 9001?",
+      "duration_ms": 883.9606250003271,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 9001 sobre liderazgo.",
+      "duration_ms": 1945.8430829999998,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 9.2 de ISO 45001?",
+      "duration_ms": 677.3087919991667,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 9001?",
+      "duration_ms": 907.8280000012455,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 50001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 1590.7294169992383,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define riesgos y oportunidades en ISO 45001?",
+      "duration_ms": 1916.8887499999983,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 27001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 2528.122167001129,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define no conformidad en ISO 45001?",
+      "duration_ms": 1215.2338750001945,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 50001?",
+      "duration_ms": 1278.675999999905,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define no conformidad en ISO 14001?",
+      "duration_ms": 1049.8982079989219,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 5.2 de ISO 50001?",
+      "duration_ms": 245.15020800026832,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 50001 sobre mejora continua.",
+      "duration_ms": 5622.035500000493,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 8.1 de ISO 9001?",
+      "duration_ms": 713.7552079984744,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 50001 sobre liderazgo.",
+      "duration_ms": 2893.676207999306,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 14001 sobre control operacional.",
+      "duration_ms": 1617.9567079998378,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 27001?",
+      "duration_ms": 814.2637920009292,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 10.3 de ISO 50001?",
+      "duration_ms": 675.8823749987641,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 9001?",
+      "duration_ms": 1044.3402919991058,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define partes interesadas en ISO 50001?",
+      "duration_ms": 881.6659589992923,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 7.5 de ISO 14001?",
+      "duration_ms": 3545.306083000469,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 50001?",
+      "duration_ms": 895.3748330004601,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 14001 sobre control operacional.",
+      "duration_ms": 1334.7318339983758,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 9.2 de ISO 45001?",
+      "duration_ms": 241.64695800027403,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 45001?",
+      "duration_ms": 846.37308299898,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 10.3 de ISO 45001?",
+      "duration_ms": 732.0251670007565,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define no conformidad en ISO 14001?",
+      "duration_ms": 964.0660000004573,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define no conformidad en ISO 45001?",
+      "duration_ms": 749.4175000010728,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 50001 sobre mejora continua.",
+      "duration_ms": 4095.462833000056,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 27001?",
+      "duration_ms": 823.510250000254,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 27001 sobre mejora continua.",
+      "duration_ms": 2439.904832999673,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define partes interesadas en ISO 14001?",
+      "duration_ms": 1458.0697500005044,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define no conformidad en ISO 14001?",
+      "duration_ms": 918.9470410001377,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 7.5 de ISO 50001?",
+      "duration_ms": 638.3010419995117,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 45001 sobre liderazgo.",
+      "duration_ms": 4078.4740839990263,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define no conformidad en ISO 50001?",
+      "duration_ms": 1570.7401660001779,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define acci\u00f3n correctiva en ISO 27001?",
+      "duration_ms": 1455.0093750003725,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 45001 sobre mejora continua.",
+      "duration_ms": 2002.571082999566,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 45001?",
+      "duration_ms": 1334.6382500003529,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 7.5 de ISO 50001?",
+      "duration_ms": 244.4498749991908,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 9001?",
+      "duration_ms": 961.9928749998508,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 5.2 de ISO 50001?",
+      "duration_ms": 294.460250001066,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 27001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 1836.3683330007916,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 14001 sobre liderazgo.",
+      "duration_ms": 1336.6892499998357,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Resume los requisitos de ISO 9001 sobre auditor\u00eda interna.",
+      "duration_ms": 3877.3271669997484,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define no conformidad en ISO 45001?",
+      "duration_ms": 2198.2725840007333,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 50001 con ISO 9001 en el proceso de liderazgo?",
+      "duration_ms": 2819.0281660008623,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 27001 con ISO 45001 en el proceso de mejora continua?",
+      "duration_ms": 2621.244834001118,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 50001 y ISO 14001 sobre control operacional.",
+      "duration_ms": 2889.2945410007087,
+      "context_chunks": 0,
+      "tool_timeout": true,
+      "multi_query_all_failed": false,
+      "error": "retrieval_timeout:coverage_repair_hybrid"
+    },
+    {
+      "query": "Requisitos comunes de ISO 50001, ISO 14001 y ISO 9001.",
+      "duration_ms": 2082.2786249991623,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 9001, ISO 14001 y ISO 50001.",
+      "duration_ms": 2646.5465420005785,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Requisitos comunes de ISO 9001, ISO 45001 y ISO 14001.",
+      "duration_ms": 2062.5236249998125,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Diferencias entre ISO 14001 y ISO 45001 respecto a no conformidad.",
+      "duration_ms": 2597.8993749995425,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Compara los requisitos de ISO 27001 y ISO 9001 sobre mejora continua.",
+      "duration_ms": 1644.1095829995902,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Diferencias entre ISO 45001 y ISO 14001 respecto a no conformidad.",
+      "duration_ms": 3402.1342500000173,
+      "context_chunks": 0,
+      "tool_timeout": true,
+      "multi_query_all_failed": false,
+      "error": "retrieval_timeout:coverage_repair_hybrid"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 27001 con ISO 9001 en el proceso de auditor\u00eda interna?",
+      "duration_ms": 2813.9632500005973,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Compara los requisitos de ISO 45001 y ISO 9001 sobre control operacional.",
+      "duration_ms": 3035.3202919995965,
+      "context_chunks": 0,
+      "tool_timeout": true,
+      "multi_query_all_failed": false,
+      "error": "retrieval_timeout:coverage_repair_hybrid"
+    },
+    {
+      "query": "Requisitos comunes de ISO 14001, ISO 50001 y ISO 9001.",
+      "duration_ms": 2750.793374998466,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 27001 y ISO 50001 sobre liderazgo.",
+      "duration_ms": 1940.929624999626,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Diferencias entre ISO 27001 y ISO 50001 respecto a riesgos y oportunidades.",
+      "duration_ms": 5811.530082999525,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Compara los requisitos de ISO 50001 y ISO 45001 sobre control operacional.",
+      "duration_ms": 3121.272541999133,
+      "context_chunks": 0,
+      "tool_timeout": true,
+      "multi_query_all_failed": false,
+      "error": "retrieval_timeout:coverage_repair_hybrid"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 14001 con ISO 9001 en el proceso de mejora continua?",
+      "duration_ms": 4341.723000001366,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 9001 y ISO 50001 sobre auditor\u00eda interna.",
+      "duration_ms": 1459.6013330010464,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 27001 con ISO 9001 en el proceso de auditor\u00eda interna?",
+      "duration_ms": 2898.6052090003795,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 27001 con ISO 50001 en el proceso de contexto de la organizaci\u00f3n?",
+      "duration_ms": 4306.623459000548,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Diferencias entre ISO 27001 y ISO 9001 respecto a partes interesadas.",
+      "duration_ms": 1805.5382080001436,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Diferencias entre ISO 14001 y ISO 9001 respecto a no conformidad.",
+      "duration_ms": 2433.009624999613,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Compara los requisitos de ISO 9001 y ISO 27001 sobre mejora continua.",
+      "duration_ms": 2284.4166249997215,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Diferencias entre ISO 9001 y ISO 50001 respecto a acci\u00f3n correctiva.",
+      "duration_ms": 3840.1254170003085,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 45001 con ISO 14001 en el proceso de contexto de la organizaci\u00f3n?",
+      "duration_ms": 2807.561125000575,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 45001 con ISO 50001 en el proceso de control operacional?",
+      "duration_ms": 1787.736207999842,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Requisitos comunes de ISO 9001, ISO 45001 y ISO 50001.",
+      "duration_ms": 1401.6401250009949,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Diferencias entre ISO 45001 y ISO 9001 respecto a acci\u00f3n correctiva.",
+      "duration_ms": 1726.304750000054,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Diferencias entre ISO 45001 y ISO 14001 respecto a no conformidad.",
+      "duration_ms": 1823.897415999454,
+      "context_chunks": 0,
+      "tool_timeout": true,
+      "multi_query_all_failed": false,
+      "error": "retrieval_timeout:coverage_repair_hybrid"
+    },
+    {
+      "query": "Diferencias entre ISO 45001 y ISO 50001 respecto a partes interesadas.",
+      "duration_ms": 1676.8707500013988,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Compara los requisitos de ISO 27001 y ISO 9001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 1791.4557499989314,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Compara los requisitos de ISO 45001 y ISO 9001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 1865.1524169999902,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 14001 con ISO 27001 en el proceso de contexto de la organizaci\u00f3n?",
+      "duration_ms": 3354.491624999355,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Diferencias entre ISO 9001 y ISO 14001 respecto a partes interesadas.",
+      "duration_ms": 2213.937208000061,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Diferencias entre ISO 9001 y ISO 27001 respecto a acci\u00f3n correctiva.",
+      "duration_ms": 4578.531875000408,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Diferencias entre ISO 45001 y ISO 50001 respecto a riesgos y oportunidades.",
+      "duration_ms": 2054.624332999083,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 45001 con ISO 14001 en el proceso de mejora continua?",
+      "duration_ms": 4543.373291000535,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 9001, ISO 27001 y ISO 50001.",
+      "duration_ms": 1756.606875000216,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 14001 y ISO 9001 sobre auditor\u00eda interna.",
+      "duration_ms": 2386.9162920000235,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Requisitos comunes de ISO 27001, ISO 9001 y ISO 50001.",
+      "duration_ms": 4724.719457999527,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 50001, ISO 27001 y ISO 14001.",
+      "duration_ms": 1917.4957079994783,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 9001 con ISO 14001 en el proceso de auditor\u00eda interna?",
+      "duration_ms": 2278.093124999941,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 45001 y ISO 27001 sobre auditor\u00eda interna.",
+      "duration_ms": 3001.9259999990027,
+      "context_chunks": 0,
+      "tool_timeout": true,
+      "multi_query_all_failed": false,
+      "error": "retrieval_timeout:coverage_repair_hybrid"
+    },
+    {
+      "query": "Diferencias entre ISO 45001 y ISO 14001 respecto a riesgos y oportunidades.",
+      "duration_ms": 1945.494042000064,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 27001 con ISO 9001 en el proceso de control operacional?",
+      "duration_ms": 3235.8894999997574,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 14001, ISO 45001 y ISO 9001.",
+      "duration_ms": 2096.4601670002594,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 45001, ISO 9001 y ISO 14001.",
+      "duration_ms": 1561.7001250029716,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 14001 con ISO 50001 en el proceso de liderazgo?",
+      "duration_ms": 2539.574624999659,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 45001 y ISO 50001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 3002.875166999729,
+      "context_chunks": 0,
+      "tool_timeout": true,
+      "multi_query_all_failed": false,
+      "error": "retrieval_timeout:coverage_repair_hybrid"
+    },
+    {
+      "query": "Requisitos comunes de ISO 45001, ISO 27001 y ISO 14001.",
+      "duration_ms": 1707.9582090009353,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 45001 y ISO 27001 sobre auditor\u00eda interna.",
+      "duration_ms": 1877.8564159983944,
+      "context_chunks": 0,
+      "tool_timeout": true,
+      "multi_query_all_failed": false,
+      "error": "retrieval_timeout:coverage_repair_hybrid"
+    },
+    {
+      "query": "Compara los requisitos de ISO 14001 y ISO 45001 sobre control operacional.",
+      "duration_ms": 2368.3209999981045,
+      "context_chunks": 0,
+      "tool_timeout": true,
+      "multi_query_all_failed": false,
+      "error": "retrieval_timeout:coverage_repair_hybrid"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 9001 con ISO 45001 en el proceso de contexto de la organizaci\u00f3n?",
+      "duration_ms": 2868.3967079996364,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 45001 con ISO 9001 en el proceso de liderazgo?",
+      "duration_ms": 2323.9658329985105,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Diferencias entre ISO 45001 y ISO 50001 respecto a riesgos y oportunidades.",
+      "duration_ms": 2669.9647499990533,
+      "context_chunks": 0,
+      "tool_timeout": true,
+      "multi_query_all_failed": false,
+      "error": "retrieval_timeout:coverage_repair_hybrid"
+    },
+    {
+      "query": "Requisitos comunes de ISO 14001, ISO 45001 y ISO 50001.",
+      "duration_ms": 2583.909250002762,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 50001 con ISO 45001 en el proceso de mejora continua?",
+      "duration_ms": 5797.575749998941,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Diferencias entre ISO 27001 y ISO 45001 respecto a acci\u00f3n correctiva.",
+      "duration_ms": 2433.5161660019367,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 50001 con ISO 9001 en el proceso de mejora continua?",
+      "duration_ms": 2359.414792001189,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 9001 con ISO 50001 en el proceso de liderazgo?",
+      "duration_ms": 2519.5591670017166,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 14001 con ISO 27001 en el proceso de mejora continua?",
+      "duration_ms": 2912.817915999767,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 45001 y ISO 27001 sobre control operacional.",
+      "duration_ms": 3419.0652079996653,
+      "context_chunks": 0,
+      "tool_timeout": true,
+      "multi_query_all_failed": false,
+      "error": "retrieval_timeout:coverage_repair_hybrid"
+    },
+    {
+      "query": "Compara los requisitos de ISO 50001 y ISO 27001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 3359.84124999959,
+      "context_chunks": 0,
+      "tool_timeout": true,
+      "multi_query_all_failed": false,
+      "error": "retrieval_timeout:coverage_repair_hybrid"
+    },
+    {
+      "query": "Compara los requisitos de ISO 27001 y ISO 50001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 1982.637082997826,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 27001 con ISO 50001 en el proceso de liderazgo?",
+      "duration_ms": 2590.554875001544,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 27001 con ISO 14001 en el proceso de control operacional?",
+      "duration_ms": 2089.192583000113,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 27001, ISO 45001 y ISO 9001.",
+      "duration_ms": 1347.875416999159,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Diferencias entre ISO 45001 y ISO 9001 respecto a riesgos y oportunidades.",
+      "duration_ms": 1549.2480420034553,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Requisitos comunes de ISO 14001, ISO 50001 y ISO 27001.",
+      "duration_ms": 1347.1305830025813,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Compara los requisitos de ISO 14001 y ISO 50001 sobre liderazgo.",
+      "duration_ms": 1413.4128330006206,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 27001 con ISO 45001 en el proceso de contexto de la organizaci\u00f3n?",
+      "duration_ms": 2693.155791999743,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 27001 y ISO 9001 sobre mejora continua.",
+      "duration_ms": 977.5895839993609,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Requisitos comunes de ISO 9001, ISO 50001 y ISO 45001.",
+      "duration_ms": 2492.5693330005743,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 14001 y ISO 50001 sobre control operacional.",
+      "duration_ms": 2356.6672910019406,
+      "context_chunks": 0,
+      "tool_timeout": true,
+      "multi_query_all_failed": false,
+      "error": "retrieval_timeout:coverage_repair_hybrid"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 14001 con ISO 45001 en el proceso de mejora continua?",
+      "duration_ms": 3096.7847920001077,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 50001 con ISO 27001 en el proceso de control operacional?",
+      "duration_ms": 2567.2945830010576,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Compara los requisitos de ISO 9001 y ISO 14001 sobre mejora continua.",
+      "duration_ms": 1590.5331670001033,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Diferencias entre ISO 50001 y ISO 27001 respecto a partes interesadas.",
+      "duration_ms": 1819.173084000795,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Compara los requisitos de ISO 50001 y ISO 14001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 1908.8819999997213,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Compara los requisitos de ISO 50001 y ISO 9001 sobre control operacional.",
+      "duration_ms": 2647.678207998979,
+      "context_chunks": 0,
+      "tool_timeout": true,
+      "multi_query_all_failed": false,
+      "error": "retrieval_timeout:coverage_repair_hybrid"
+    },
+    {
+      "query": "Requisitos comunes de ISO 14001, ISO 45001 y ISO 9001.",
+      "duration_ms": 1443.3860410026682,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 14001 con ISO 50001 en el proceso de liderazgo?",
+      "duration_ms": 1386.2447499996051,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Diferencias entre ISO 9001 y ISO 45001 respecto a riesgos y oportunidades.",
+      "duration_ms": 1535.9997499981546,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Requisitos comunes de ISO 50001, ISO 45001 y ISO 27001.",
+      "duration_ms": 1482.4398750024557,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 14001 y ISO 50001 sobre liderazgo.",
+      "duration_ms": 1137.421125000401,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 50001 con ISO 45001 en el proceso de control operacional?",
+      "duration_ms": 4189.778125000885,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 27001 y ISO 45001 sobre auditor\u00eda interna.",
+      "duration_ms": 2440.795499998785,
+      "context_chunks": 0,
+      "tool_timeout": true,
+      "multi_query_all_failed": false,
+      "error": "retrieval_timeout:coverage_repair_hybrid"
+    },
+    {
+      "query": "Compara los requisitos de ISO 14001 y ISO 27001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 1570.7844160024251,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Diferencias entre ISO 45001 y ISO 14001 respecto a acci\u00f3n correctiva.",
+      "duration_ms": 3298.3155840011023,
+      "context_chunks": 0,
+      "tool_timeout": true,
+      "multi_query_all_failed": false,
+      "error": "retrieval_timeout:coverage_repair_hybrid"
+    },
+    {
+      "query": "Diferencias entre ISO 27001 y ISO 45001 respecto a partes interesadas.",
+      "duration_ms": 1318.4579999979178,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 14001 con ISO 9001 en el proceso de auditor\u00eda interna?",
+      "duration_ms": 2918.48929200205,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 9001 y ISO 50001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 1580.0885419994302,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Diferencias entre ISO 27001 y ISO 50001 respecto a riesgos y oportunidades.",
+      "duration_ms": 2094.341957999859,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 27001 con ISO 50001 en el proceso de mejora continua?",
+      "duration_ms": 2203.488250001101,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 50001 con ISO 27001 en el proceso de control operacional?",
+      "duration_ms": 1490.1933340006508,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Compara los requisitos de ISO 14001 y ISO 45001 sobre mejora continua.",
+      "duration_ms": 1586.1982080023154,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 9001 con ISO 50001 en el proceso de contexto de la organizaci\u00f3n?",
+      "duration_ms": 2066.5917500009527,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 45001 y ISO 9001 sobre mejora continua.",
+      "duration_ms": 1927.1849999968254,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 50001 con ISO 27001 en el proceso de liderazgo?",
+      "duration_ms": 1948.6474999976053,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "Diferencias entre ISO 27001 y ISO 9001 respecto a no conformidad.",
+      "duration_ms": 2222.80229199896,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/api/v1/retrieval/hybrid'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 27001 con ISO 9001 en el proceso de liderazgo?",
+      "duration_ms": 2600.785750000796,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    }
+  ]
+}

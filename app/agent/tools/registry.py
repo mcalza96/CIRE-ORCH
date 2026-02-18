@@ -4,6 +4,7 @@ from typing import Mapping
 
 from app.agent.tools.base import AgentTool
 from app.agent.tools.citation_validator import CitationValidatorTool
+from app.agent.tools.expectation_coverage import ExpectationCoverageTool
 from app.agent.tools.logical_comparison import LogicalComparisonTool
 from app.agent.tools.python_calculator import PythonCalculatorTool
 from app.agent.tools.semantic_retrieval import SemanticRetrievalTool
@@ -19,6 +20,7 @@ def create_default_tools() -> dict[str, AgentTool]:
         "semantic_retrieval": SemanticRetrievalTool(),
         "structural_extraction": StructuralExtractionTool(),
         "logical_comparison": LogicalComparisonTool(),
+        "expectation_coverage": ExpectationCoverageTool(),
         "python_calculator": PythonCalculatorTool(),
         "citation_validator": CitationValidatorTool(),
     }

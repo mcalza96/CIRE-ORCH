@@ -23,6 +23,13 @@ synthesis:
   system_persona: >-
     Eres un analista tecnico agnostico. Responde solo con evidencia recuperada.
   citation_format: C#/R#
+  citation_schema_version: v1
+  citation_required_fields: [id, standard, clause_id, quote]
+  citation_render_template: "{id} | {standard} | clausula {clause_id} | \"{snippet}\""
+  citation_sort_policy: completeness_then_score
+  citation_noise_filters: [indice, prologo, "traduccion oficial", "official translation"]
+  citation_repair_enabled: true
+  min_structured_citation_ratio: 0.5
   strict_subject_label: Afirmacion
   strict_reference_label: Referencia
   identity_role_prefix: Rol operativo
@@ -96,7 +103,7 @@ query_modes:
       tool_hints: [semantic_retrieval, structural_extraction, citation_validator]
       execution_plan: [semantic_retrieval, structural_extraction, citation_validator]
       coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
-      decomposition_policy: { max_subqueries: 6, clause_focus: true, scope_focus: true }
+      decomposition_policy: { max_subqueries: 6, clause_focus: true, scope_focus: true, light_llm_enabled: false }
     literal_clause_check:
       require_literal_evidence: true
       allow_inference: false
@@ -104,7 +111,7 @@ query_modes:
       tool_hints: [semantic_retrieval, citation_validator]
       execution_plan: [semantic_retrieval, citation_validator]
       coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 1 }
-      decomposition_policy: { max_subqueries: 8, clause_focus: true, scope_focus: true }
+      decomposition_policy: { max_subqueries: 8, clause_focus: true, scope_focus: true, light_llm_enabled: false }
     cross_scope_analysis:
       require_literal_evidence: false
       allow_inference: true
@@ -112,7 +119,7 @@ query_modes:
       tool_hints: [semantic_retrieval, logical_comparison, citation_validator]
       execution_plan: [semantic_retrieval, logical_comparison, citation_validator]
       coverage_requirements: { require_all_requested_scopes: true, min_clause_refs: 0 }
-      decomposition_policy: { max_subqueries: 10, clause_focus: true, scope_focus: true }
+      decomposition_policy: { max_subqueries: 10, clause_focus: true, scope_focus: true, light_llm_enabled: false }
     scope_clarification:
       require_literal_evidence: true
       allow_inference: false
@@ -120,7 +127,7 @@ query_modes:
       tool_hints: [citation_validator]
       execution_plan: [citation_validator]
       coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
-      decomposition_policy: { max_subqueries: 2, clause_focus: false, scope_focus: true }
+      decomposition_policy: { max_subqueries: 2, clause_focus: false, scope_focus: true, light_llm_enabled: false }
     explanatory_response:
       require_literal_evidence: false
       allow_inference: true
@@ -128,7 +135,7 @@ query_modes:
       tool_hints: [semantic_retrieval, citation_validator]
       execution_plan: [semantic_retrieval, citation_validator]
       coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
-      decomposition_policy: { max_subqueries: 6, clause_focus: true, scope_focus: true }
+      decomposition_policy: { max_subqueries: 6, clause_focus: true, scope_focus: true, light_llm_enabled: false }
   intent_rules:
     - id: base_literal_list
       mode: literal_list_extract

@@ -73,9 +73,14 @@ class GroundedAnswerService:
         if not self._client:
             return context_chunks[0][:500]
 
-        del mode
         strict = bool(require_literal_evidence)
         synthesis = agent_profile.synthesis if agent_profile is not None else None
+        mode_name = str(mode or "").strip()
+        mode_cfg = (
+            agent_profile.query_modes.modes.get(mode_name)
+            if agent_profile is not None and mode_name
+            else None
+        )
         identity = agent_profile.identity if agent_profile is not None else None
         role_prefix = (
             str(synthesis.identity_role_prefix).strip()
@@ -125,6 +130,39 @@ class GroundedAnswerService:
             if synthesis is not None and synthesis.strict_reference_label
             else "Reference"
         )
+        response_contract_name = (
+            str(mode_cfg.response_contract).strip()
+            if mode_cfg is not None and mode_cfg.response_contract
+            else ("literal" if strict else "grounded_inference")
+        )
+        response_contracts = synthesis.response_contracts if synthesis is not None else {}
+        response_contract = list(response_contracts.get(response_contract_name) or [])
+        if not response_contract and synthesis is not None:
+            response_contract = list(synthesis.default_response_contract)
+        if not response_contract:
+            response_contract = [
+                "Hechos citados",
+                "Inferencias",
+                "Brechas",
+                "Recomendaciones",
+                "Confianza y supuestos",
+            ]
+        unsupported_claim_label = (
+            str(synthesis.unsupported_claim_label).strip()
+            if synthesis is not None and synthesis.unsupported_claim_label
+            else "Hipotesis"
+        )
+        min_citations_per_inference = 2
+        if synthesis is not None:
+            min_citations_per_inference = max(1, int(synthesis.grounded_inference_min_citations))
+        if agent_profile is not None:
+            min_citations_per_inference = max(
+                min_citations_per_inference,
+                int(agent_profile.validation.min_citations_per_inference),
+            )
+
+        contract_lines = [f"- {section}" for section in response_contract]
+        section_format = "\n".join(f"## {section}\n-" for section in response_contract)
         style_guide_text = "\n".join(
             f"- {rule}" for rule in (identity.style_guide if identity is not None else [])
         ).strip()
@@ -177,6 +215,21 @@ class GroundedAnswerService:
             if style_guide_text:
                 style = f"{style}\n\nStyle guide:\n{style_guide_text}".strip()
 
+        response_contract_block = (
+            "Required response sections (use exact headings):\n"
+            + "\n".join(contract_lines)
+            + "\n\nFormatting skeleton:\n"
+            + section_format
+        )
+        inference_policy_block = (
+            "Inference policy:\n"
+            f"- Each inference must cite at least {min_citations_per_inference} evidence references.\n"
+            "- If evidence is insufficient, downgrade the statement and label it as "
+            f"'{unsupported_claim_label}'.\n"
+            "- For each identified gap, include expected evidence and associated operational risk."
+        )
+
+        style = f"{style}\n\n{response_contract_block}\n\n{inference_policy_block}".strip()
         style = f"{style}\n\nRequired citation format: {citation_format}".strip()
         user_prompt_template = (
             str(synthesis.user_prompt_template).strip()
@@ -188,7 +241,7 @@ class GroundedAnswerService:
         try:
             completion = await self._client.chat.completions.create(
                 model=settings.GROQ_MODEL_CHAT,
-                temperature=0.1,
+                temperature=0.12 if strict else 0.3,
                 messages=[
                     {
                         "role": "system",

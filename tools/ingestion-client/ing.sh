@@ -1605,9 +1605,14 @@ PY
 
     case "$status" in
       completed|partial|failed)
-        echo "✅ Estado terminal alcanzado: $status"
-        STEP_WORKER="completado/terminal"
-        return 0
+        if [[ "$worker_phase" == "GRAPH" ]]; then
+           echo "🧠 Refinando Grafo de Conocimiento..."
+           STEP_WORKER_STATUS="refining_graph (${percent}%)"
+        else
+           echo "✅ Estado terminal alcanzado: $status"
+           STEP_WORKER="completado/terminal"
+           return 0
+        fi
         ;;
     esac
 
@@ -1752,10 +1757,20 @@ PY
         stream_failed=1
         break
       fi
-      echo "✅ Estado terminal alcanzado: $status"
-      STEP_WORKER="completado/terminal"
-      reached_terminal=1
-      break
+      
+      # Check if we are still in GRAPH phase despite terminal status
+      # We need the last snapshot's phase.
+      if [[ "$worker_phase" == "GRAPH" ]]; then
+         echo "🧠 Refinando Grafo de Conocimiento (Stream)..."
+         STEP_WORKER_STATUS="refining_graph (${percent}%)"
+         # Continue loop to get more updates
+         continue
+      else
+          echo "✅ Estado terminal alcanzado: $status"
+          STEP_WORKER="completado/terminal"
+          reached_terminal=1
+          break
+      fi
     fi
     if [[ "$line" == SNAP\|* ]]; then
       local rest="${line#SNAP|}"

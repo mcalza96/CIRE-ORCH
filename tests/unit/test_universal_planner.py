@@ -111,3 +111,43 @@ def test_universal_planner_respects_mode_execution_plan_order() -> None:
         "structural_extraction",
         "citation_validator",
     ]
+
+
+def test_universal_planner_supports_expectation_coverage_tool() -> None:
+    profile = AgentProfile(
+        profile_id="p",
+        query_modes=QueryModesPolicy(
+            default_mode="gap_analysis",
+            modes={
+                "gap_analysis": QueryModeConfig(
+                    execution_plan=[
+                        "semantic_retrieval",
+                        "expectation_coverage",
+                        "citation_validator",
+                    ],
+                    retrieval_profile="explanatory_response",
+                )
+            },
+            intent_rules=[
+                IntentRule(id="gap", mode="gap_analysis", any_keywords=["gap", "brecha"])
+            ],
+        ),
+        capabilities=CapabilitiesPolicy(
+            reasoning_level="high",
+            allowed_tools=[
+                "semantic_retrieval",
+                "expectation_coverage",
+                "citation_validator",
+            ],
+        ),
+    )
+    _, _, plan, _ = build_universal_plan(
+        query="analiza brecha de evidencia",
+        profile=profile,
+        allowed_tools=["semantic_retrieval", "expectation_coverage", "citation_validator"],
+    )
+    assert [step.tool for step in plan.steps] == [
+        "semantic_retrieval",
+        "expectation_coverage",
+        "citation_validator",
+    ]

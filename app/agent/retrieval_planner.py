@@ -286,8 +286,8 @@ def build_initial_scope_filters(
         filters["source_standards"] = list(requested)
 
     # Only narrow to clause_id for strict literal extraction AND explicit user references.
-    # Do not derive hard clause filters from search-hint expansions.
-    if mode_requires_literal_evidence(
+    # CRITICAL DAY 2 FIX: Omit clause_id if multiple standards are requested to avoid cross-standard collision.
+    if len(requested) <= 1 and mode_requires_literal_evidence(
         mode=mode,
         profile=profile,
         explicit_flag=require_literal_evidence,
@@ -311,7 +311,7 @@ def build_deterministic_subqueries(
     *,
     query: str,
     requested_standards: tuple[str, ...],
-    max_queries: int = 6,
+    max_queries: int = 4,
     mode: str | None = None,
     require_literal_evidence: bool | None = None,
     include_semantic_tail: bool = True,

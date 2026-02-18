@@ -531,6 +531,16 @@ def _print_answer(data: dict[str, Any]) -> None:
     print(answer or "(sin respuesta)")
     if citations:
         print("\n📚 Citas: " + ", ".join(str(item) for item in citations))
+    citation_quality = (
+        data.get("citation_quality") if isinstance(data.get("citation_quality"), dict) else {}
+    )
+    if citation_quality:
+        print(
+            "📏 Calidad citas: "
+            f"structured={citation_quality.get('structured_count')}/{citation_quality.get('total')} "
+            f"ratio={citation_quality.get('structured_ratio')} "
+            f"noise={citation_quality.get('discarded_noise')}"
+        )
     citation_details = (
         data.get("citations_detailed") if isinstance(data.get("citations_detailed"), list) else []
     )
@@ -545,9 +555,22 @@ def _print_answer(data: dict[str, Any]) -> None:
             snippet = str(raw.get("snippet") or "").strip()
             used = bool(raw.get("used_in_answer", False))
             marker = "*" if used else "-"
-            line = f"{marker} {cid} | {standard} | clausula {clause}"
-            if snippet:
+            rendered = str(raw.get("rendered") or "").strip()
+            missing_fields = (
+                raw.get("missing_fields") if isinstance(raw.get("missing_fields"), list) else []
+            )
+            noise = bool(raw.get("noise", False))
+            line = (
+                f"{marker} {rendered}"
+                if rendered
+                else f"{marker} {cid} | {standard} | clausula {clause}"
+            )
+            if not rendered and snippet:
                 line += f' | "{snippet}"'
+            if missing_fields:
+                line += " | missing=" + ",".join(str(x) for x in missing_fields)
+            if noise:
+                line += " | noise=true"
             print(line)
     if not accepted and issues:
         print("⚠️ Validacion: " + "; ".join(str(issue) for issue in issues))
@@ -603,6 +626,30 @@ def _extract_retrieval_warnings(data: dict[str, Any]) -> list[str]:
         seen.add(key)
         deduped.append(item)
     return deduped
+
+
+def _print_citations_only(data: dict[str, Any]) -> None:
+    citation_details = (
+        data.get("citations_detailed") if isinstance(data.get("citations_detailed"), list) else []
+    )
+    citation_quality = (
+        data.get("citation_quality") if isinstance(data.get("citation_quality"), dict) else {}
+    )
+    if citation_quality:
+        print("📏 citation_quality=" + str(citation_quality))
+    if not citation_details:
+        print("ℹ️ No hay citas detalladas disponibles.")
+        return
+    print("📚 Citas detalladas (solo)")
+    for raw in citation_details:
+        if not isinstance(raw, dict):
+            continue
+        rendered = str(raw.get("rendered") or "").strip()
+        if rendered:
+            print("- " + rendered)
+        else:
+            cid = str(raw.get("id") or "?")
+            print("- " + cid)
 
 
 def _print_answer_diagnostics(data: dict[str, Any]) -> None:
@@ -1110,7 +1157,9 @@ async def main(argv: list[str] | None = None) -> None:
         print(f"🌐 Orchestrator URL: {args.orchestrator_url}")
         print(f"🔐 Auth: {'Bearer token' if access_token else 'sin token'}")
         print("💡 Escribe tu pregunta (o 'salir')")
-        print("🔭 Comandos: /ingestion , /watch <batch_id> , /trace , /explain , /profile , /mode")
+        print(
+            "🔭 Comandos: /ingestion , /watch <batch_id> , /trace , /citations , /explain , /profile , /mode"
+        )
 
         last_result: dict[str, Any] = {}
         last_query: str = ""
@@ -1149,6 +1198,12 @@ async def main(argv: list[str] | None = None) -> None:
                     _print_trace(last_result)
                 else:
                     print("ℹ️ No hay un resultado previo para mostrar trace.")
+                continue
+            if query.lower() == "/citations":
+                if isinstance(last_result, dict) and last_result:
+                    _print_citations_only(last_result)
+                else:
+                    print("ℹ️ No hay un resultado previo para mostrar citas.")
                 continue
             if query.lower() == "/profile":
                 if isinstance(last_result, dict) and last_result:
@@ -1269,6 +1324,10 @@ async def main(argv: list[str] | None = None) -> None:
                 print(f"❌ {exc}")
             except TenantProtocolError as exc:
                 print(f"❌ {exc.user_message} (code={exc.code}, request_id={exc.request_id})")
+                if args.debug:
+                    print(f"   raw_message={exc.message}")
+                    if exc.details:
+                        print(f"   details={exc.details}")
             except httpx.ReadTimeout as exc:
                 print(
                     "❌ Error: ReadTimeout (el backend puede seguir trabajando). "

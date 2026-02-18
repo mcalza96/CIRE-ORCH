@@ -134,7 +134,69 @@ def test_literal_clause_coverage_allows_partial_for_three_plus_refs() -> None:
         ],
     )
 
-    result = validator.validate(draft=draft, plan=plan, query=query)
+    original_ratio = settings.ORCH_LITERAL_REF_MIN_COVERAGE_RATIO
+    settings.ORCH_LITERAL_REF_MIN_COVERAGE_RATIO = 0.66
+    try:
+        result = validator.validate(draft=draft, plan=plan, query=query)
+    finally:
+        settings.ORCH_LITERAL_REF_MIN_COVERAGE_RATIO = original_ratio
 
     assert result.accepted is True
     assert not any("Literal clause coverage insufficient" in issue for issue in result.issues)
+
+
+def test_structured_inference_requires_citations_in_inference_section() -> None:
+    validator = LiteralEvidenceValidator()
+    plan = RetrievalPlan(
+        mode="grounded_inference",
+        chunk_k=8,
+        chunk_fetch_k=20,
+        summary_k=3,
+        require_literal_evidence=False,
+        requested_standards=("ISO 9001",),
+    )
+    draft = AnswerDraft(
+        text=(
+            "## Hechos citados\n- Registro evaluado [C1]\n"
+            "## Inferencias\n- Existe riesgo de incumplimiento operativo.\n"
+            "## Brechas\n- Falta evidencia de programa.\n"
+            "## Recomendaciones\n- Definir plan.\n"
+            "## Confianza y supuestos\n- Media."
+        ),
+        mode=plan.mode,
+        evidence=[EvidenceItem(source="C1", content="texto", metadata={"row": {"metadata": {}}})],
+    )
+
+    result = validator.validate(draft=draft, plan=plan, query="analiza brechas")
+
+    assert result.accepted is False
+    assert any("Grounded inference requires" in issue for issue in result.issues)
+
+
+def test_strong_claim_without_citation_is_rejected() -> None:
+    validator = LiteralEvidenceValidator()
+    plan = RetrievalPlan(
+        mode="grounded_inference",
+        chunk_k=8,
+        chunk_fetch_k=20,
+        summary_k=3,
+        require_literal_evidence=False,
+    )
+    draft = AnswerDraft(
+        text=(
+            "## Hechos citados\n- Sin fuente\n"
+            "## Inferencias\n- Riesgo critico de incumplimiento.\n"
+            "## Brechas\n- No hay evidencia.\n"
+            "## Recomendaciones\n- Corregir.\n"
+            "## Confianza y supuestos\n- Baja."
+        ),
+        mode=plan.mode,
+        evidence=[],
+    )
+
+    result = validator.validate(draft=draft, plan=plan, query="riesgo")
+
+    assert result.accepted is False
+    assert any(
+        "Strong risk claim without explicit evidence markers" in issue for issue in result.issues
+    )

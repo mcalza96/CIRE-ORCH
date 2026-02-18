@@ -1,0 +1,13 @@
+2026-02-18 15:11:59 [info     ] profile_resolution_decision    applied_profile_id=iso_auditor db_reason=db_override_disabled decision_reason=dev_profile_map_match requested_profile_id=None source=dev_map tenant_id=b18a053c-1787-4a43-ac97-60c459f455b8
+Starting benchmark of 3 queries for tenant b18a053c-1787-4a43-ac97-60c459f455b8...
+2026-02-18 15:11:59 [info     ] orchestrator_instance_initialized engine=universal_flow
+2026-02-18 15:11:59 [info     ] rag_backend_selected           backend=local
+
+--- Benchmark Metrics ---
+p50: 5451.07ms
+p95: 8390.85ms
+Context Chunks = 0: 33.33%
+Tool Timeout: 0.00%
+Multi-Query All Failed: 0.00%
+
+Report saved to /Users/mcalzadilla/cire/orch/validation_final_v3.json

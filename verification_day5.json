@@ -1,0 +1,21 @@
+{
+  "timestamp": 1771438869.302794,
+  "metrics": {
+    "count": 1,
+    "p50_ms": 7486.195665998821,
+    "p95_ms": 7486.195665998821,
+    "empty_context_rate": 100.0,
+    "tool_timeout_rate": 0.0,
+    "multi_query_all_failed_rate": 0.0
+  },
+  "results": [
+    {
+      "query": "Diferencias entre ISO 14001 y ISO 45001 respecto a acci\u00f3n correctiva.",
+      "duration_ms": 7486.195665998821,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    }
+  ]
+}

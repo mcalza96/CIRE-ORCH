@@ -49,57 +49,82 @@ class SemanticRetrievalTool:
 
         if should_fetch_chunks and should_fetch_summaries:
             t0 = time.perf_counter()
-            chunks, summaries = await asyncio.gather(
-                context.retriever.retrieve_chunks(
-                    query=query,
-                    tenant_id=tenant_id,
-                    collection_id=collection,
-                    plan=plan,
-                    user_id=user,
-                    request_id=req_id,
-                    correlation_id=corr_id,
-                ),
-                context.retriever.retrieve_summaries(
-                    query=query,
-                    tenant_id=tenant_id,
-                    collection_id=collection,
-                    plan=plan,
-                    user_id=user,
-                    request_id=req_id,
-                    correlation_id=corr_id,
-                ),
-            )
+            try:
+                chunks, summaries = await asyncio.gather(
+                    context.retriever.retrieve_chunks(
+                        query=query,
+                        tenant_id=tenant_id,
+                        collection_id=collection,
+                        plan=plan,
+                        user_id=user,
+                        request_id=req_id,
+                        correlation_id=corr_id,
+                    ),
+                    context.retriever.retrieve_summaries(
+                        query=query,
+                        tenant_id=tenant_id,
+                        collection_id=collection,
+                        plan=plan,
+                        user_id=user,
+                        request_id=req_id,
+                        correlation_id=corr_id,
+                    ),
+                )
+            except Exception as exc:
+                import structlog
+                structlog.get_logger(__name__).warning(
+                    "semantic_retrieval_partial_fallback",
+                    error=str(exc),
+                    chunks_recovered=len(chunks),
+                    summaries_recovered=len(summaries),
+                )
             timings_ms["parallel_retrieval"] = round((time.perf_counter() - t0) * 1000.0, 2)
         elif should_fetch_chunks:
             t0 = time.perf_counter()
-            chunks = await context.retriever.retrieve_chunks(
-                query=query,
-                tenant_id=tenant_id,
-                collection_id=collection,
-                plan=plan,
-                user_id=user,
-                request_id=req_id,
-                correlation_id=corr_id,
-            )
+            try:
+                chunks = await context.retriever.retrieve_chunks(
+                    query=query,
+                    tenant_id=tenant_id,
+                    collection_id=collection,
+                    plan=plan,
+                    user_id=user,
+                    request_id=req_id,
+                    correlation_id=corr_id,
+                )
+            except Exception as exc:
+                import structlog
+                structlog.get_logger(__name__).warning(
+                    "semantic_retrieval_partial_fallback",
+                    error=str(exc),
+                    chunks_recovered=len(chunks),
+                )
             timings_ms["chunks_only"] = round((time.perf_counter() - t0) * 1000.0, 2)
         elif should_fetch_summaries:
             t0 = time.perf_counter()
-            summaries = await context.retriever.retrieve_summaries(
-                query=query,
-                tenant_id=tenant_id,
-                collection_id=collection,
-                plan=plan,
-                user_id=user,
-                request_id=req_id,
-                correlation_id=corr_id,
-            )
+            try:
+                summaries = await context.retriever.retrieve_summaries(
+                    query=query,
+                    tenant_id=tenant_id,
+                    collection_id=collection,
+                    plan=plan,
+                    user_id=user,
+                    request_id=req_id,
+                    correlation_id=corr_id,
+                )
+            except Exception as exc:
+                import structlog
+                structlog.get_logger(__name__).warning(
+                    "semantic_retrieval_partial_fallback",
+                    error=str(exc),
+                    summaries_recovered=len(summaries),
+                )
             timings_ms["summaries_only"] = round((time.perf_counter() - t0) * 1000.0, 2)
 
         diagnostics = getattr(context.retriever, "last_retrieval_diagnostics", None)
         retrieval = (
             diagnostics
             if isinstance(diagnostics, RetrievalDiagnostics)
-            else RetrievalDiagnostics(contract="legacy", strategy="tool_semantic_retrieval")
+            else RetrievalDiagnostics(contract="advanced", strategy="unknown_advanced")
         )
         evidence: list[EvidenceItem] = [*list(chunks), *list(summaries)]
         return ToolResult(

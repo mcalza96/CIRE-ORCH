@@ -1,0 +1,53 @@
+{
+  "timestamp": 1771438218.4053838,
+  "metrics": {
+    "count": 5,
+    "p50_ms": 4914.9310829998285,
+    "p95_ms": 10008.440749999863,
+    "empty_context_rate": 80.0,
+    "tool_timeout_rate": 0.0,
+    "multi_query_all_failed_rate": 0.0
+  },
+  "results": [
+    {
+      "query": "\u00bfC\u00f3mo se define acci\u00f3n correctiva en ISO 27001?",
+      "duration_ms": 3076.0699579986976,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Resume los requisitos de ISO 27001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 1732.497582997894,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 14001 con ISO 9001 en el proceso de auditor\u00eda interna?",
+      "duration_ms": 7922.722209001222,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 45001 y ISO 27001 sobre mejora continua.",
+      "duration_ms": 4914.9310829998285,
+      "context_chunks": 3,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 27001, ISO 9001 y ISO 45001.",
+      "duration_ms": 10008.440749999863,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    }
+  ]
+}

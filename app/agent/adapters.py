@@ -414,6 +414,18 @@ class LiteralEvidenceValidator:
     def validate(self, draft: AnswerDraft, plan: RetrievalPlan, query: str) -> ValidationResult:
         issues: list[str] = []
         enforce_clause_refs = bool(plan.require_literal_evidence)
+
+        def _extract_section_block(text: str, section_name: str) -> str:
+            pattern = re.compile(
+                rf"(?:^|\n)\s*(?:##\s*)?{re.escape(section_name)}\s*:?\s*\n(?P<body>.*?)(?=\n\s*(?:##\s*)?[A-Za-zÁÉÍÓÚáéíóúñÑ].*?:\s*\n|\Z)",
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            match = pattern.search(text or "")
+            return str(match.group("body") if match else "").strip()
+
+        def _count_citation_markers(text: str) -> int:
+            return len(re.findall(r"\b[CR]\d+\b", text or ""))
+
         if plan.require_literal_evidence and not draft.evidence:
             issues.append("No retrieval evidence available for literal answer mode.")
 
@@ -422,6 +434,40 @@ class LiteralEvidenceValidator:
             has_citation_marker = bool(re.search(r"\b[CR]\d+\b", draft.text or ""))
             if not has_citation_marker:
                 issues.append("Answer does not include explicit source markers (C#/R#).")
+
+        required_sections = [
+            "Hechos citados",
+            "Inferencias",
+            "Brechas",
+            "Recomendaciones",
+            "Confianza y supuestos",
+        ]
+        text_lower = str(draft.text or "").lower()
+        if all(section.lower() in text_lower for section in required_sections[:3]):
+            for section in required_sections:
+                if section.lower() not in text_lower:
+                    issues.append(f"Structured response missing section: {section}.")
+
+            inference_body = _extract_section_block(draft.text, "Inferencias")
+            if inference_body:
+                min_citations = 2
+                if _count_citation_markers(inference_body) < min_citations:
+                    issues.append(
+                        "Grounded inference requires at least 2 citations in Inferencias section."
+                    )
+
+            strong_markers = [
+                "riesgo critico",
+                "incumplimiento",
+                "no conformidad mayor",
+                "sancion",
+                "multa",
+            ]
+            if (
+                any(marker in text_lower for marker in strong_markers)
+                and _count_citation_markers(draft.text) == 0
+            ):
+                issues.append("Strong risk claim without explicit evidence markers.")
 
         requested = plan.requested_standards or extract_requested_scopes(query)
         mentioned_in_answer = {item.upper() for item in extract_requested_scopes(draft.text)}

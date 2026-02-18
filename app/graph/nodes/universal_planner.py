@@ -74,13 +74,15 @@ def _needs_calculation(query: str, profile: AgentProfile | None) -> bool:
     return has_math or procedural_math
 
 
-def _default_tool_input(tool: str, query: str) -> dict[str, str]:
+def _default_tool_input(tool: str, query: str, mode: str) -> dict[str, str]:
     if tool == "semantic_retrieval":
         return {"query": query}
     if tool == "logical_comparison":
         return {"topic": query}
     if tool == "structural_extraction":
         return {"schema_definition": "entity, value, unit"}
+    if tool == "expectation_coverage":
+        return {"mode": mode}
     return {}
 
 
@@ -105,66 +107,45 @@ def build_universal_plan(
             ]
     steps: list[ToolCall] = []
 
+    def _append_unique_step(tool: str, rationale: str) -> None:
+        if tool not in allowed_tool_set:
+            return
+        if any(item.tool == tool for item in steps):
+            return
+        steps.append(
+            ToolCall(
+                tool=tool,
+                input=_default_tool_input(tool, query, str(intent.mode)),
+                rationale=rationale,
+            )
+        )
+
     if mode_execution_plan:
         seen: set[str] = set()
         for tool in mode_execution_plan:
             if tool in seen or tool not in allowed_tool_set:
                 continue
             seen.add(tool)
-            steps.append(
-                ToolCall(
-                    tool=tool,
-                    input=_default_tool_input(tool, query),
-                    rationale="mode_execution_plan",
-                )
-            )
+            _append_unique_step(tool, "mode_execution_plan")
 
     if not steps and "semantic_retrieval" in allowed_tool_set:
-        steps.append(
-            ToolCall(
-                tool="semantic_retrieval",
-                input={"query": query},
-                rationale="retrieve_grounding",
-            )
-        )
+        _append_unique_step("semantic_retrieval", "retrieve_grounding")
 
     if (
         complexity == "complex"
         and "logical_comparison" in allowed_tool_set
         and "logical_comparison" in mode_tool_hints
     ):
-        steps.append(
-            ToolCall(
-                tool="logical_comparison",
-                input={"topic": query},
-                rationale="cross_scope_relation",
-            )
-        )
+        _append_unique_step("logical_comparison", "cross_scope_relation")
 
     if "structural_extraction" in allowed_tool_set and _needs_extraction(query, profile):
-        steps.append(
-            ToolCall(
-                tool="structural_extraction",
-                input={"schema_definition": "entity, value, unit"},
-                rationale="extract_structured_data",
-            )
-        )
+        _append_unique_step("structural_extraction", "extract_structured_data")
 
     if "python_calculator" in allowed_tool_set and _needs_calculation(query, profile):
-        steps.append(
-            ToolCall(
-                tool="python_calculator",
-                input={},
-                rationale="deterministic_numeric_check",
-            )
-        )
+        _append_unique_step("python_calculator", "deterministic_numeric_check")
 
     if not steps and "semantic_retrieval" in allowed_tool_set:
-        steps = [
-            ToolCall(
-                tool="semantic_retrieval", input={"query": query}, rationale="default_retrieval"
-            )
-        ]
+        _append_unique_step("semantic_retrieval", "default_retrieval")
 
     trace_steps = [
         ReasoningStep(

@@ -30,3 +30,29 @@ def test_extract_requested_scopes_uses_profile_scope_patterns() -> None:
 
     scopes = extract_requested_scopes("comparar STD 100 y STD 200", profile=profile)
     assert scopes == ("STD 100", "STD 200")
+
+
+def test_extract_requested_scopes_falls_back_to_iso_references() -> None:
+    profile = AgentProfile(
+        profile_id="base-like",
+        domain_entities=["requisito", "evidencia"],
+    )
+
+    scopes = extract_requested_scopes(
+        "Relaciona ISO 9001:2015 con ISO 14001:2015 en este cambio",
+        profile=profile,
+    )
+    assert scopes == ("ISO 9001", "ISO 14001")
+
+
+def test_extract_requested_scopes_does_not_use_generic_domain_entities_as_scopes() -> None:
+    profile = AgentProfile(
+        profile_id="base-like",
+        domain_entities=["requisito", "evidencia", "fuente"],
+    )
+
+    scopes = extract_requested_scopes(
+        "que requisito documental aplica para este caso",
+        profile=profile,
+    )
+    assert scopes == ()

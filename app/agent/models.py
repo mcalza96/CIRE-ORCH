@@ -20,6 +20,8 @@ class RetrievalPlan:
     chunk_fetch_k: int
     summary_k: int
     require_literal_evidence: bool = False
+    allow_inference: bool = True
+    response_contract: str | None = None
     requested_standards: tuple[str, ...] = ()
 
 

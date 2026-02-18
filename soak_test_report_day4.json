@@ -1,0 +1,813 @@
+{
+  "timestamp": 1771437491.3042061,
+  "metrics": {
+    "count": 100,
+    "p50_ms": 1958.2875414998853,
+    "p95_ms": 6618.252266350282,
+    "empty_context_rate": 100.0,
+    "tool_timeout_rate": 0.0,
+    "multi_query_all_failed_rate": 0.0
+  },
+  "results": [
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 45001?",
+      "duration_ms": 941.7827910001506,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 7.5 de ISO 9001?",
+      "duration_ms": 256.9160830025794,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 5.2 de ISO 27001?",
+      "duration_ms": 654.7650000029535,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 14001?",
+      "duration_ms": 982.3276249990158,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define acci\u00f3n correctiva en ISO 27001?",
+      "duration_ms": 1129.5901670018793,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define acci\u00f3n correctiva en ISO 9001?",
+      "duration_ms": 1834.0465000001132,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 5.2 de ISO 27001?",
+      "duration_ms": 257.3206669985666,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Resume los requisitos de ISO 27001 sobre mejora continua.",
+      "duration_ms": 1896.676624997781,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 14001?",
+      "duration_ms": 780.7232499981183,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Resume los requisitos de ISO 27001 sobre mejora continua.",
+      "duration_ms": 2191.9950830015296,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Resume los requisitos de ISO 45001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 2048.6631249987113,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Resume los requisitos de ISO 9001 sobre liderazgo.",
+      "duration_ms": 2087.422166001488,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Resume los requisitos de ISO 45001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 1452.5983330022427,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 5.2 de ISO 27001?",
+      "duration_ms": 294.5114590002049,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 9001?",
+      "duration_ms": 811.2636250007199,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 10.3 de ISO 27001?",
+      "duration_ms": 472.2431670015794,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 10.3 de ISO 45001?",
+      "duration_ms": 648.2029170001624,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 7.5 de ISO 45001?",
+      "duration_ms": 252.7921660002903,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 50001?",
+      "duration_ms": 713.2224170018162,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 50001?",
+      "duration_ms": 776.3918749988079,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Resume los requisitos de ISO 9001 sobre control operacional.",
+      "duration_ms": 4954.582624999603,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 27001?",
+      "duration_ms": 807.1522079990245,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 9001?",
+      "duration_ms": 857.6397920005547,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 10.3 de ISO 45001?",
+      "duration_ms": 254.843416998483,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define acci\u00f3n correctiva en ISO 27001?",
+      "duration_ms": 895.8092910033884,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 50001?",
+      "duration_ms": 1138.2387919984467,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define acci\u00f3n correctiva en ISO 27001?",
+      "duration_ms": 910.7320830007666,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 27001?",
+      "duration_ms": 1021.0806670002057,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Resume los requisitos de ISO 9001 sobre auditor\u00eda interna.",
+      "duration_ms": 3016.7756249975355,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 6.1 de ISO 50001?",
+      "duration_ms": 298.3907919988269,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 8.1 de ISO 27001?",
+      "duration_ms": 252.27291699775378,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 9001?",
+      "duration_ms": 1349.724542000331,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 14001?",
+      "duration_ms": 801.0120829967491,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Resume los requisitos de ISO 45001 sobre liderazgo.",
+      "duration_ms": 1360.2662500015867,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 7.5 de ISO 45001?",
+      "duration_ms": 250.84808300016448,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 10.3 de ISO 9001?",
+      "duration_ms": 252.43337500069174,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 50001?",
+      "duration_ms": 1308.7499579996802,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Resume los requisitos de ISO 9001 sobre control operacional.",
+      "duration_ms": 3196.4591670002847,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Resume los requisitos de ISO 9001 sobre auditor\u00eda interna.",
+      "duration_ms": 1709.409750001214,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 50001?",
+      "duration_ms": 824.5874999993248,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 4.1 de ISO 14001?",
+      "duration_ms": 249.2783750021772,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define no conformidad en ISO 14001?",
+      "duration_ms": 1257.21029199849,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfCu\u00e1les son los objetivos de ISO 50001?",
+      "duration_ms": 813.012875001732,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Resume los requisitos de ISO 50001 sobre mejora continua.",
+      "duration_ms": 5520.032083000842,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 9.2 de ISO 50001?",
+      "duration_ms": 774.841207999998,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Resume los requisitos de ISO 9001 sobre liderazgo.",
+      "duration_ms": 1379.4357079968904,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se define partes interesadas en ISO 50001?",
+      "duration_ms": 755.197375001444,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Resume los requisitos de ISO 45001 sobre auditor\u00eda interna.",
+      "duration_ms": 3191.372790999594,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfQu\u00e9 dice la cl\u00e1usula 7.5 de ISO 27001?",
+      "duration_ms": 238.28512500040233,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Resume los requisitos de ISO 45001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 1552.1798329973535,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 9001 y ISO 45001 sobre control operacional.",
+      "duration_ms": 6208.509083997342,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 45001 con ISO 9001 en el proceso de liderazgo?",
+      "duration_ms": 2400.596041999961,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 50001, ISO 27001 y ISO 9001.",
+      "duration_ms": 3671.076250000624,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 14001, ISO 50001 y ISO 45001.",
+      "duration_ms": 5469.859415999963,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 50001 y ISO 45001 sobre mejora continua.",
+      "duration_ms": 6987.800667000556,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 14001, ISO 50001 y ISO 9001.",
+      "duration_ms": 6446.960833000048,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 14001, ISO 9001 y ISO 27001.",
+      "duration_ms": 4977.134624998143,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Diferencias entre ISO 45001 y ISO 50001 respecto a partes interesadas.",
+      "duration_ms": 6623.62983300045,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 50001, ISO 9001 y ISO 14001.",
+      "duration_ms": 1380.9357499994803,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Diferencias entre ISO 9001 y ISO 14001 respecto a partes interesadas.",
+      "duration_ms": 5152.375708999898,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 14001, ISO 9001 y ISO 27001.",
+      "duration_ms": 4639.06599999973,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 9001 y ISO 50001 sobre auditor\u00eda interna.",
+      "duration_ms": 3979.3805000008433,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 50001, ISO 27001 y ISO 14001.",
+      "duration_ms": 1829.2548329991405,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 9001 con ISO 27001 en el proceso de mejora continua?",
+      "duration_ms": 2921.1936659994535,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 45001 con ISO 9001 en el proceso de contexto de la organizaci\u00f3n?",
+      "duration_ms": 5207.056791998184,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 9001 con ISO 27001 en el proceso de contexto de la organizaci\u00f3n?",
+      "duration_ms": 5563.022334001289,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 50001 y ISO 27001 sobre control operacional.",
+      "duration_ms": 5166.378375000932,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Diferencias entre ISO 50001 y ISO 9001 respecto a partes interesadas.",
+      "duration_ms": 4337.44016700075,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 45001, ISO 9001 y ISO 14001.",
+      "duration_ms": 1924.0565830004925,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 27001, ISO 14001 y ISO 50001.",
+      "duration_ms": 5585.147875000985,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 45001 con ISO 9001 en el proceso de mejora continua?",
+      "duration_ms": 3881.8108750019746,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 27001 y ISO 14001 sobre contexto de la organizaci\u00f3n.",
+      "duration_ms": 6667.821125000046,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 14001 y ISO 45001 sobre control operacional.",
+      "duration_ms": 2765.0147919994197,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 50001 y ISO 45001 sobre liderazgo.",
+      "duration_ms": 4137.349042001006,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 45001 con ISO 9001 en el proceso de auditor\u00eda interna?",
+      "duration_ms": 2391.418999999587,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 14001, ISO 50001 y ISO 27001.",
+      "duration_ms": 3779.994958000316,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 45001, ISO 14001 y ISO 50001.",
+      "duration_ms": 1470.4470409997157,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 45001 con ISO 9001 en el proceso de auditor\u00eda interna?",
+      "duration_ms": 1824.795707998419,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 45001 y ISO 50001 sobre mejora continua.",
+      "duration_ms": 5309.953167001368,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 50001 con ISO 14001 en el proceso de auditor\u00eda interna?",
+      "duration_ms": 1992.518499999278,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Diferencias entre ISO 45001 y ISO 27001 respecto a riesgos y oportunidades.",
+      "duration_ms": 3060.6274999991,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Diferencias entre ISO 9001 y ISO 14001 respecto a acci\u00f3n correctiva.",
+      "duration_ms": 9208.679083003517,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Diferencias entre ISO 14001 y ISO 27001 respecto a acci\u00f3n correctiva.",
+      "duration_ms": 3924.430499999289,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 45001 con ISO 50001 en el proceso de mejora continua?",
+      "duration_ms": 2732.2284170004423,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 45001 con ISO 50001 en el proceso de contexto de la organizaci\u00f3n?",
+      "duration_ms": 6247.170416998415,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 50001, ISO 45001 y ISO 14001.",
+      "duration_ms": 1760.3451249997306,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 45001 y ISO 50001 sobre liderazgo.",
+      "duration_ms": 4679.983958001685,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 9001 y ISO 27001 sobre liderazgo.",
+      "duration_ms": 5674.653041998681,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Diferencias entre ISO 9001 y ISO 27001 respecto a partes interesadas.",
+      "duration_ms": 5792.23083299803,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Diferencias entre ISO 50001 y ISO 9001 respecto a no conformidad.",
+      "duration_ms": 6516.078499997093,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 50001 con ISO 27001 en el proceso de mejora continua?",
+      "duration_ms": 4196.059833000618,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 9001, ISO 45001 y ISO 14001.",
+      "duration_ms": 2750.1508339992142,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Compara los requisitos de ISO 9001 y ISO 27001 sobre control operacional.",
+      "duration_ms": 2872.8856250018,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 14001, ISO 9001 y ISO 50001.",
+      "duration_ms": 2093.8545419994625,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 14001, ISO 50001 y ISO 45001.",
+      "duration_ms": 1625.6731249995937,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 9001 con ISO 27001 en el proceso de mejora continua?",
+      "duration_ms": 2592.6302499974554,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Requisitos comunes de ISO 27001, ISO 50001 y ISO 9001.",
+      "duration_ms": 1539.0310840011807,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Diferencias entre ISO 27001 y ISO 14001 respecto a partes interesadas.",
+      "duration_ms": 5241.769416999887,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "\u00bfC\u00f3mo se integra ISO 45001 con ISO 14001 en el proceso de contexto de la organizaci\u00f3n?",
+      "duration_ms": 2324.888125000143,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    },
+    {
+      "query": "Diferencias entre ISO 50001 y ISO 27001 respecto a no conformidad.",
+      "duration_ms": 10016.221290999965,
+      "context_chunks": 0,
+      "tool_timeout": false,
+      "multi_query_all_failed": false,
+      "error": null
+    }
+  ]
+}

@@ -188,11 +188,35 @@ def _router_hints(
     )
 
 
+def _looks_like_scope_label(value: str) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return False
+    if re.search(r"\d{2,}", text):
+        return True
+    if re.search(
+        r"\b(?:ISO|IEC|NOM|NMX|ASTM|NFPA|OSHA|UNE|EN|IRAM|BS|DIN)\b",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        return True
+    compact = text.replace(" ", "")
+    return bool(compact.isupper() and len(compact) <= 12)
+
+
 def extract_requested_scopes(query: str, profile: AgentProfile | None = None) -> tuple[str, ...]:
     """Extract standard names/codes from query using profile patterns or generic fallback."""
     text = (query or "").strip()
     lower_text = text.lower()
     found: set[str] = set()
+    ordered: list[str] = []
+
+    def _add_scope(candidate: str) -> None:
+        value = str(candidate or "").strip()
+        if not value or value in found:
+            return
+        found.add(value)
+        ordered.append(value)
 
     patterns = profile.router.scope_patterns if profile and profile.router.scope_patterns else []
 
@@ -206,27 +230,29 @@ def extract_requested_scopes(query: str, profile: AgentProfile | None = None) ->
             try:
                 if re.search(regex, text, flags=re.IGNORECASE):
                     if label:
-                        found.add(label.strip())
+                        _add_scope(label.strip())
                     else:
                         matches = re.findall(regex, lower_text)
                         for m in matches:
                             if isinstance(m, tuple):
                                 m = " ".join(filter(None, m))
-                            found.add(str(m).strip().upper())
+                            candidate = str(m).strip().upper()
+                            if _looks_like_scope_label(candidate):
+                                _add_scope(candidate)
             except re.error:
                 continue
 
-    # Fallback to hints and entities
+    # Fallback to explicit scope hints from the active profile.
     if profile:
         for scope_label, hints in profile.router.scope_hints.items():
             if any(h.lower() in lower_text for h in hints) and scope_label not in found:
-                found.add(scope_label.strip())
+                _add_scope(scope_label.strip())
 
-        for entity in profile.domain_entities:
-            if len(entity) >= 4 and entity.lower() in lower_text and entity not in found:
-                found.add(entity.strip())
+    # Generic extraction for ISO-like references in natural language queries.
+    for digits in re.findall(r"\biso\s*[-:]?\s*(\d{4,5})\b", text, flags=re.IGNORECASE):
+        _add_scope(f"ISO {digits}")
 
-    return tuple(sorted(list(found)))
+    return tuple(ordered)
 
 
 def extract_requested_standards(query: str, profile: AgentProfile | None = None) -> set[str]:
@@ -348,6 +374,12 @@ def build_retrieval_plan(
                     chunk_fetch_k=int(retrieval_cfg.chunk_fetch_k),
                     summary_k=int(retrieval_cfg.summary_k),
                     require_literal_evidence=bool(mode_cfg.require_literal_evidence),
+                    allow_inference=bool(mode_cfg.allow_inference),
+                    response_contract=(
+                        str(mode_cfg.response_contract).strip()
+                        if mode_cfg.response_contract
+                        else None
+                    ),
                     requested_standards=requested_standards,
                 )
             return RetrievalPlan(
@@ -356,6 +388,10 @@ def build_retrieval_plan(
                 chunk_fetch_k=120,
                 summary_k=5,
                 require_literal_evidence=bool(mode_cfg.require_literal_evidence),
+                allow_inference=bool(mode_cfg.allow_inference),
+                response_contract=(
+                    str(mode_cfg.response_contract).strip() if mode_cfg.response_contract else None
+                ),
                 requested_standards=requested_standards,
             )
 
@@ -367,6 +403,7 @@ def build_retrieval_plan(
             chunk_fetch_k=int(mode_cfg.chunk_fetch_k),
             summary_k=int(mode_cfg.summary_k),
             require_literal_evidence=bool(mode_cfg.require_literal_evidence),
+            allow_inference=not bool(mode_cfg.require_literal_evidence),
             requested_standards=requested_standards,
         )
 
@@ -378,6 +415,7 @@ def build_retrieval_plan(
             chunk_fetch_k=int(first_cfg.chunk_fetch_k),
             summary_k=int(first_cfg.summary_k),
             require_literal_evidence=bool(first_cfg.require_literal_evidence),
+            allow_inference=not bool(first_cfg.require_literal_evidence),
             requested_standards=requested_standards,
         )
     return RetrievalPlan(

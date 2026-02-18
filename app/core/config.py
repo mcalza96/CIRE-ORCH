@@ -29,15 +29,16 @@ class Settings(BaseSettings):
     RAG_ENGINE_BACKEND_TTL_SECONDS: int = 20
     RAG_ENGINE_FORCE_BACKEND: str | None = None
 
-    # Retrieval contract selection:
-    # - legacy: uses /api/v1/debug/retrieval/* endpoints
-    # - advanced: uses /api/v1/retrieval/* contract endpoints (validate-scope/hybrid/multi-query/explain)
-    ORCH_RETRIEVAL_CONTRACT: str = "advanced"
+    # Retrieval contract orchestration.
     ORCH_MULTIHOP_FALLBACK: bool = True
     ORCH_SEMANTIC_PLANNER: bool = False
     ORCH_PLANNER_MAX_QUERIES: int = 5
     ORCH_PLANNER_MODEL: str | None = None
     ORCH_DETERMINISTIC_SUBQUERY_SEMANTIC_TAIL: bool = True
+    ORCH_LIGHT_PLANNER_ENABLED: bool = False
+    ORCH_LIGHT_PLANNER_MODEL: str | None = None
+    ORCH_LIGHT_PLANNER_TIMEOUT_MS: int = 600
+    ORCH_LIGHT_PLANNER_MAX_SUBQUERIES: int = 4
 
     # Multi-query promotion/iteration (agentic kernel guardrails)
     ORCH_MULTI_QUERY_PRIMARY: bool = False
@@ -47,6 +48,21 @@ class Settings(BaseSettings):
     ORCH_MULTI_QUERY_EVALUATOR: bool = False
     EARLY_EXIT_COVERAGE_ENABLED: bool = True
     ORCH_EVALUATOR_MODEL: str | None = None
+
+    # Hard latency budgets (milliseconds). Timeouts are fail-fast and traced.
+    # Calibrated 2026-02-18 based on real pipeline observations.
+    ORCH_TIMEOUT_CLASSIFY_MS: int = 2000       # Local rule-based classifier (~0.4ms real)
+    ORCH_TIMEOUT_PLAN_MS: int = 3000           # Local thread-based planner (~0.5ms real)
+    ORCH_TIMEOUT_EXECUTE_TOOL_MS: int = 30000  # Retrieval: simple=4s, cross-standard=18s
+    ORCH_TIMEOUT_GENERATE_MS: int = 15000      # LLM generation: simple=5s, complex=10s
+    ORCH_TIMEOUT_VALIDATE_MS: int = 5000       # Citation validation: typically <1s
+    ORCH_TIMEOUT_TOTAL_MS: int = 60000         # Full pipeline: worst case ~40s + 20s headroom
+
+    # Retrieval-stage budgets for advanced contract orchestration.
+    # These are INNER timeouts within EXECUTE_TOOL, must be < ORCH_TIMEOUT_EXECUTE_TOOL_MS.
+    ORCH_TIMEOUT_RETRIEVAL_HYBRID_MS: int = 25000      # Single hybrid call: simple=3s, multihop=18s
+    ORCH_TIMEOUT_RETRIEVAL_MULTI_QUERY_MS: int = 25000  # Multi-query refinement: up to 6 subqueries
+    ORCH_TIMEOUT_RETRIEVAL_COVERAGE_REPAIR_MS: int = 15000  # Coverage gate repair: 2-4 extra calls
 
     # Agnostic coverage gate: ensure multi-scope queries retrieve evidence per requested scope.
     ORCH_COVERAGE_GATE_ENABLED: bool = True
@@ -113,12 +129,12 @@ class Settings(BaseSettings):
 
     GROQ_API_KEY: str | None = None
     GROQ_MODEL_LIGHTWEIGHT: str = "openai/gpt-oss-20b"
-    GROQ_MODEL_HEAVY: str = "llama-3.3-70b-versatile"
-    GROQ_MODEL_DESIGN: str = "llama-3.3-70b-versatile"
-    GROQ_MODEL_CHAT: str = "openai/gpt-oss-20b"
-    GROQ_MODEL_FORENSIC: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL_HEAVY: str = "openai/gpt-oss-120b"
+    GROQ_MODEL_DESIGN: str = "openai/gpt-oss-120b"
+    GROQ_MODEL_CHAT: str = "openai/gpt-oss-120b"
+    GROQ_MODEL_FORENSIC: str = "openai/gpt-oss-120b"
     GROQ_MODEL_ORCHESTRATION: str = "openai/gpt-oss-20b"
-    GROQ_MODEL_SUMMARIZATION: str = "openai/gpt-oss-20b"
+    GROQ_MODEL_SUMMARIZATION: str = "openai/gpt-oss-120b"
 
     RAG_SERVICE_SECRET: str | None = Field(default=None, validation_alias="RAG_SERVICE_SECRET")
     ORCH_AUTH_REQUIRED: bool = True

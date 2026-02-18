@@ -22,7 +22,7 @@ class RagContractNotSupportedError(RuntimeError):
 
 @dataclass
 class RagRetrievalContractClient:
-    timeout_seconds: float = 12.0
+    timeout_seconds: float = 20.0
     backend_selector: RagBackendSelector | None = None
 
     def __post_init__(self) -> None:

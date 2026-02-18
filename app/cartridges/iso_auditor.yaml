@@ -23,22 +23,51 @@ domain_entities:
 
 synthesis:
   system_persona: >-
-    Eres un auditor trinorma. Responde con trazabilidad estricta usando evidencia
-    del contexto recuperado.
+    Eres un consultor ejecutivo experto en normas ISO. Tu objetivo es entregar insights de alto valor
+    para la toma de decisiones, no solo listar datos. Usa un tono directo, visual y orientado a la accion.
   citation_format: C#/R#
-  strict_subject_label: Clausula
+  grounded_inference_min_citations: 2
+  unsupported_claim_label: Hipotesis
+  confidence_scale: [alta, media, baja]
+  default_response_contract:
+    - Resumen Ejecutivo
+    - Tabla de Hallazgos y Alineacion
+    - Analisis de Brechas e Impacto
+    - Hoja de Ruta Sugerida
+    - Apendice Tecnico
+  response_contracts:
+    literal:
+      - Resumen Ejecutivo
+      - Tabla de Hallazgos y Alineacion
+      - Apendice Tecnico
+    grounded_inference:
+      - Resumen Ejecutivo
+      - Tabla de Hallazgos y Alineacion
+      - Analisis de Brechas e Impacto
+      - Hoja de Ruta Sugerida
+      - Apendice Tecnico
+  citation_schema_version: v1
+  citation_required_fields: [id, standard, clause_id, quote]
+  citation_render_template: "{id} | {standard} | clausula {clause_id} | \"{snippet}\""
+  citation_sort_policy: completeness_then_score
+  citation_noise_filters: [indice, "traducción oficial", "official translation", prologo]
+  citation_repair_enabled: true
+  min_structured_citation_ratio: 0.7
+  strict_subject_label: Componente Critico
   strict_reference_label: Fuente (C#/R#)
   synthesis_rules:
-    - Prioriza evidencia explicita de clausulas y requisitos.
-    - Si coexisten definiciones (clausula 3) y requisitos operativos (clausula 4+), prioriza requisitos auditables en el hallazgo principal.
-    - Si no hay evidencia suficiente, indicalo sin inventar contenido normativo.
-    - Manten lenguaje tecnico y verificable.
+    - Prioriza el valor para el negocio y el riesgo operativo sobre la literalidad ciega.
+    - Usa tablas markdown para comparar hallazgos.
+    - Usa emojis con sobriedad para destacar estados (✅, ⚠️, ❌).
+    - Interpreta clausulas 0.x como Introduccion y Contexto Estrategico.
+    - Si falta informacion, conecta la brecha con un Riesgo de Negocio tangible.
   strict_style:
-    - "Para cada afirmacion: clausula | cita literal breve | fuente C#/R#."
-    - "No inventes clausulas ni texto normativo."
+    - "Usa tablas para presentar evidencia literal."
   interpretive_style:
-    - Para comparativas, conecta evidencias separadas solo cuando sea trazable.
-    - Si la conexion es inferida, declaralo explicitamente.
+    - "Estructura la respuesta como un Dashboard Ejecutivo."
+    - "Resumen Ejecutivo: Estado de Alineacion, Riesgo Operativo, Brecha Principal."
+    - "Tabla de Hallazgos: Componente | Estado | Respaldo | Observacion."
+    - "Action Plan: Pasos numerados y priorizados."
 
 router:
   literal_list_hints:
@@ -119,7 +148,7 @@ query_modes:
       tool_hints: [semantic_retrieval, logical_comparison, citation_validator]
       execution_plan: [semantic_retrieval, logical_comparison, citation_validator]
       coverage_requirements: { require_all_requested_scopes: true, min_clause_refs: 0 }
-      decomposition_policy: { max_subqueries: 12, clause_focus: true, scope_focus: true }
+      decomposition_policy: { max_subqueries: 12, clause_focus: true, scope_focus: true, light_llm_enabled: true }
     literal_list_extract:
       require_literal_evidence: true
       allow_inference: false
@@ -127,7 +156,7 @@ query_modes:
       tool_hints: [semantic_retrieval, structural_extraction, citation_validator]
       execution_plan: [semantic_retrieval, structural_extraction, citation_validator]
       coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 1 }
-      decomposition_policy: { max_subqueries: 8, clause_focus: true, scope_focus: true }
+      decomposition_policy: { max_subqueries: 8, clause_focus: true, scope_focus: true, light_llm_enabled: false }
     literal_clause_check:
       require_literal_evidence: true
       allow_inference: false
@@ -135,7 +164,7 @@ query_modes:
       tool_hints: [semantic_retrieval, citation_validator]
       execution_plan: [semantic_retrieval, citation_validator]
       coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 1 }
-      decomposition_policy: { max_subqueries: 10, clause_focus: true, scope_focus: true }
+      decomposition_policy: { max_subqueries: 10, clause_focus: true, scope_focus: true, light_llm_enabled: true }
     cross_standard_analysis:
       require_literal_evidence: false
       allow_inference: true
@@ -143,7 +172,7 @@ query_modes:
       tool_hints: [semantic_retrieval, logical_comparison, citation_validator]
       execution_plan: [semantic_retrieval, logical_comparison, citation_validator]
       coverage_requirements: { require_all_requested_scopes: true, min_clause_refs: 0 }
-      decomposition_policy: { max_subqueries: 12, clause_focus: true, scope_focus: true }
+      decomposition_policy: { max_subqueries: 12, clause_focus: true, scope_focus: true, light_llm_enabled: true }
     explanatory_audit:
       require_literal_evidence: false
       allow_inference: true
@@ -151,7 +180,26 @@ query_modes:
       tool_hints: [semantic_retrieval, citation_validator]
       execution_plan: [semantic_retrieval, citation_validator]
       coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
-      decomposition_policy: { max_subqueries: 8, clause_focus: true, scope_focus: true }
+      decomposition_policy: { max_subqueries: 8, clause_focus: true, scope_focus: true, light_llm_enabled: false }
+      response_contract: grounded_inference
+    grounded_inference:
+      require_literal_evidence: false
+      allow_inference: true
+      retrieval_profile: explanatory_audit
+      tool_hints: [semantic_retrieval, logical_comparison, expectation_coverage, citation_validator]
+      execution_plan: [semantic_retrieval, logical_comparison, expectation_coverage, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 10, clause_focus: true, scope_focus: true, light_llm_enabled: true }
+      response_contract: grounded_inference
+    gap_analysis:
+      require_literal_evidence: false
+      allow_inference: true
+      retrieval_profile: cross_standard_analysis
+      tool_hints: [semantic_retrieval, expectation_coverage, citation_validator]
+      execution_plan: [semantic_retrieval, expectation_coverage, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 12, clause_focus: true, scope_focus: true, light_llm_enabled: true }
+      response_contract: grounded_inference
     scope_ambiguity:
       require_literal_evidence: true
       allow_inference: false
@@ -159,7 +207,7 @@ query_modes:
       tool_hints: [citation_validator]
       execution_plan: [citation_validator]
       coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
-      decomposition_policy: { max_subqueries: 2, clause_focus: false, scope_focus: true }
+      decomposition_policy: { max_subqueries: 2, clause_focus: false, scope_focus: true, light_llm_enabled: false }
   intent_rules:
     - id: iso_ambiguous_scope
       mode: scope_ambiguity
@@ -185,6 +233,12 @@ query_modes:
       any_patterns:
         - "\\biso\\s*[-:]?\\s*9001\\b"
         - "\\biso\\s*[-:]?\\s*14001\\b"
+    - id: iso_gap_analysis
+      mode: gap_analysis
+      any_keywords: [brecha, brechas, gap, faltante, ausencia, no encuentro, evidencia faltante]
+    - id: iso_grounded_inference
+      mode: grounded_inference
+      any_keywords: [implica, riesgo, riesgo potencial, recomienda, recomendacion, inferencia]
 clarification_rules:
   - rule_id: denunciante_vs_trazabilidad
     min_scope_count: 2
@@ -208,7 +262,7 @@ clarification_rules:
       - Respuesta parcial
 
 retrieval:
-  min_score: 0.72
+  min_score: 0.30
   search_hints:
     - term: epp
       expand_to:
@@ -351,6 +405,7 @@ capabilities:
     - semantic_retrieval
     - logical_comparison
     - structural_extraction
+    - expectation_coverage
     - citation_validator
   reasoning_budget:
     max_steps: 4
@@ -361,8 +416,77 @@ capabilities:
 
 validation:
   require_citations: true
+  require_structured_sections: true
+  required_sections:
+    - Hechos citados
+    - Inferencias
+    - Brechas
+    - Recomendaciones
+    - Confianza y supuestos
+  min_citations_per_inference: 2
+  block_strong_claims_without_evidence: true
+  strong_claim_markers:
+    - riesgo critico
+    - no conformidad mayor
+    - incumplimiento
+    - sancion
+    - multa
   forbidden_concepts:
     - sueldos
     - estrategia comercial
   fallback_message: >-
     No encuentro evidencia suficiente para responder con trazabilidad auditora.
+
+expectations:
+  - id: iso9001_9_2_programa_auditoria
+    description: Debe existir evidencia de programa de auditoria interna planificado
+    scopes: [ISO 9001]
+    clause_refs: ["9.2"]
+    applies_to_modes: [gap_analysis, grounded_inference, explanatory_audit]
+    required_evidence_markers:
+      - programa de auditoria
+      - plan de auditoria
+      - criterios de auditoria
+    optional_evidence_markers:
+      - informe de auditoria
+      - resultados de auditoria
+    missing_risk: Riesgo de no demostrar eficacia del sistema de auditoria interna
+    severity: high
+  - id: iso9001_9_3_revision_direccion
+    description: Debe existir evidencia de revision por la direccion con entradas y salidas
+    scopes: [ISO 9001]
+    clause_refs: ["9.3"]
+    applies_to_modes: [gap_analysis, grounded_inference]
+    required_evidence_markers:
+      - revision por la direccion
+      - entradas de la revision
+      - salidas de la revision
+    optional_evidence_markers:
+      - decisiones y acciones
+    missing_risk: Riesgo de no cerrar el ciclo PHVA a nivel directivo
+    severity: high
+  - id: iso14001_6_1_2_aspectos
+    description: Debe existir metodologia para identificar aspectos ambientales y sus impactos
+    scopes: [ISO 14001]
+    clause_refs: ["6.1.2"]
+    applies_to_modes: [gap_analysis, grounded_inference]
+    required_evidence_markers:
+      - aspectos ambientales
+      - impactos ambientales
+      - criterios de significancia
+    missing_risk: Riesgo de controles ambientales incompletos o mal priorizados
+    severity: high
+  - id: iso45001_5_4_participacion
+    description: Debe existir evidencia de participacion y consulta de trabajadores en SST
+    scopes: [ISO 45001]
+    clause_refs: ["5.4"]
+    applies_to_modes: [gap_analysis, grounded_inference]
+    required_evidence_markers:
+      - participacion
+      - consulta
+      - trabajadores
+    optional_evidence_markers:
+      - comite paritario
+      - actas
+    missing_risk: Riesgo de decisiones SST no validadas por quienes ejecutan el trabajo
+    severity: high
