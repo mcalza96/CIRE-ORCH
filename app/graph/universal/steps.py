@@ -53,9 +53,6 @@ from app.graph.universal.logic import (
 logger = structlog.get_logger(__name__)
 
 
-
-
-
 class OrchestratorComponents(Protocol):
     retriever: RetrieverPort
     answer_generator: AnswerGeneratorPort
@@ -181,11 +178,11 @@ async def execute_tool_node(
                     payload.setdefault("previous_tool_output", dict(prev.output))
                 if prev.metadata:
                     payload.setdefault("previous_tool_metadata", dict(prev.metadata))
-        
+
         # ── Full Context Piping ──
         working_memory = dict(state.get("working_memory") or {})
         if working_memory:
-             payload["working_memory"] = working_memory
+            payload["working_memory"] = working_memory
 
         if tool_name == "python_calculator" and not payload.get("expression"):
             inferred = _infer_expression_from_query(str(state.get("working_query") or ""))
@@ -433,7 +430,33 @@ async def aggregate_subqueries_node(
             )
         }
 
+    async def _summarize_one(
+        comp: OrchestratorComponents,
+        q: str,
+        ev: list[EvidenceItem],
+        prof: AgentProfile | None,
+    ) -> str:
+        sub_plan = RetrievalPlan(
+            mode="concisa_y_directa",
+            chunk_k=len(ev),
+            chunk_fetch_k=len(ev),
+            summary_k=0,
+            require_literal_evidence=False,
+        )
+        draft = await comp.answer_generator.generate(
+            query=f"[SUBCONSULTA: {q}]\nResume la respuesta basandote SOLO en los fragmentos proporcionados.",
+            scope_label="",
+            plan=sub_plan,
+            chunks=ev,
+            summaries=[],
+            agent_profile=prof,
+        )
+        return draft.text
+
     partial_answers: list[dict[str, Any]] = []
+    summarization_jobs: list[tuple[int, str, list[EvidenceItem]]] = []
+    agent_profile = cast(AgentProfile | None, state.get("agent_profile"))
+
     for idx, group in enumerate(groups, start=1):
         sq_id = str(group.get("id") or f"q{idx}").strip() or f"q{idx}"
         sq_query = str(group.get("query") or "").strip()
@@ -468,7 +491,7 @@ async def aggregate_subqueries_node(
                 reverse=True,
             )
             candidates = ranked[:max_items_per_subquery]
-        
+
         if not candidates:
             # Empty fallback logic remains same
             partial_answers.append(
@@ -482,66 +505,48 @@ async def aggregate_subqueries_node(
             )
             continue
 
-        # Prepare for LLM map-reduce
-        async def _summarize_one(
-            comp: OrchestratorComponents,
-            q: str,
-            ev: list[EvidenceItem],
-            prof: AgentProfile | None,
-        ) -> str:
-            # Create a localized plan for this subquery
-            sub_plan = RetrievalPlan(
-                mode="concisa_y_directa", # Enforce brevity for sub-summaries
-                chunk_k=len(ev),
-                chunk_fetch_k=len(ev),
-                summary_k=0,
-                require_literal_evidence=False,
-            )
-            try:
-                draft = await comp.answer_generator.generate(
-                    query=f"[SUBCONSULTA: {q}]\nResume la respuesta basandote SOLO en los fragmentos proporcionados.",
-                    scope_label="",
-                    plan=sub_plan,
-                    chunks=ev,
-                    summaries=[],
-                    agent_profile=prof,
-                )
-                return draft.text
-            except Exception as e:
-                logger.error("subquery_summarization_failed", error=str(e))
-                return "Error al generar resumen."
-
-        summary_text = "Resumen pendiente"
-        if components and components.answer_generator:
-             try:
-                summary_text = await _summarize_one(components, sq_query, candidates, state.get("agent_profile"))
-             except Exception:
-                # Fallback to clip if LLM fails
-                snippets = [
-                    f"{ev.source}: {_clip_text(ev.content, limit=220)}"
-                    for ev in candidates[:2]
-                    if str(ev.content or "").strip()
-                ]
-                summary_text = " | ".join(snippets) if snippets else "Evidencia recuperada."
-        else:
-             # Fallback if no components provided (should not happen in real flow)
-             snippets = [
-                f"{ev.source}: {_clip_text(ev.content, limit=220)}"
-                for ev in candidates[:2]
-                if str(ev.content or "").strip()
-            ]
-             summary_text = " | ".join(snippets) if snippets else "Evidencia recuperada."
-
         partial_answers.append(
             {
                 "id": sq_id,
                 "query": sq_query,
                 "status": "ok",
                 "evidence_sources": [str(ev.source or "") for ev in candidates],
-                "summary": summary_text,
+                "summary": "Resumen pendiente",
             }
         )
-            
+
+        partial_idx = len(partial_answers) - 1
+        if components and components.answer_generator:
+            summarization_jobs.append((partial_idx, sq_query, candidates))
+        else:
+            snippets = [
+                f"{ev.source}: {_clip_text(ev.content, limit=220)}"
+                for ev in candidates[:2]
+                if str(ev.content or "").strip()
+            ]
+            partial_answers[partial_idx]["summary"] = (
+                " | ".join(snippets) if snippets else "Evidencia recuperada."
+            )
+
+    if summarization_jobs and components and components.answer_generator:
+        summarize_coros = [
+            _summarize_one(components, sq_query, candidates, agent_profile)
+            for _, sq_query, candidates in summarization_jobs
+        ]
+        summarize_results = await asyncio.gather(*summarize_coros, return_exceptions=True)
+        for (partial_idx, _, candidates), result in zip(summarization_jobs, summarize_results):
+            if isinstance(result, Exception):
+                logger.error("subquery_summarization_failed", error=str(result))
+                snippets = [
+                    f"{ev.source}: {_clip_text(ev.content, limit=220)}"
+                    for ev in candidates[:2]
+                    if str(ev.content or "").strip()
+                ]
+                summary_text = " | ".join(snippets) if snippets else "Evidencia recuperada."
+            else:
+                summary_text = str(result).strip() or "Evidencia recuperada."
+            partial_answers[partial_idx]["summary"] = summary_text
+
     return {
         "partial_answers": partial_answers,
         "stage_timings_ms": _append_stage_timing(
@@ -550,11 +555,7 @@ async def aggregate_subqueries_node(
     }
 
 
-
 # ── Working-memory → EvidenceItem converters ──────────────────────────
-
-
-
 
 
 async def generator_node(
@@ -577,37 +578,9 @@ async def generator_node(
         }
     chunks = cast(list[EvidenceItem], list(state.get("chunks") or []))
     summaries = cast(list[EvidenceItem], list(state.get("summaries") or []))
+    working_memory = dict(state.get("working_memory") or {})
     raw_partials = state.get("partial_answers")
     partial_answers_list: list[Any] = raw_partials if isinstance(raw_partials, list) else []
-
-    if partial_answers_list:
-        synthesized_summaries: list[EvidenceItem] = []
-        for idx, partial in enumerate(partial_answers_list[:8], start=1):
-            if not isinstance(partial, dict):
-                continue
-            sq_id = str(partial.get("id") or f"q{idx}").strip() or f"q{idx}"
-            sq_query = str(partial.get("query") or "").strip()
-            status = str(partial.get("status") or "unknown").strip()
-            summary = str(partial.get("summary") or "").strip()
-            raw_sources = partial.get("evidence_sources")
-            sources_list: list[Any] = raw_sources if isinstance(raw_sources, list) else []
-            source_list = ", ".join(str(s) for s in sources_list if str(s).strip())
-            content = (
-                f"[SUBQUERY {sq_id}] query={sq_query}\n"
-                f"status={status}\n"
-                f"sources={source_list or 'none'}\n"
-                f"summary={summary or 'Sin resumen parcial.'}"
-            )
-            synthesized_summaries.append(
-                EvidenceItem(
-                    source=f"RMAP{idx}",
-                    content=content,
-                    score=1.0,
-                    metadata={"row": {"content": content, "metadata": {"subquery_id": sq_id}}},
-                )
-            )
-        if synthesized_summaries:
-            summaries = [*synthesized_summaries, *summaries]
 
     # [MODIFIED] Removed _working_memory_to_evidence conversion.
     # working_memory is now passed directly to the generator as structured context.
