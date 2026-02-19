@@ -366,16 +366,30 @@ async def main(argv: list[str] | None = None) -> None:
                         answer_text=reply,
                         round_no=rounds + 1,
                     )
-                    result = await cli_api.post_answer(
-                        client=client,
-                        orchestrator_url=args.orchestrator_url,
-                        tenant_context=tenant_context,
-                        query=clarification_query_base,
-                        collection_id=collection_id,
-                        agent_profile_id=agent_profile_id,
-                        clarification_context=clarification_context,
-                        access_token=access_token,
-                    )
+                    if args.no_thinking_stream:
+                        result = await cli_api.post_answer(
+                            client=client,
+                            orchestrator_url=args.orchestrator_url,
+                            tenant_context=tenant_context,
+                            query=clarification_query_base,
+                            collection_id=collection_id,
+                            agent_profile_id=agent_profile_id,
+                            clarification_context=clarification_context,
+                            access_token=access_token,
+                        )
+                    else:
+                        clar_seen_phases: set[str] = set()
+                        result = await cli_api.post_answer_stream(
+                            client=client,
+                            orchestrator_url=args.orchestrator_url,
+                            tenant_context=tenant_context,
+                            query=clarification_query_base,
+                            collection_id=collection_id,
+                            agent_profile_id=agent_profile_id,
+                            clarification_context=clarification_context,
+                            access_token=access_token,
+                            on_status=lambda st: _print_thinking_status(st, clar_seen_phases),
+                        )
                     clarification = (
                         result.get("clarification")
                         if isinstance(result.get("clarification"), dict)

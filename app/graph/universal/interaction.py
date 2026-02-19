@@ -331,14 +331,22 @@ def decide_interaction(
     elif clarification_round >= 2 and scope_count_confirmed == 0:
         metrics["loop_prevented"] = True
     elif needs_l3:
+        _TOOL_DISPLAY_NAMES = {
+            "semantic_retrieval": "Buscar contexto normativo",
+            "logical_comparison": "Analizar cruces y vacios logicos",
+            "structural_extraction": "Extraer y estructurar datos",
+            "python_calculator": "Ejecutar calculos matematicos",
+            "citation_validator": "Validar citas contra la fuente",
+        }
         plan_steps = [
-            f"{idx + 1}) {step.tool}" for idx, step in enumerate(reasoning_plan.steps[:4])
+            f"{idx + 1}) {_TOOL_DISPLAY_NAMES.get(step.tool, step.tool)}"
+            for idx, step in enumerate(reasoning_plan.steps[:4])
         ]
-        step_text = " | ".join(plan_steps) if plan_steps else "1) semantic_retrieval"
+        step_text = " -> ".join(plan_steps) if plan_steps else "1) Buscar contexto normativo"
         question = (
-            "Entiendo que quieres un analisis amplio. "
+            "Entiendo que requieres un analisis profundo. "
             f"Plan propuesto: {step_text}. "
-            "¿Te parece bien este plan o quieres ajustarlo?"
+            "¿Te parece bien este plan o quieres ajustarlo (ej: pedir enfoque en una tabla)?"
         )
         level = "L3"
         needs_interrupt = True

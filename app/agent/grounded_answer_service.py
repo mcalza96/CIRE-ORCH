@@ -142,7 +142,13 @@ class GroundedAnswerService:
         response_contract = list(response_contracts.get(response_contract_name) or [])
         if not response_contract and synthesis is not None:
             response_contract = list(synthesis.default_response_contract)
-        if not response_contract:
+            
+        if strict:
+            response_contract = [
+                "Hechos citados",
+                "Brechas",
+            ]
+        elif not response_contract:
             response_contract = [
                 "Hechos citados",
                 "Inferencias",
@@ -224,13 +230,16 @@ class GroundedAnswerService:
             + "\n\nFormatting skeleton:\n"
             + section_format
         )
-        inference_policy_block = (
-            "Inference policy:\n"
-            f"- Each inference must cite at least {min_citations_per_inference} evidence references.\n"
-            "- If evidence is insufficient, downgrade the statement and label it as "
-            f"'{unsupported_claim_label}'.\n"
-            "- For each identified gap, include expected evidence and associated operational risk."
-        )
+        if strict:
+            inference_policy_block = "Inference policy: STRICTLY FORBIDDEN. Do not generate inferences, hypotheses, or assumptions."
+        else:
+            inference_policy_block = (
+                "Inference policy:\n"
+                f"- Each inference must cite at least {min_citations_per_inference} evidence references.\n"
+                "- If evidence is insufficient, downgrade the statement and label it as "
+                f"'{unsupported_claim_label}'.\n"
+                "- For each identified gap, include expected evidence and associated operational risk."
+            )
 
         style = f"{style}\n\n{response_contract_block}\n\n{inference_policy_block}".strip()
         style = f"{style}\n\nRequired citation format: {citation_format}".strip()

@@ -74,7 +74,7 @@ def _needs_calculation(query: str, profile: AgentProfile | None) -> bool:
     return has_math or procedural_math
 
 
-def _default_tool_input(tool: str, query: str, mode: str) -> dict[str, str]:
+def default_tool_input(tool: str, query: str, mode: str) -> dict[str, str]:
     if tool == "semantic_retrieval":
         return {"query": query}
     if tool == "logical_comparison":
@@ -115,7 +115,7 @@ def build_universal_plan(
         steps.append(
             ToolCall(
                 tool=tool,
-                input=_default_tool_input(tool, query, str(intent.mode)),
+                input=default_tool_input(tool, query, str(intent.mode)),
                 rationale=rationale,
             )
         )

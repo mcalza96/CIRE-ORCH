@@ -40,8 +40,9 @@ synthesis:
   strict_system_prompt_template: >-
     Responde SOLO con evidencia del CONTEXTO. Cada afirmacion clave debe incluir
     al menos una cita con marcadores exactos con el formato '{citation_format}'
-    tal como aparecen en el CONTEXTO. Si no hay evidencia suficiente, dilo
-    explicitamente.
+    tal como aparecen en el CONTEXTO. PROHIBIDO GENERAR HIPOTESIS O INFERENCIAS.
+    SI LA EVIDENCIA NO ES LITERAL, DEJA LA SECCION VACIA. Si no hay evidencia suficiente,
+    dilo explicitamente e indica la brecha.
   interpretive_system_prompt_template: >-
     Responde solo con evidencia del CONTEXTO. Puedes conectar evidencias entre
     fuentes, pero cada afirmacion relevante debe incluir al menos una referencia

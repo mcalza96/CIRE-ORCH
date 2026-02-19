@@ -754,9 +754,17 @@ async def main(argv: list[str] | None = None) -> None:
             )
         print(f"✅ Batch creado: {batch_id}")
 
+        source_standard = ""
+        if not args.non_interactive:
+            ans = _prompt("📝 Norma o estandar fuente (ej. ISO 9001) [Enter para ignorar/adivinar]: ")
+            source_standard = ans.strip().upper()
+
         for f in files_to_upload:
             print(f"📤 Subiendo {os.path.basename(f)}...")
-            await client.upload_file_to_batch(batch_id, f)
+            file_meta: dict[str, Any] = {}
+            if source_standard:
+                file_meta["source_standard"] = source_standard
+            await client.upload_file_to_batch(batch_id, f, metadata=file_meta if file_meta else None)
 
         print("🔗 Sellando batch...")
         await client.seal_ingestion_batch(batch_id)

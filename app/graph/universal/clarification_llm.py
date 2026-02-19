@@ -195,3 +195,71 @@ async def extract_clarification_slots_with_llm(
         return None
         
     return payload
+
+async def rewrite_plan_with_feedback_llm(
+    *,
+    current_tools: list[str],
+    feedback: str,
+    allowed_tools: list[str],
+) -> dict[str, Any] | None:
+    if not bool(getattr(settings, "ORCH_CLARIFICATION_LLM_ENABLED", True)):
+        return None
+    api_key = str(getattr(settings, "GROQ_API_KEY", "") or "").strip()
+    if not api_key:
+        return None
+
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
+    except Exception:
+        return None
+
+    model = str(getattr(settings, "ORCH_CLARIFICATION_MODEL", "") or "").strip()
+    if not model:
+        model = str(getattr(settings, "GROQ_MODEL_LIGHTWEIGHT", "") or "").strip()
+    if not model:
+        return None
+    
+    timeout_s = max(1.0, float(getattr(settings, "ORCH_CLARIFICATION_TIMEOUT_S", 2.0) or 2.0))
+    prompt = {
+        "current_plan": current_tools,
+        "user_feedback": str(feedback or "")[:500],
+        "allowed_tools": allowed_tools,
+        "instructions": (
+            "El usuario ha rechazado el plan propuesto o pidio ajustes. "
+            "Reescribe el plan devolviendo una lista de nombres de herramientas ('new_plan') usando SOLO las de 'allowed_tools'. "
+            "Si pide estructurar/tabla/extraer, añade 'structural_extraction'. "
+            "Si pide cancelar comparaciones, elimina 'logical_comparison'. "
+            "Ademas, provee 'dynamic_inputs' si aplica (ej. para structural_extraction define un 'schema_definition' segun lo que pidio el usuario). "
+            "Respeta la secuencia logica: primero traer datos, luego procesarlos."
+        )
+    }
+
+    schema_example = '{"new_plan": ["semantic_retrieval", "structural_extraction"], "dynamic_inputs": {"structural_extraction": {"schema_definition": "roles, responsabilidades"}}}'
+
+    try:
+        completion = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=model,
+                temperature=0.0,
+                max_tokens=800,
+                messages=[
+                    {
+                        "role": "system", 
+                        "content": "Eres el planificador L3. DEBES devolver UNICAMENTE un objeto JSON válido con este exacto esquema:\n"
+                                   '{"new_plan": ["...", "..."], "dynamic_inputs": {"herramienta": {"parametro": "valor"}}}\n'
+                                   "No devuelvas ningún texto antes ni después del JSON ni uses bloques markdown."
+                    },
+                    {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+                ],
+                response_format={"type": "json_object"},
+            ),
+            timeout=timeout_s,
+        )
+    except Exception as exc:
+        logger.warning("replan_llm_failed", error=str(exc))
+        return None
+        
+    raw = str(completion.choices[0].message.content or "").strip()
+    payload = _parse_json_payload(raw)
+    return payload

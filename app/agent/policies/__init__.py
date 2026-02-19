@@ -402,7 +402,8 @@ def extract_requested_scopes(query: str, profile: AgentProfile | None = None) ->
             if re.search(r"\d", fallback) and re.search(r"[A-Z]", fallback):
                 _add_scope(fallback)
             elif re.fullmatch(r"\d{3,6}", fallback):
-                _add_scope(fallback)
+                if not re.fullmatch(r"(19|20)\d{2}", fallback):
+                    _add_scope(fallback)
             continue
         match = _best_scope_from_token(token, scope_catalog, fuzzy_enabled=fuzzy_enabled)
         if not match:
