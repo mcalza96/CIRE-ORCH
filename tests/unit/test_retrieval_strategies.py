@@ -1,4 +1,4 @@
-from app.agent.retrieval_strategies import reduce_structural_noise
+from app.agent.retrieval_strategies import looks_structural_toc, reduce_structural_noise
 
 
 def _item(content: str, *, title: str = "", heading: str = "", source_type: str = "") -> dict:
@@ -53,3 +53,20 @@ def test_reduce_structural_noise_keeps_all_for_toc_query():
     filtered = reduce_structural_noise(items, "muestrame la tabla de contenido")
 
     assert filtered == items
+
+
+def test_reduce_structural_noise_keeps_all_for_toc_query_in_english():
+    items = [
+        _item("Table of contents\nChapter 1\nChapter 2", title="Table of contents"),
+        _item("Table of contents\nA.1\nA.2", title="Table of contents"),
+    ]
+
+    filtered = reduce_structural_noise(items, "show me the table of contents")
+
+    assert filtered == items
+
+
+def test_looks_structural_toc_detects_english_label_without_dotted_lines():
+    item = _item("Table of contents\nChapter 1\nChapter 2", title="Contents")
+
+    assert looks_structural_toc(item) is True

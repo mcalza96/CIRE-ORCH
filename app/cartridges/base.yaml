@@ -8,8 +8,8 @@ meta:
   owner: "orchestrator-core"
 
 identity:
-  role: "Analista tecnico agnostico"
-  tone: "Formal, preciso y basado en evidencia"
+  role: "Asistente de investigacion y sintesis documental"
+  tone: "Pedagogico, analitico y basado en evidencia"
   style_guide:
     - "Usa listas planas para hallazgos concretos."
     - "Indica explicitamente cuando una afirmacion es inferencia."
@@ -21,7 +21,10 @@ domain_entities:
 
 synthesis:
   system_persona: >-
-    Eres un analista tecnico agnostico. Responde solo con evidencia recuperada.
+    Eres un asistente de investigacion documental. Tu objetivo es ayudar al usuario
+    a comprender, sintetizar y conectar informacion del contexto recuperado.
+    Cuando pidan resumenes amplios, organiza por temas y explica conexiones sin
+    inventar contenido.
   citation_format: C#/R#
   citation_schema_version: v1
   citation_required_fields: [id, standard, clause_id, quote]
@@ -72,6 +75,16 @@ synthesis:
   interpretive_style:
     - Puedes conectar evidencias separadas, pero marca cuando sea inferencia.
     - Incluye referencias al final de cada punto.
+  response_contracts:
+    study_guide:
+      - Resumen de Alto Nivel
+      - Conceptos Clave (Glosario)
+      - Conexiones y Temas Principales
+      - Preguntas Frecuentes (FAQ) inferidas
+    structured_summary:
+      - Sintesis Ejecutiva
+      - Puntos Principales en Vinetas
+      - Conclusiones
 
 router:
   literal_list_hints: [entradas, salidas, lista, enumera, listado]
@@ -136,7 +149,23 @@ query_modes:
       execution_plan: [semantic_retrieval, citation_validator]
       coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
       decomposition_policy: { max_subqueries: 6, clause_focus: true, scope_focus: true, light_llm_enabled: false }
+    comprehensive_synthesis:
+      require_literal_evidence: false
+      allow_inference: true
+      retrieval_profile: comprehensive_synthesis
+      tool_hints: [semantic_retrieval, structural_extraction, citation_validator]
+      execution_plan: [semantic_retrieval, structural_extraction, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 8, clause_focus: false, scope_focus: true, light_llm_enabled: true }
+      response_contract: study_guide
   intent_rules:
+    - id: base_comprehensive_synthesis
+      mode: comprehensive_synthesis
+      any_keywords: [resumen, resume, sintetiza, sintesis, explicame el documento, guia de estudio, ideas principales, conceptos principales]
+      any_patterns:
+        - "\\bresum(?:e|en|ir)\\b"
+        - "\\bgu[ií]a de estudio\\b"
+        - "\\bconceptos principales\\b"
     - id: base_literal_list
       mode: literal_list_extract
       any_keywords: [lista, enumera, listado, vinetas]
@@ -153,7 +182,7 @@ query_modes:
       any_markers: ["__mode__=scope_clarification"]
 
 retrieval:
-  min_score: 0.75
+  min_score: 0.40
   search_hints: []
   by_mode:
     literal_list_extract:
@@ -181,14 +210,21 @@ retrieval:
       chunk_fetch_k: 120
       summary_k: 5
       require_literal_evidence: false
+    comprehensive_synthesis:
+      chunk_k: 45
+      chunk_fetch_k: 220
+      summary_k: 8
+      require_literal_evidence: false
 
 capabilities:
-  reasoning_level: low
+  reasoning_level: high
   allowed_tools:
     - semantic_retrieval
+    - structural_extraction
+    - logical_comparison
     - citation_validator
   reasoning_budget:
-    max_steps: 4
+    max_steps: 5
     max_reflections: 2
   tool_policies:
     python_calculator:

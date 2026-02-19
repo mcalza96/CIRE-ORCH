@@ -19,6 +19,15 @@ _INTRO_QUERY_TOKENS = (
     "foreword",
 )
 
+_TOC_TOKENS = (
+    "indice",
+    "índice",
+    "tabla de contenido",
+    "table of contents",
+    "table of content",
+    "toc",
+)
+
 
 def _item_text_haystack(item: dict[str, Any]) -> str:
     content = str(item.get("content") or "").strip().lower()
@@ -207,7 +216,7 @@ def looks_structural_toc(item: dict[str, Any]) -> bool:
     row_meta: dict[str, Any] = row_meta_raw if isinstance(row_meta_raw, dict) else {}
     title = str(row_meta.get("title") or "").lower()
     hay = f"{title}\n{content}"
-    if any(token in hay for token in ("indice", "índice", "tabla de contenido")):
+    if any(token in hay for token in _TOC_TOKENS):
         return True
     lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
     if len(lines) >= 3:
@@ -273,7 +282,7 @@ def looks_editorial_front_matter(item: dict[str, Any]) -> bool:
 
 def reduce_structural_noise(items: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
     q = str(query or "").lower()
-    if any(token in q for token in ("indice", "índice", "tabla de contenido")):
+    if any(token in q for token in _TOC_TOKENS):
         return items
     if any(token in q for token in ("prologo", "prólogo", "preface", "foreword")):
         return items

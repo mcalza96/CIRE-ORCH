@@ -6,6 +6,8 @@ import argparse
 import asyncio
 import glob
 import os
+import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -17,7 +19,13 @@ from app.core.orch_discovery_client import list_authorized_collections, list_aut
 from app.core.orch_discovery_client import create_dev_tenant
 from sdk.python.cire_rag_sdk.client import AsyncCireRagClient, TenantContext
 
-BATCH_TERMINAL_STATES = {"DONE", "ERROR", "CANCELLED"}
+BATCH_TERMINAL_STATES = {
+    "done",
+    "error",
+    "cancelled",
+    "completed",
+    "failed",
+}
 JOB_TERMINAL_STATES = {"completed", "failed", "cancelled", "error"}
 HEARTBEAT_SECONDS = 1.5
 
@@ -114,6 +122,57 @@ def _resolve_input_path(raw: str) -> str:
         if os.path.isdir(candidate) or os.path.isfile(candidate):
             return candidate
     return ""
+
+
+def _pick_files_with_finder() -> list[str]:
+    if sys.platform != "darwin":
+        return []
+
+    script_lines = [
+        'set selectedItems to choose file with prompt "Selecciona uno o mas archivos" with multiple selections allowed',
+        "set outputLines to {}",
+        "repeat with anItem in selectedItems",
+        "set end of outputLines to POSIX path of anItem",
+        "end repeat",
+        "set AppleScript's text item delimiters to linefeed",
+        "return outputLines as text",
+    ]
+    cmd: list[str] = ["osascript"]
+    for line in script_lines:
+        cmd.extend(["-e", line])
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except Exception:
+        proc = None
+
+    if proc and proc.returncode == 0:
+        out = str(proc.stdout or "").strip()
+        if out:
+            files = [line.strip() for line in out.splitlines() if line.strip()]
+            valid = [f for f in files if os.path.isfile(f)]
+            if valid:
+                return valid
+
+    # Fallback cross-platform picker (tambien permite seleccionar varios archivos).
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        root.update()
+        selected = filedialog.askopenfilenames(title="Selecciona uno o mas archivos")
+        root.destroy()
+        files = [str(path).strip() for path in selected if str(path).strip()]
+        return [f for f in files if os.path.isfile(f)]
+    except Exception:
+        return []
 
 
 async def resolve_tenant(args: argparse.Namespace, access_token: str) -> str:
@@ -478,7 +537,8 @@ async def run_batch_monitoring(
                     last_snapshot = snapshot
                     last_event_at = time.monotonic()
 
-                if str(state) in BATCH_TERMINAL_STATES:
+                state_norm = str(state or "").strip().lower()
+                if state_norm in BATCH_TERMINAL_STATES:
                     elapsed = round(time.monotonic() - started_at, 1)
                     print(f"✅ Batch finalizado con estado: {state} ({elapsed}s)")
                     break
@@ -658,7 +718,14 @@ async def main(argv: list[str] | None = None) -> None:
                 print("❌ No hay archivos para subir.")
                 return
             while True:
-                path_raw = _prompt("📝 Ruta al archivo o carpeta: ")
+                path_raw = _prompt("📝 Ruta al archivo o carpeta (Enter abre Finder): ")
+                if not path_raw:
+                    selected_files = _pick_files_with_finder()
+                    if selected_files:
+                        files_to_upload.extend(selected_files)
+                        break
+                    print("⚠️ No se seleccionaron archivos en Finder.")
+                    continue
                 path = _resolve_input_path(path_raw)
                 if os.path.isdir(path):
                     files_to_upload.extend(glob.glob(os.path.join(path, "*")))
@@ -672,9 +739,19 @@ async def main(argv: list[str] | None = None) -> None:
 
         print(f"📦 Creando batch para {len(files_to_upload)} archivos...")
         batch = await client.create_ingestion_batch(
-            tenant_id=tenant_id, collection_id=collection_id, embedding_mode=args.embedding_mode
+            tenant_id=tenant_id,
+            collection_id=collection_id,
+            collection_key=collection_id,
+            collection_name=collection_id,
+            total_files=len(files_to_upload),
+            auto_seal=False,
+            embedding_mode=args.embedding_mode,
         )
-        batch_id = batch["id"]
+        batch_id = str(batch.get("id") or batch.get("batch_id") or "").strip()
+        if not batch_id:
+            raise RuntimeError(
+                f"create_ingestion_batch no devolvio id/batch_id. Respuesta: {batch}"
+            )
         print(f"✅ Batch creado: {batch_id}")
 
         for f in files_to_upload:

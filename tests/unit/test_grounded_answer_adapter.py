@@ -1,6 +1,6 @@
 import asyncio
 
-from app.agent.http_adapters import GroundedAnswerAdapter
+from app.agent.answer_adapter import GroundedAnswerAdapter
 from app.agent.models import EvidenceItem, RetrievalPlan
 from app.cartridges.models import AgentProfile
 
@@ -58,7 +58,6 @@ def test_grounded_answer_adapter_passes_labeled_context() -> None:
             query="Que exige ISO 9001?",
             scope_label="ISO 9001",
             plan=plan,
-            chunks=chunks,
             chunks=chunks,
             summaries=summaries,
             working_memory={"tool": "result"},

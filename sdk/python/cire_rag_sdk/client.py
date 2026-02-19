@@ -252,10 +252,22 @@ class CireRagClient:
         self,
         tenant_id: Optional[str] = None,
         collection_id: Optional[str] = None,
+        collection_key: Optional[str] = None,
+        total_files: Optional[int] = None,
+        auto_seal: bool = False,
+        collection_name: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         embedding_mode: Optional[str] = None,
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {}
+        key = str(collection_key or collection_id or "").strip()
+        if key:
+            payload["collection_key"] = key
+        if total_files is not None:
+            payload["total_files"] = max(1, int(total_files))
+        payload["auto_seal"] = bool(auto_seal)
+        if collection_name:
+            payload["collection_name"] = collection_name
         if collection_id:
             payload["collection_id"] = collection_id
         if metadata:
@@ -283,13 +295,24 @@ class CireRagClient:
             data = {}
             if metadata:
                 data["metadata"] = metadata if isinstance(metadata, str) else json.dumps(metadata)
-            return self._request(
-                "POST",
-                f"/ingestion/batches/{batch_id}/upload",
-                files=files,
-                data=data,
-                enforce_tenant=True,
-            )
+            try:
+                return self._request(
+                    "POST",
+                    f"/ingestion/batches/{batch_id}/files",
+                    files=files,
+                    data=data,
+                    enforce_tenant=True,
+                )
+            except CireRagApiError as exc:
+                if int(exc.status) not in (404, 405):
+                    raise
+                return self._request(
+                    "POST",
+                    f"/ingestion/batches/{batch_id}/upload",
+                    files=files,
+                    data=data,
+                    enforce_tenant=True,
+                )
 
     def seal_ingestion_batch(self, batch_id: str) -> Dict[str, Any]:
         return self._request("POST", f"/ingestion/batches/{batch_id}/seal", enforce_tenant=True)
@@ -677,10 +700,22 @@ class AsyncCireRagClient:
         self,
         tenant_id: Optional[str] = None,
         collection_id: Optional[str] = None,
+        collection_key: Optional[str] = None,
+        total_files: Optional[int] = None,
+        auto_seal: bool = False,
+        collection_name: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         embedding_mode: Optional[str] = None,
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {}
+        key = str(collection_key or collection_id or "").strip()
+        if key:
+            payload["collection_key"] = key
+        if total_files is not None:
+            payload["total_files"] = max(1, int(total_files))
+        payload["auto_seal"] = bool(auto_seal)
+        if collection_name:
+            payload["collection_name"] = collection_name
         if collection_id:
             payload["collection_id"] = collection_id
         if metadata:
@@ -708,13 +743,24 @@ class AsyncCireRagClient:
         data = {}
         if metadata:
             data["metadata"] = metadata if isinstance(metadata, str) else json.dumps(metadata)
-        return await self._request(
-            "POST",
-            f"/ingestion/batches/{batch_id}/upload",
-            files=files,
-            data=data,
-            enforce_tenant=True,
-        )
+        try:
+            return await self._request(
+                "POST",
+                f"/ingestion/batches/{batch_id}/files",
+                files=files,
+                data=data,
+                enforce_tenant=True,
+            )
+        except CireRagApiError as exc:
+            if int(exc.status) not in (404, 405):
+                raise
+            return await self._request(
+                "POST",
+                f"/ingestion/batches/{batch_id}/upload",
+                files=files,
+                data=data,
+                enforce_tenant=True,
+            )
 
     async def seal_ingestion_batch(self, batch_id: str) -> Dict[str, Any]:
         return await self._request(
