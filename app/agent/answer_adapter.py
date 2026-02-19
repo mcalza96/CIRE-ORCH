@@ -186,6 +186,8 @@ class GroundedAnswerAdapter:
         plan: RetrievalPlan,
         chunks: list[EvidenceItem],
         summaries: list[EvidenceItem],
+        working_memory: dict[str, Any] | None = None,
+        partial_answers: list[dict[str, Any]] | None = None,
         agent_profile: AgentProfile | None = None,
     ) -> AnswerDraft:
         # IMPORTANT: Literal modes are validated against explicit C#/R# markers.
@@ -238,12 +240,20 @@ class GroundedAnswerAdapter:
                     + numbered
                 )
 
+        structured_context_parts = []
+        if working_memory:
+            structured_context_parts.append(f"WORKING_MEMORY:\n{json.dumps(working_memory, indent=2, sort_keys=True, default=str)}")
+        if partial_answers:
+            structured_context_parts.append(f"PARTIAL_ANSWERS:\n{json.dumps(partial_answers, indent=2, sort_keys=True, default=str)}")
+        structured_context = "\n\n".join(structured_context_parts) if structured_context_parts else None
+
         text = await self.service.generate_answer(
             query=query_for_generation,
             context_chunks=labeled,
             agent_profile=agent_profile,
             mode=plan.mode,
             require_literal_evidence=bool(plan.require_literal_evidence),
+            structured_context=structured_context,
             max_chunks=max_ctx,
         )
 

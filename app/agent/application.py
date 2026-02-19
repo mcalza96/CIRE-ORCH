@@ -78,6 +78,8 @@ class AnswerGeneratorPort(Protocol):
         plan: RetrievalPlan,
         chunks: list[EvidenceItem],
         summaries: list[EvidenceItem],
+        working_memory: dict[str, Any] | None = None,
+        partial_answers: list[dict[str, Any]] | None = None,
         agent_profile: AgentProfile | None = None,
     ) -> AnswerDraft: ...
 

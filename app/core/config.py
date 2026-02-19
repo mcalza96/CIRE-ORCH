@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     # Retrieval contract orchestration.
     ORCH_MULTIHOP_FALLBACK: bool = True
     ORCH_SEMANTIC_PLANNER: bool = False
+    ORCH_RETRIEVAL_CONTRACT: str = "advanced"
     ORCH_PLANNER_MAX_QUERIES: int = 3
     ORCH_PLANNER_MODEL: str | None = None
     ORCH_DETERMINISTIC_SUBQUERY_SEMANTIC_TAIL: bool = True

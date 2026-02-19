@@ -63,6 +63,7 @@ def test_grounded_answer_service_uses_profile_templates_and_not_mode_name() -> N
             agent_profile=profile,
             mode="literal_normativa",
             require_literal_evidence=False,
+            structured_context=None,
         )
     )
 

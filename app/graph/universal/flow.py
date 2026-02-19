@@ -66,7 +66,7 @@ class UniversalReasoningOrchestrator:
             return await generator_node(s, orch)
 
         async def _aggregate_subqueries(s: UniversalState) -> dict[str, object]:
-            return await aggregate_subqueries_node(s)
+            return await aggregate_subqueries_node(s, orch)
 
         async def _citation_validate(s: UniversalState) -> dict[str, object]:
             return await citation_validate_node(s, orch)

@@ -24,7 +24,7 @@ def test_extract_retry_signal_prefers_structured_error_codes() -> None:
 def test_effective_execute_timeout_extends_semantic_retrieval_in_advanced_contract(
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr(settings, "ORCH_RETRIEVAL_CONTRACT", "advanced")
+    monkeypatch.setattr(settings, "ORCH_RETRIEVAL_CONTRACT", "advanced", raising=False)
     monkeypatch.setattr(settings, "ORCH_TIMEOUT_EXECUTE_TOOL_MS", 2500)
     monkeypatch.setattr(settings, "ORCH_TIMEOUT_RETRIEVAL_HYBRID_MS", 10000)
     monkeypatch.setattr(settings, "ORCH_TIMEOUT_RETRIEVAL_MULTI_QUERY_MS", 9000)
@@ -40,6 +40,6 @@ def test_effective_execute_timeout_extends_semantic_retrieval_in_advanced_contra
 
 def test_effective_execute_timeout_keeps_base_for_non_semantic_or_legacy(monkeypatch) -> None:
     monkeypatch.setattr(settings, "ORCH_TIMEOUT_EXECUTE_TOOL_MS", 2500)
-    monkeypatch.setattr(settings, "ORCH_RETRIEVAL_CONTRACT", "legacy")
+    monkeypatch.setattr(settings, "ORCH_RETRIEVAL_CONTRACT", "legacy", raising=False)
     assert _effective_execute_tool_timeout_ms("semantic_retrieval") == 2500
     assert _effective_execute_tool_timeout_ms("python_calculator") == 2500

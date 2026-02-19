@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 from typing import Any
 
@@ -64,6 +65,10 @@ def _effective_execute_tool_timeout_ms(tool_name: str) -> int:
     if str(tool_name or "").strip() != "semantic_retrieval":
         return base_timeout_ms
 
+    # Legacy contract does not need extended timeout
+    if getattr(settings, "ORCH_RETRIEVAL_CONTRACT", "advanced") == "legacy":
+        return base_timeout_ms
+
     retrieval_timeout_ms = max(
         int(getattr(settings, "ORCH_TIMEOUT_RETRIEVAL_HYBRID_MS", 25000) or 25000),
         int(getattr(settings, "ORCH_TIMEOUT_RETRIEVAL_MULTI_QUERY_MS", 25000) or 25000),
@@ -121,3 +126,20 @@ def get_adaptive_timeout_ms(
 
     # We return the lesser of the stage default or the actual remaining time
     return max(25, int(min(float(stage_default_ms), remaining_ms)))
+
+
+def _tokenize(text: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-zA-Z0-9áéíóúñÁÉÍÓÚÑ]{3,}", str(text or "").lower())
+        if token
+    }
+
+
+def _keyword_overlap_score(query: str, content: str) -> int:
+    q_tokens = _tokenize(query)
+    if not q_tokens:
+        return 0
+    c_tokens = _tokenize(content)
+    return sum(1 for token in q_tokens if token in c_tokens)
+

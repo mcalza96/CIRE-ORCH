@@ -56,6 +56,7 @@ class GroundedAnswerService:
         agent_profile: AgentProfile | None = None,
         mode: str = "default",
         require_literal_evidence: bool = False,
+        structured_context: str | None = None,
         max_chunks: int = 10,
     ) -> str:
         profile_fallback = (
@@ -70,6 +71,8 @@ class GroundedAnswerService:
             return profile_fallback
 
         context = "\n\n".join(context_chunks[: max(1, max_chunks)]).strip()
+        if structured_context:
+            context = f"{context}\n\n[STRUCTURED_CONTEXT]\n{structured_context}".strip()
         if not self._client:
             return context_chunks[0][:500]
 

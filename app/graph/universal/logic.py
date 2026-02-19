@@ -12,9 +12,24 @@ from app.agent.error_codes import (
     RETRIEVAL_CODE_TIMEOUT,
     RETRIEVAL_CODE_UPSTREAM_UNAVAILABLE,
 )
-from app.agent.models import RetrievalDiagnostics, ToolResult
+from app.agent.models import RetrievalDiagnostics, ToolResult, EvidenceItem, RetrievalPlan
+from app.cartridges.models import AgentProfile
 from app.graph.universal.state import UniversalState
 from app.graph.universal.utils import _non_negative_int
+
+def _query_mode_aggregation_mode(state: UniversalState) -> str:
+    profile = state.get("agent_profile")
+    plan = state.get("retrieval_plan")
+    if not isinstance(profile, AgentProfile) or not isinstance(plan, RetrievalPlan):
+        return ""
+    mode_cfg = profile.query_modes.modes.get(str(plan.mode or "").strip())
+    if mode_cfg is None:
+        return ""
+    policy = getattr(mode_cfg, "decomposition_policy", None)
+    if not isinstance(policy, dict):
+        return ""
+    return str(policy.get("subquery_aggregation_mode") or "").strip().lower()
+
 
 _RETRYABLE_REASONS = {
     RETRIEVAL_CODE_EMPTY_RETRIEVAL,
@@ -90,3 +105,6 @@ def _infer_expression_from_query(query: str) -> str:
 def _count_section_markers(text: str, markers: list[str]) -> int:
     lowered = str(text or "").lower()
     return sum(1 for marker in markers if str(marker or "").strip().lower() in lowered)
+
+
+

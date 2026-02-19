@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import re
 import time
 from typing import Any, cast, Protocol
 
@@ -38,6 +37,7 @@ from app.graph.universal.utils import (
     _append_tool_timing,
     _clip_text,
     _effective_execute_tool_timeout_ms,
+    _keyword_overlap_score,
     _sanitize_payload,
     _timeout_ms_for_stage,
     get_adaptive_timeout_ms,
@@ -46,39 +46,14 @@ from app.graph.universal.logic import (
     _extract_retry_signal_from_retrieval,
     _infer_expression_from_query,
     _is_retryable_reason,
+    _query_mode_aggregation_mode,
+    _query_mode_aggregation_mode,
 )
 
 logger = structlog.get_logger(__name__)
 
 
-def _tokenize(text: str) -> set[str]:
-    return {
-        token
-        for token in re.findall(r"[a-zA-Z0-9áéíóúñÁÉÍÓÚÑ]{3,}", str(text or "").lower())
-        if token
-    }
 
-
-def _keyword_overlap_score(query: str, content: str) -> int:
-    q_tokens = _tokenize(query)
-    if not q_tokens:
-        return 0
-    c_tokens = _tokenize(content)
-    return sum(1 for token in q_tokens if token in c_tokens)
-
-
-def _query_mode_aggregation_mode(state: UniversalState) -> str:
-    profile = state.get("agent_profile")
-    plan = state.get("retrieval_plan")
-    if not isinstance(profile, AgentProfile) or not isinstance(plan, RetrievalPlan):
-        return ""
-    mode_cfg = profile.query_modes.modes.get(str(plan.mode or "").strip())
-    if mode_cfg is None:
-        return ""
-    policy = getattr(mode_cfg, "decomposition_policy", None)
-    if not isinstance(policy, dict):
-        return ""
-    return str(policy.get("subquery_aggregation_mode") or "").strip().lower()
 
 
 class OrchestratorComponents(Protocol):
@@ -206,6 +181,12 @@ async def execute_tool_node(
                     payload.setdefault("previous_tool_output", dict(prev.output))
                 if prev.metadata:
                     payload.setdefault("previous_tool_metadata", dict(prev.metadata))
+        
+        # ── Full Context Piping ──
+        working_memory = dict(state.get("working_memory") or {})
+        if working_memory:
+             payload["working_memory"] = working_memory
+
         if tool_name == "python_calculator" and not payload.get("expression"):
             inferred = _infer_expression_from_query(str(state.get("working_query") or ""))
             if inferred:
@@ -408,7 +389,9 @@ async def reflect_node(state: UniversalState) -> dict[str, object]:
     return updates
 
 
-async def aggregate_subqueries_node(state: UniversalState) -> dict[str, object]:
+async def aggregate_subqueries_node(
+    state: UniversalState, components: OrchestratorComponents | None = None
+) -> dict[str, object]:
     t0 = time.perf_counter()
     enabled_by_settings = bool(getattr(settings, "ORCH_SUBQUERY_GROUPED_MAP_REDUCE_ENABLED", False))
     aggregation_mode = _query_mode_aggregation_mode(state)
@@ -485,8 +468,9 @@ async def aggregate_subqueries_node(state: UniversalState) -> dict[str, object]:
                 reverse=True,
             )
             candidates = ranked[:max_items_per_subquery]
-
+        
         if not candidates:
+            # Empty fallback logic remains same
             partial_answers.append(
                 {
                     "id": sq_id,
@@ -498,21 +482,66 @@ async def aggregate_subqueries_node(state: UniversalState) -> dict[str, object]:
             )
             continue
 
-        snippets = [
-            f"{ev.source}: {_clip_text(ev.content, limit=220)}"
-            for ev in candidates[:2]
-            if str(ev.content or "").strip()
-        ]
+        # Prepare for LLM map-reduce
+        async def _summarize_one(
+            comp: OrchestratorComponents,
+            q: str,
+            ev: list[EvidenceItem],
+            prof: AgentProfile | None,
+        ) -> str:
+            # Create a localized plan for this subquery
+            sub_plan = RetrievalPlan(
+                mode="concisa_y_directa", # Enforce brevity for sub-summaries
+                chunk_k=len(ev),
+                chunk_fetch_k=len(ev),
+                summary_k=0,
+                require_literal_evidence=False,
+            )
+            try:
+                draft = await comp.answer_generator.generate(
+                    query=f"[SUBCONSULTA: {q}]\nResume la respuesta basandote SOLO en los fragmentos proporcionados.",
+                    scope_label="",
+                    plan=sub_plan,
+                    chunks=ev,
+                    summaries=[],
+                    agent_profile=prof,
+                )
+                return draft.text
+            except Exception as e:
+                logger.error("subquery_summarization_failed", error=str(e))
+                return "Error al generar resumen."
+
+        summary_text = "Resumen pendiente"
+        if components and components.answer_generator:
+             try:
+                summary_text = await _summarize_one(components, sq_query, candidates, state.get("agent_profile"))
+             except Exception:
+                # Fallback to clip if LLM fails
+                snippets = [
+                    f"{ev.source}: {_clip_text(ev.content, limit=220)}"
+                    for ev in candidates[:2]
+                    if str(ev.content or "").strip()
+                ]
+                summary_text = " | ".join(snippets) if snippets else "Evidencia recuperada."
+        else:
+             # Fallback if no components provided (should not happen in real flow)
+             snippets = [
+                f"{ev.source}: {_clip_text(ev.content, limit=220)}"
+                for ev in candidates[:2]
+                if str(ev.content or "").strip()
+            ]
+             summary_text = " | ".join(snippets) if snippets else "Evidencia recuperada."
+
         partial_answers.append(
             {
                 "id": sq_id,
                 "query": sq_query,
                 "status": "ok",
                 "evidence_sources": [str(ev.source or "") for ev in candidates],
-                "summary": " | ".join(snippets) if snippets else "Evidencia recuperada.",
+                "summary": summary_text,
             }
         )
-
+            
     return {
         "partial_answers": partial_answers,
         "stage_timings_ms": _append_stage_timing(
@@ -525,129 +554,7 @@ async def aggregate_subqueries_node(state: UniversalState) -> dict[str, object]:
 # ── Working-memory → EvidenceItem converters ──────────────────────────
 
 
-def _format_expectation_coverage(data: dict[str, object]) -> list[str]:
-    """Format expectation_coverage output (preserves legacy R999 behaviour)."""
-    covered = list(data.get("covered") or [])
-    missing = list(data.get("missing") or [])
-    ratio = data.get("coverage_ratio")
-    lines = [
-        "[EXPECTATION_COVERAGE]",
-        f"coverage_ratio={ratio}",
-        f"covered={len(covered)}",
-        f"missing={len(missing)}",
-    ]
-    for row in missing[:6]:
-        if not isinstance(row, dict):
-            continue
-        eid = str(row.get("id") or "expectation")
-        risk = str(row.get("missing_risk") or "").strip()
-        reason = str(row.get("reason") or "").strip()
-        lines.append(f"- missing:{eid} risk={risk} reason={reason}")
-    return lines
 
-
-def _format_logical_comparison(data: dict[str, object]) -> list[str]:
-    """Format logical_comparison output as a markdown comparison table."""
-    lines = ["[LOGICAL_COMPARISON]"]
-    topic = str(data.get("topic") or "").strip()
-    if topic:
-        lines.append(f"topic={topic}")
-    md = str(data.get("comparison_markdown") or "").strip()
-    if md:
-        lines.append(md)
-    else:
-        rows = list(data.get("rows") or [])
-        if rows:
-            lines.append("| Scope | Evidence |")
-            lines.append("|---|---|")
-            for row in rows[:12]:
-                if isinstance(row, dict):
-                    lines.append(f"| {row.get('scope', '')} | {row.get('evidence', '')} |")
-    # LLM-enriched fields
-    llm_analysis = str(data.get("llm_analysis") or "").strip()
-    if llm_analysis:
-        lines.append(f"analysis={llm_analysis}")
-    for key in ("commonalities", "differences", "gaps"):
-        items = data.get(key)
-        if isinstance(items, list) and items:
-            lines.append(f"{key}={', '.join(str(i) for i in items[:6])}")
-    return lines
-
-
-def _format_structural_extraction(data: dict[str, object]) -> list[str]:
-    """Format structural_extraction output as a record listing."""
-    lines = ["[STRUCTURAL_EXTRACTION]"]
-    schema_def = str(data.get("schema_definition") or "").strip()
-    if schema_def:
-        lines.append(f"schema={schema_def}")
-    records = list(data.get("records") or [])
-    lines.append(f"record_count={len(records)}")
-    for rec in records[:20]:
-        if isinstance(rec, dict):
-            label = str(rec.get("label") or "").strip()
-            value = rec.get("value", "")
-            unit = str(rec.get("unit") or "").strip()
-            src = str(rec.get("source") or "").strip()
-            suffix = f" [{src}]" if src else ""
-            lines.append(f"- {label}: {value} {unit}{suffix}")
-    # LLM-enriched: tables
-    tables = data.get("tables")
-    if isinstance(tables, list) and tables:
-        lines.append(f"tables_count={len(tables)}")
-        for tbl in tables[:5]:
-            if isinstance(tbl, dict):
-                title = str(tbl.get("title") or "").strip()
-                lines.append(f"table: {title}")
-    # LLM-enriched: key-value pairs
-    kvs = data.get("key_values")
-    if isinstance(kvs, list) and kvs:
-        for kv in kvs[:10]:
-            if isinstance(kv, dict):
-                lines.append(f"kv: {kv.get('key', '')}={kv.get('value', '')}")
-    return lines
-
-
-def _format_generic_tool(tool_name: str, data: dict[str, object]) -> list[str]:
-    """Fallback formatter for unknown tools."""
-    lines = [f"[TOOL_{tool_name.upper()}]"]
-    for key, value in list(data.items())[:10]:
-        text = str(value or "")
-        if len(text) > 200:
-            text = text[:200] + "..."
-        lines.append(f"{key}={text}")
-    return lines
-
-
-_TOOL_FORMATTERS: dict[str, object] = {
-    "expectation_coverage": _format_expectation_coverage,
-    "logical_comparison": _format_logical_comparison,
-    "structural_extraction": _format_structural_extraction,
-}
-
-
-def _working_memory_to_evidence(
-    working_memory: dict[str, object],
-) -> list[EvidenceItem]:
-    """Convert all working_memory tool outputs into synthetic EvidenceItems."""
-    items: list[EvidenceItem] = []
-    for tool_name, tool_output in working_memory.items():
-        if not isinstance(tool_output, dict):
-            continue
-        formatter = _TOOL_FORMATTERS.get(tool_name, _format_generic_tool)
-        if formatter is _format_generic_tool:
-            lines = _format_generic_tool(tool_name, tool_output)
-        else:
-            lines = formatter(tool_output)  # type: ignore[operator]
-        if lines:
-            items.append(
-                EvidenceItem(
-                    source=f"TOOL_{tool_name.upper()}",
-                    content="\n".join(lines),
-                    score=1.0,
-                    metadata={"synthetic": True, "tool": tool_name},
-                )
-            )
-    return items
 
 
 async def generator_node(
@@ -702,10 +609,8 @@ async def generator_node(
         if synthesized_summaries:
             summaries = [*synthesized_summaries, *summaries]
 
-    working_memory = dict(state.get("working_memory") or {})
-    synthetic_evidence = _working_memory_to_evidence(working_memory)
-    if synthetic_evidence:
-        summaries = [*summaries, *synthetic_evidence]
+    # [MODIFIED] Removed _working_memory_to_evidence conversion.
+    # working_memory is now passed directly to the generator as structured context.
 
     try:
         generator_timeout_ms = get_adaptive_timeout_ms(
@@ -720,6 +625,8 @@ async def generator_node(
                 plan=plan,
                 chunks=chunks,
                 summaries=summaries,
+                working_memory=working_memory,
+                partial_answers=partial_answers_list,
                 agent_profile=state.get("agent_profile"),
             ),
             timeout=generator_timeout_ms / 1000.0,

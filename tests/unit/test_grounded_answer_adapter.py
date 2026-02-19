@@ -16,6 +16,7 @@ class _FakeGroundedService:
         *, 
         mode: str, 
         require_literal_evidence: bool, 
+        structured_context: str | None = None,
         max_chunks: int = 10,
         agent_profile: AgentProfile | None = None
     ) -> str:  # type: ignore[override]
@@ -27,6 +28,7 @@ class _FakeGroundedService:
                 "require_literal_evidence": require_literal_evidence,
                 "max_chunks": max_chunks,
                 "agent_profile": agent_profile,
+                "structured_context": structured_context,
             }
         )
         # Return a text that satisfies the validator expectations.
@@ -57,7 +59,10 @@ def test_grounded_answer_adapter_passes_labeled_context() -> None:
             scope_label="ISO 9001",
             plan=plan,
             chunks=chunks,
+            chunks=chunks,
             summaries=summaries,
+            working_memory={"tool": "result"},
+            partial_answers=[],
             agent_profile=AgentProfile(profile_id="test-profile")
         )
     )
@@ -73,3 +78,6 @@ def test_grounded_answer_adapter_passes_labeled_context() -> None:
     assert "[R1]" in context
     assert "[C1]" in context
     assert "[C2]" in context
+    
+    assert call["structured_context"] is not None
+    assert "WORKING_MEMORY" in call["structured_context"]
