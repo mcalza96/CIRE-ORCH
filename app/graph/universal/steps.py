@@ -22,6 +22,8 @@ from app.agent.tools import AgentTool, ToolRuntimeContext, get_tool, resolve_all
 from app.cartridges.models import AgentProfile
 from app.core.config import settings
 from app.graph.universal.planning import build_universal_plan
+from app.graph.universal.interaction import decide_interaction
+from app.graph.universal.clarification_llm import build_clarification_with_llm
 from app.graph.universal.state import (
     ANSWER_PREVIEW_LIMIT,
     DEFAULT_MAX_REFLECTIONS,
@@ -46,7 +48,6 @@ from app.graph.universal.logic import (
     _extract_retry_signal_from_retrieval,
     _infer_expression_from_query,
     _is_retryable_reason,
-    _query_mode_aggregation_mode,
     _query_mode_aggregation_mode,
 )
 
@@ -111,6 +112,16 @@ async def planner_node(
         complexity=reasoning_plan.complexity,
     )
     existing_steps = list(state.get("reasoning_steps") or [])
+    prior_interruptions = int(state.get("interaction_interruptions") or 0)
+    interaction = decide_interaction(
+        query=query,
+        intent=intent,
+        retrieval_plan=retrieval_plan,
+        reasoning_plan=reasoning_plan,
+        profile=profile if isinstance(profile, AgentProfile) else None,
+        prior_interruptions=prior_interruptions,
+    )
+
     updates: dict[str, object] = {
         "intent": intent,
         "retrieval_plan": retrieval_plan,
@@ -121,7 +132,81 @@ async def planner_node(
         "tool_cursor": 0,
         "reasoning_steps": [*existing_steps, *trace_steps],
         "next_action": ("execute" if reasoning_plan.steps else "generate"),
+        "interaction_level": interaction.level,
+        "interaction_metrics": dict(interaction.metrics),
+        "interaction_interruptions": prior_interruptions,
     }
+
+    if interaction.needs_interrupt:
+        interrupt_question = interaction.question
+        interrupt_options = list(interaction.options)
+        interaction_metrics = dict(interaction.metrics)
+        interaction_metrics.setdefault("clarification_model_used", "heuristic")
+        interaction_metrics.setdefault("clarification_confidence", 0.0)
+        interaction_metrics.setdefault("slots_filled", 0)
+        interaction_metrics.setdefault("loop_prevented", False)
+        interaction_metrics.setdefault("clarification_expected_answer", "")
+
+        if interaction.kind == "clarification":
+            llm_payload = None
+            # Do not override deterministic guided reprompts (anti-loop path).
+            if not bool(interaction.metrics.get("guided_reprompt", False)):
+                llm_payload = await build_clarification_with_llm(
+                    query=query,
+                    current_question=interaction.question,
+                    current_options=interaction.options,
+                    missing_slots=list(interaction.missing_slots),
+                    scope_candidates=interaction.scope_candidates,
+                    interaction_metrics=interaction_metrics,
+                )
+            if isinstance(llm_payload, dict):
+                llm_question = str(llm_payload.get("question") or "").strip()
+                llm_options_raw = llm_payload.get("options")
+                llm_options = (
+                    [str(opt).strip() for opt in llm_options_raw if str(opt).strip()]
+                    if isinstance(llm_options_raw, list)
+                    else []
+                )
+                if llm_question:
+                    interrupt_question = llm_question
+                if llm_options:
+                    interrupt_options = llm_options
+                interaction_metrics["clarification_expected_answer"] = str(
+                    llm_payload.get("expected_answer") or ""
+                ).strip()
+                interaction_metrics["clarification_model_used"] = str(
+                    llm_payload.get("model") or "llm"
+                )
+                interaction_metrics["clarification_confidence"] = float(
+                    llm_payload.get("confidence") or 0.0
+                )
+        updates["next_action"] = "interrupt"
+        updates["stop_reason"] = f"awaiting_{interaction.kind}"
+        updates["interaction_metrics"] = interaction_metrics
+        updates["clarification_request"] = {
+            "question": interrupt_question,
+            "options": interrupt_options,
+            "kind": interaction.kind,
+            "level": interaction.level,
+            "missing_slots": list(interaction.missing_slots),
+            "expected_answer": str(interaction_metrics.get("clarification_expected_answer") or ""),
+        }
+        updates["interaction_interruptions"] = prior_interruptions + 1
+        updates["reasoning_steps"] = [
+            *existing_steps,
+            *trace_steps,
+            ReasoningStep(
+                index=len(existing_steps) + len(trace_steps) + 1,
+                type="plan",
+                description="interaction_interrupt",
+                output={
+                    "level": interaction.level,
+                    "kind": interaction.kind,
+                    "metrics": dict(interaction.metrics),
+                },
+            ),
+        ]
+
     updates["stage_timings_ms"] = _append_stage_timing(
         state, stage="planner", elapsed_ms=(time.perf_counter() - t0) * 1000.0
     )
@@ -707,7 +792,10 @@ async def citation_validate_node(
 
 
 def route_after_planner(state: UniversalState) -> str:
-    return "execute" if str(state.get("next_action") or "") == "execute" else "generate"
+    next_action = str(state.get("next_action") or "")
+    if next_action == "interrupt":
+        return "interrupt"
+    return "execute" if next_action == "execute" else "generate"
 
 
 def route_after_reflect(state: UniversalState) -> str:

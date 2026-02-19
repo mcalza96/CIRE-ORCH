@@ -380,6 +380,7 @@ async def answer_with_orchestrator(
         )
         validation_accepted = bool(result.validation.accepted)
         clarification_present = bool(result.clarification)
+        interaction_metrics = dict((result.retrieval.trace or {}).get("interaction_metrics") or {})
         emit_event(
             logger,
             "orchestrator_answer_summary",
@@ -395,6 +396,10 @@ async def answer_with_orchestrator(
             citation_missing_standard_count=citation_quality.get("missing_standard_count"),
             citation_missing_clause_count=citation_quality.get("missing_clause_count"),
             hypothesis_markers=citation_quality.get("hypothesis_markers"),
+            clarification_model_used=interaction_metrics.get("clarification_model_used"),
+            clarification_confidence=interaction_metrics.get("clarification_confidence"),
+            slots_filled=interaction_metrics.get("slots_filled"),
+            loop_prevented=interaction_metrics.get("loop_prevented"),
             agent_profile_id=agent_profile.profile_id,
             agent_profile_version=agent_profile.version,
             agent_profile_source=resolved_profile.resolution.source,
@@ -455,11 +460,26 @@ async def answer_with_orchestrator(
                 "partial": bool(result.retrieval.partial),
                 "trace": dict(result.retrieval.trace or {}),
             },
+            "interaction": interaction_metrics,
             "scope_validation": dict(result.retrieval.scope_validation or {}),
             "clarification": (
                 {
                     "question": result.clarification.question,
                     "options": list(result.clarification.options),
+                    "kind": str(result.clarification.kind or "clarification"),
+                    "level": str(result.clarification.level or "L2"),
+                    "missing_slots": list(
+                        ((result.retrieval.trace or {}).get("clarification_request") or {}).get(
+                            "missing_slots"
+                        )
+                        or []
+                    ),
+                    "expected_answer": str(
+                        ((result.retrieval.trace or {}).get("clarification_request") or {}).get(
+                            "expected_answer"
+                        )
+                        or ""
+                    ),
                 }
                 if result.clarification
                 else None
@@ -601,6 +621,9 @@ async def answer_with_orchestrator_stream(
                 evidence=result.answer.evidence,
                 profile=agent_profile,
             )
+            interaction_metrics = dict(
+                (result.retrieval.trace or {}).get("interaction_metrics") or {}
+            )
             emit_event(
                 logger,
                 "orchestrator_answer_stream_summary",
@@ -611,13 +634,18 @@ async def answer_with_orchestrator_stream(
                 context_chunks_count=len(context_chunks),
                 citations_count=len(citations),
                 validation_accepted=bool(result.validation.accepted),
+                clarification_present=bool(result.clarification),
                 citation_structured_ratio=citation_quality.get("structured_ratio"),
                 citation_missing_standard_count=citation_quality.get("missing_standard_count"),
                 citation_missing_clause_count=citation_quality.get("missing_clause_count"),
+                clarification_model_used=interaction_metrics.get("clarification_model_used"),
+                clarification_confidence=interaction_metrics.get("clarification_confidence"),
+                slots_filled=interaction_metrics.get("slots_filled"),
+                loop_prevented=interaction_metrics.get("loop_prevented"),
                 duration_ms=round((time.perf_counter() - started) * 1000.0, 2),
             )
             payload = {
-                "type": "final_answer",
+                "type": "clarification_required" if result.clarification else "final_answer",
                 "elapsed_ms": round((time.perf_counter() - started) * 1000.0, 2),
                 "answer": result.answer.text,
                 "mode": result.plan.mode,
@@ -637,6 +665,29 @@ async def answer_with_orchestrator_stream(
                     "accepted": result.validation.accepted,
                     "issues": list(result.validation.issues),
                 },
+                "interaction": interaction_metrics,
+                "clarification": (
+                    {
+                        "question": result.clarification.question,
+                        "options": list(result.clarification.options),
+                        "kind": str(result.clarification.kind or "clarification"),
+                        "level": str(result.clarification.level or "L2"),
+                        "missing_slots": list(
+                            ((result.retrieval.trace or {}).get("clarification_request") or {}).get(
+                                "missing_slots"
+                            )
+                            or []
+                        ),
+                        "expected_answer": str(
+                            ((result.retrieval.trace or {}).get("clarification_request") or {}).get(
+                                "expected_answer"
+                            )
+                            or ""
+                        ),
+                    }
+                    if result.clarification
+                    else None
+                ),
             }
             yield _sse("result", payload)
             yield _sse("done", {"ok": True})

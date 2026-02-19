@@ -50,6 +50,8 @@ class ValidationResult:
 class ClarificationRequest:
     question: str
     options: tuple[str, ...] = ()
+    kind: str = "clarification"
+    level: str = "L2"
 
 
 @dataclass(frozen=True)

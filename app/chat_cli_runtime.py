@@ -274,27 +274,37 @@ async def main(argv: list[str] | None = None) -> None:
                         on_status=lambda st: _print_thinking_status(st, seen_phases),
                     )
                 latency_ms = (time.perf_counter() - t0) * 1000.0
-                renderers.print_answer(result)
-                last_result = result if isinstance(result, dict) else {}
-                last_query = effective_query
-                if args.obs:
-                    renderers.print_obs_answer(result, latency_ms)
-
                 clarification = (
                     result.get("clarification")
                     if isinstance(result.get("clarification"), dict)
                     else None
                 )
+                clarification_query_base = effective_query
+                if not clarification:
+                    renderers.print_answer(result)
+                    last_result = result if isinstance(result, dict) else {}
+                    last_query = effective_query
+                    if args.obs:
+                        renderers.print_obs_answer(result, latency_ms)
+
                 rounds = 0
                 while clarification and rounds < 3:
                     question = str(clarification.get("question") or "").strip()
+                    clar_kind = str(clarification.get("kind") or "clarification").strip()
+                    clar_level = str(clarification.get("level") or "L2").strip()
+                    missing_slots = (
+                        clarification.get("missing_slots")
+                        if isinstance(clarification.get("missing_slots"), list)
+                        else []
+                    )
+                    expected_answer = str(clarification.get("expected_answer") or "").strip()
                     options = (
                         clarification.get("options")
                         if isinstance(clarification.get("options"), list)
                         else []
                     )
                     if question:
-                        print("🧠 Clarificacion requerida: " + question)
+                        print(f"🧠 {clar_level}/{clar_kind}: " + question)
                     reply = ""
                     if options:
                         print("🧩 Opciones:")
@@ -311,32 +321,72 @@ async def main(argv: list[str] | None = None) -> None:
                                 selected = int(selected_raw)
                                 if 1 <= selected <= len(options):
                                     reply = str(options[selected - 1])
+                                    if reply.strip().lower() == "comparar multiples":
+                                        explicit_scopes = cli_utils.prompt(
+                                            "📝 Indica alcances exactos (ej: ISO 9001, ISO 14001): "
+                                        )
+                                        if explicit_scopes:
+                                            reply = explicit_scopes
                                     break
                             print("⚠️ Opción inválida. Ingresa el número de una alternativa.")
                     else:
                         reply = cli_utils.prompt("📝 Aclaracion > ")
+                    if (
+                        "scope" in [str(slot).strip().lower() for slot in missing_slots]
+                        and reply
+                        and not cli_utils.looks_like_scope_answer(reply)
+                    ):
+                        hint = (
+                            expected_answer
+                            or "Si quieres, confirma con 'si' o indica normas exactas."
+                        )
+                        print(f"ℹ️ Tomo tu respuesta como criterio de comparacion. {hint}")
+                        proposed_scopes = cli_utils.propose_scope_candidates(
+                            clarification_query_base,
+                            reply,
+                        )
+                        if proposed_scopes:
+                            print("💡 Propuesta de alcances: " + ", ".join(proposed_scopes))
+                            confirm = cli_utils.prompt("📝 ¿Confirmas esta propuesta? [s/N]: ")
+                            if confirm.strip().lower() in {"s", "si", "sí", "y", "yes"}:
+                                reply = ", ".join(proposed_scopes)
+                            else:
+                                manual = cli_utils.prompt(
+                                    "📝 Indica alcances exactos separados por coma: "
+                                )
+                                if manual:
+                                    reply = manual
                     if not reply:
                         break
-                    clarified_query = cli_utils.rewrite_query_with_clarification(query, reply)
+                    clarified_query = cli_utils.rewrite_query_with_clarification(
+                        clarification_query_base,
+                        reply,
+                        clarification_kind=clar_kind,
+                    )
+                    clarification_query_base = cli_utils.apply_mode_override(
+                        clarified_query,
+                        forced_mode,
+                    )
                     result = await cli_api.post_answer(
                         client=client,
                         orchestrator_url=args.orchestrator_url,
                         tenant_context=tenant_context,
-                        query=cli_utils.apply_mode_override(clarified_query, forced_mode),
+                        query=clarification_query_base,
                         collection_id=collection_id,
                         agent_profile_id=agent_profile_id,
                         access_token=access_token,
                     )
-                    renderers.print_answer(result)
-                    last_result = result if isinstance(result, dict) else {}
-                    last_query = cli_utils.apply_mode_override(clarified_query, forced_mode)
-                    if args.obs:
-                        renderers.print_obs_answer(result, 0.0)
                     clarification = (
                         result.get("clarification")
                         if isinstance(result.get("clarification"), dict)
                         else None
                     )
+                    if clarification is None:
+                        renderers.print_answer(result)
+                        last_result = result if isinstance(result, dict) else {}
+                        last_query = clarification_query_base
+                        if args.obs:
+                            renderers.print_obs_answer(result, 0.0)
                     rounds += 1
             except TenantSelectionRequiredError as exc:
                 print(f"❌ {exc}")

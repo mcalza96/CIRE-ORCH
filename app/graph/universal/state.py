@@ -59,3 +59,7 @@ class UniversalState(TypedDict):
     stage_timings_ms: NotRequired[dict[str, float]]
     tool_timings_ms: NotRequired[dict[str, float]]
     flow_start_pc: NotRequired[float]
+    interaction_level: NotRequired[str]
+    interaction_metrics: NotRequired[dict[str, Any]]
+    interaction_interruptions: NotRequired[int]
+    clarification_request: NotRequired[dict[str, Any]]

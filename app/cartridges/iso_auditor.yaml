@@ -138,6 +138,41 @@ router:
     - "\\b\\d+(?:\\.\\d+)+\\b"
     - "\\bcl(?:a|á)usula\\s*\\d+(?:\\.\\d+)+\\b"
 
+interaction_policy:
+  enabled: true
+  max_interruptions_per_turn: 1
+  approval_timeout_s: 25
+  fallback_on_timeout: execute_conservative
+  thresholds:
+    l2_ambiguity: 0.30
+    l3_subqueries: 6
+    l3_latency_s: 15
+    l3_cost_tokens: 12000
+    low_coverage: 0.55
+  mode_overrides:
+    explanatory_audit:
+      require_plan_approval: false
+      risk_level: medium
+      required_slots: [scope]
+    cross_standard_analysis:
+      require_plan_approval: true
+      risk_level: high
+      required_slots: [scope, objective]
+    gap_analysis:
+      require_plan_approval: true
+      risk_level: high
+      required_slots: [scope, objective]
+
+scope_resolution:
+  canonical_scopes: [ISO 9001, ISO 14001, ISO 45001]
+  aliases:
+    ISO 9001: ["9001", iso9001, "iso 90001", sgc, gestion de la calidad, calidad]
+    ISO 14001: ["14001", iso14001, sga, ambiental, gestion ambiental]
+    ISO 45001: ["45001", iso45001, sst, seguridad y salud, salud ocupacional]
+  fuzzy_enabled: true
+  min_confidence_autoresolve: 0.85
+  min_confidence_clarify: 0.60
+
 query_modes:
   default_mode: explanatory_audit
   modes:

@@ -204,6 +204,112 @@ def _looks_like_scope_label(value: str) -> bool:
     return bool(compact.isupper() and len(compact) <= 12)
 
 
+def _edit_distance(a: str, b: str) -> int:
+    left = str(a or "")
+    right = str(b or "")
+    if left == right:
+        return 0
+    if not left:
+        return len(right)
+    if not right:
+        return len(left)
+    prev = list(range(len(right) + 1))
+    for i, ch_left in enumerate(left, start=1):
+        curr = [i]
+        for j, ch_right in enumerate(right, start=1):
+            cost = 0 if ch_left == ch_right else 1
+            curr.append(
+                min(
+                    prev[j] + 1,
+                    curr[j - 1] + 1,
+                    prev[j - 1] + cost,
+                )
+            )
+        prev = curr
+    return prev[-1]
+
+
+def _canonical_scope_value(raw: str) -> str:
+    value = str(raw or "").strip()
+    if not value:
+        return ""
+    return re.sub(r"\s+", " ", value).strip().upper()
+
+
+def _scope_catalog(profile: AgentProfile | None) -> dict[str, set[str]]:
+    catalog: dict[str, set[str]] = {}
+
+    def _add(canonical: str, alias: str) -> None:
+        can = _canonical_scope_value(canonical)
+        ali = str(alias or "").strip().lower()
+        if not can or not ali:
+            return
+        bucket = catalog.setdefault(can, set())
+        bucket.add(ali)
+
+    if profile is not None:
+        for scope in profile.scope_resolution.canonical_scopes:
+            _add(scope, scope)
+        for canonical, aliases in profile.scope_resolution.aliases.items():
+            _add(canonical, canonical)
+            for alias in aliases:
+                _add(canonical, alias)
+        for scope, hints in profile.router.scope_hints.items():
+            _add(scope, scope)
+            for hint in hints:
+                _add(scope, hint)
+
+    return catalog
+
+
+def _extract_digit_candidates(text: str) -> list[str]:
+    candidates: list[str] = []
+    for prefix, digits in re.findall(
+        r"\b([A-Za-z]{2,12})\s*[-:_]?\s*(\d{2,6})\b",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        candidates.append(f"{prefix} {digits}")
+        candidates.append(str(digits))
+    for compact in re.findall(r"\b[A-Za-z]{2,12}[-_]?\d{2,6}\b", text):
+        candidates.append(str(compact))
+    return candidates
+
+
+def _best_scope_from_token(
+    token: str,
+    catalog: dict[str, set[str]],
+    fuzzy_enabled: bool,
+) -> tuple[str, float] | None:
+    text = str(token or "").strip().lower()
+    if not text:
+        return None
+    best_scope = ""
+    best_score = 0.0
+    for canonical, aliases in catalog.items():
+        alias_set = set(aliases)
+        alias_set.add(canonical.lower())
+        if text in alias_set:
+            return canonical, 1.0
+        if not fuzzy_enabled:
+            continue
+        local_best = 0.0
+        for alias in alias_set:
+            if not alias:
+                continue
+            dist = _edit_distance(text, alias)
+            max_len = max(len(text), len(alias), 1)
+            score = 1.0 - (dist / max_len)
+            if score > local_best:
+                local_best = score
+        if local_best > best_score:
+            best_scope = canonical
+            best_score = local_best
+    if best_scope:
+        return best_scope, max(0.0, min(1.0, best_score))
+    return None
+
+
 def extract_requested_scopes(query: str, profile: AgentProfile | None = None) -> tuple[str, ...]:
     """Extract standard names/codes from query using profile patterns or generic fallback."""
     text = (query or "").strip()
@@ -217,6 +323,22 @@ def extract_requested_scopes(query: str, profile: AgentProfile | None = None) ->
             return
         found.add(value)
         ordered.append(value)
+
+    marker = re.search(r"__requested_scopes__=\[([^\]]+)\]", text, flags=re.IGNORECASE)
+    if marker:
+        raw_list = str(marker.group(1) or "")
+        for item in re.split(r"[|,;]", raw_list):
+            candidate = _canonical_scope_value(item)
+            if candidate:
+                _add_scope(candidate)
+    else:
+        legacy_marker = re.search(r"__requested_scopes__=([^\s]+)", text, flags=re.IGNORECASE)
+        if legacy_marker:
+            legacy_raw = str(legacy_marker.group(1) or "")
+            for item in re.split(r"[|,;]", legacy_raw):
+                candidate = _canonical_scope_value(item)
+                if candidate:
+                    _add_scope(candidate)
 
     patterns = profile.router.scope_patterns if profile and profile.router.scope_patterns else []
 
@@ -248,9 +370,37 @@ def extract_requested_scopes(query: str, profile: AgentProfile | None = None) ->
             if any(h.lower() in lower_text for h in hints) and scope_label not in found:
                 _add_scope(scope_label.strip())
 
-    # Generic extraction for ISO-like references in natural language queries.
-    for digits in re.findall(r"\biso\s*[-:]?\s*(\d{4,5})\b", text, flags=re.IGNORECASE):
-        _add_scope(f"ISO {digits}")
+    scope_catalog = _scope_catalog(profile)
+    fuzzy_enabled = bool(profile.scope_resolution.fuzzy_enabled) if profile is not None else True
+    min_autoresolve = (
+        float(profile.scope_resolution.min_confidence_autoresolve) if profile is not None else 0.85
+    )
+    min_clarify = (
+        float(profile.scope_resolution.min_confidence_clarify) if profile is not None else 0.6
+    )
+
+    # Generic extraction from numeric mentions and aliases, with typo tolerance.
+    token_candidates: list[str] = []
+    token_candidates.extend(_extract_digit_candidates(text))
+    token_candidates.extend(re.findall(r"\b[a-zA-Z][a-zA-Z0-9_\-]{2,}\b", text))
+    token_candidates.extend(re.findall(r"\b[\w\-]{3,}\b", text))
+
+    for token in token_candidates:
+        if not scope_catalog:
+            fallback = _canonical_scope_value(token)
+            if re.search(r"\d", fallback) and re.search(r"[A-Z]", fallback):
+                _add_scope(fallback)
+            elif re.fullmatch(r"\d{3,6}", fallback):
+                _add_scope(fallback)
+            continue
+        match = _best_scope_from_token(token, scope_catalog, fuzzy_enabled=fuzzy_enabled)
+        if not match:
+            continue
+        scope, score = match
+        if score >= min_autoresolve:
+            _add_scope(scope)
+        elif score >= min_clarify and scope not in found:
+            _add_scope(scope)
 
     return tuple(ordered)
 

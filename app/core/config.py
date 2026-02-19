@@ -123,6 +123,10 @@ class Settings(BaseSettings):
     ORCH_MODE_CLASSIFIER_V2: bool = True
     ORCH_MODE_ADVISOR_ENABLED: bool = False
     ORCH_MODE_ADVISOR_MODEL: str | None = None
+    ORCH_CLARIFICATION_LLM_ENABLED: bool = True
+    ORCH_CLARIFICATION_MODEL: str | None = None
+    ORCH_CLARIFICATION_TIMEOUT_S: float = 2.0
+    ORCH_CLARIFICATION_MAX_OPTIONS: int = 4
     ORCH_MODE_LOW_CONFIDENCE_THRESHOLD: float = 0.55
 
     # Level-4-ish internal retries driven by classifier + validation.

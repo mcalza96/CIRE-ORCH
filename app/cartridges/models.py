@@ -56,6 +56,37 @@ class QueryModesPolicy(BaseModel):
     intent_rules: list[IntentRule] = Field(default_factory=list)
 
 
+class InteractionThresholds(BaseModel):
+    l2_ambiguity: float = Field(default=0.35, ge=0.0, le=1.0)
+    l3_subqueries: int = Field(default=6, ge=1, le=24)
+    l3_latency_s: float = Field(default=15.0, ge=1.0, le=120.0)
+    l3_cost_tokens: int = Field(default=12000, ge=500, le=200000)
+    low_coverage: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class ModeInteractionPolicy(BaseModel):
+    require_plan_approval: bool = False
+    risk_level: Literal["low", "medium", "high"] = "low"
+    required_slots: list[str] = Field(default_factory=list)
+
+
+class InteractionPolicy(BaseModel):
+    enabled: bool = False
+    max_interruptions_per_turn: int = Field(default=1, ge=0, le=3)
+    approval_timeout_s: int = Field(default=20, ge=5, le=180)
+    fallback_on_timeout: Literal["execute_conservative", "proceed"] = "execute_conservative"
+    thresholds: InteractionThresholds = Field(default_factory=InteractionThresholds)
+    mode_overrides: dict[str, ModeInteractionPolicy] = Field(default_factory=dict)
+
+
+class ScopeResolutionPolicy(BaseModel):
+    canonical_scopes: list[str] = Field(default_factory=list)
+    aliases: dict[str, list[str]] = Field(default_factory=dict)
+    fuzzy_enabled: bool = True
+    min_confidence_autoresolve: float = Field(default=0.85, ge=0.0, le=1.0)
+    min_confidence_clarify: float = Field(default=0.6, ge=0.0, le=1.0)
+
+
 class RetrievalModeConfig(BaseModel):
     chunk_k: int = Field(ge=0, le=120)
     chunk_fetch_k: int = Field(ge=0, le=500)
@@ -225,6 +256,8 @@ class AgentProfile(BaseModel):
 
     router: RouterHeuristics = Field(default_factory=RouterHeuristics)
     query_modes: QueryModesPolicy = Field(default_factory=QueryModesPolicy)
+    interaction_policy: InteractionPolicy = Field(default_factory=InteractionPolicy)
+    scope_resolution: ScopeResolutionPolicy = Field(default_factory=ScopeResolutionPolicy)
     retrieval: RetrievalPolicy = Field(default_factory=RetrievalPolicy)
     validation: ValidationPolicy = Field(default_factory=ValidationPolicy)
     synthesis: SynthesisPolicy = Field(default_factory=SynthesisPolicy)
@@ -242,6 +275,10 @@ RouterHeuristics.model_rebuild()
 IntentRule.model_rebuild()
 QueryModeConfig.model_rebuild()
 QueryModesPolicy.model_rebuild()
+InteractionThresholds.model_rebuild()
+ModeInteractionPolicy.model_rebuild()
+InteractionPolicy.model_rebuild()
+ScopeResolutionPolicy.model_rebuild()
 SynthesisPolicy.model_rebuild()
 CapabilitiesPolicy.model_rebuild()
 ReasoningBudget.model_rebuild()

@@ -83,7 +83,7 @@ class UniversalReasoningOrchestrator:
         graph.add_conditional_edges(
             "planner",
             route_after_planner,
-            {"execute": "execute_tool", "generate": "aggregate_subqueries"},
+            {"execute": "execute_tool", "generate": "aggregate_subqueries", "interrupt": END},
         )
         graph.add_edge("execute_tool", "reflect")
         graph.add_conditional_edges(
@@ -140,6 +140,7 @@ class UniversalReasoningOrchestrator:
             "retrieved_documents": [],
             "subquery_groups": [],
             "partial_answers": [],
+            "interaction_interruptions": 0,
             "flow_start_pc": time.perf_counter(),
         }
         total_timeout_ms = max(200, int(getattr(settings, "ORCH_TIMEOUT_TOTAL_MS", 60000) or 60000))
@@ -165,6 +166,7 @@ class UniversalReasoningOrchestrator:
         answer = final_state.get("generation")
         validation = final_state.get("validation")
         retrieval = final_state.get("retrieval")
+        clarification_raw = final_state.get("clarification_request")
         if not isinstance(retrieval, RetrievalDiagnostics):
             retrieval = RetrievalDiagnostics(
                 contract="advanced",
@@ -175,11 +177,19 @@ class UniversalReasoningOrchestrator:
 
         trace = dict(retrieval.trace or {})
         reasoning_trace = build_reasoning_trace(cast(UniversalState, final_state))
+        interaction_metrics = dict(final_state.get("interaction_metrics") or {})
+        interaction_level = str(final_state.get("interaction_level") or "")
         trace_timings = dict(trace.get("timings_ms") or {})
         for key, value in dict(stage_timings).items():
             trace_timings[f"universal_{key}"] = value
         trace["timings_ms"] = trace_timings
         trace["reasoning_trace"] = reasoning_trace
+        if interaction_metrics:
+            trace["interaction_metrics"] = interaction_metrics
+        if interaction_level:
+            trace["interaction_level"] = interaction_level
+        if isinstance(clarification_raw, dict):
+            trace["clarification_request"] = dict(clarification_raw)
         retrieval = RetrievalDiagnostics(
             contract=retrieval.contract,
             strategy="langgraph_universal_flow",
@@ -203,6 +213,25 @@ class UniversalReasoningOrchestrator:
             else:
                 validation = ValidationResult(accepted=False, issues=["missing_retrieval_plan"])
 
+        clarification_obj = None
+        if isinstance(clarification_raw, dict):
+            from app.agent.models import ClarificationRequest
+
+            question = str(clarification_raw.get("question") or "").strip()
+            options_raw = clarification_raw.get("options")
+            options = (
+                tuple(str(item).strip() for item in options_raw if str(item).strip())
+                if isinstance(options_raw, list)
+                else ()
+            )
+            if question:
+                clarification_obj = ClarificationRequest(
+                    question=question,
+                    options=options,
+                    kind=str(clarification_raw.get("kind") or "clarification"),
+                    level=str(clarification_raw.get("level") or "L2"),
+                )
+
         if not isinstance(retrieval_plan, RetrievalPlan):
             retrieval_plan = RetrievalPlan(
                 mode=getattr(answer, "mode", "explicativa"),
@@ -217,7 +246,7 @@ class UniversalReasoningOrchestrator:
             answer=answer,
             validation=validation,
             retrieval=retrieval,
-            clarification=None,
+            clarification=clarification_obj,
             reasoning_trace=reasoning_trace,
             engine="universal_flow",
         )
