@@ -25,7 +25,8 @@ from app.agent.models import (
 from app.agent.policies import classify_intent
 from app.agent.tools import ToolRuntimeContext, create_default_tools
 from app.core.config import settings
-from app.graph.universal.nodes import (
+from app.graph.universal.steps import (
+    aggregate_subqueries_node,
     citation_validate_node,
     execute_tool_node,
     generator_node,
@@ -64,6 +65,9 @@ class UniversalReasoningOrchestrator:
         async def _generator(s: UniversalState) -> dict[str, object]:
             return await generator_node(s, orch)
 
+        async def _aggregate_subqueries(s: UniversalState) -> dict[str, object]:
+            return await aggregate_subqueries_node(s)
+
         async def _citation_validate(s: UniversalState) -> dict[str, object]:
             return await citation_validate_node(s, orch)
 
@@ -71,6 +75,7 @@ class UniversalReasoningOrchestrator:
         graph.add_node("planner", _planner)
         graph.add_node("execute_tool", _execute_tool)
         graph.add_node("reflect", reflect_node)
+        graph.add_node("aggregate_subqueries", _aggregate_subqueries)
         graph.add_node("generator", _generator)
         graph.add_node("citation_validate", _citation_validate)
 
@@ -78,7 +83,7 @@ class UniversalReasoningOrchestrator:
         graph.add_conditional_edges(
             "planner",
             route_after_planner,
-            {"execute": "execute_tool", "generate": "generator"},
+            {"execute": "execute_tool", "generate": "aggregate_subqueries"},
         )
         graph.add_edge("execute_tool", "reflect")
         graph.add_conditional_edges(
@@ -87,9 +92,10 @@ class UniversalReasoningOrchestrator:
             {
                 "replan": "planner",
                 "execute_tool": "execute_tool",
-                "generate": "generator",
+                "generate": "aggregate_subqueries",
             },
         )
+        graph.add_edge("aggregate_subqueries", "generator")
         graph.add_edge("generator", "citation_validate")
         graph.add_edge("citation_validate", END)
         return graph
@@ -132,6 +138,8 @@ class UniversalReasoningOrchestrator:
             "chunks": [],
             "summaries": [],
             "retrieved_documents": [],
+            "subquery_groups": [],
+            "partial_answers": [],
             "flow_start_pc": time.perf_counter(),
         }
         total_timeout_ms = max(200, int(getattr(settings, "ORCH_TIMEOUT_TOTAL_MS", 60000) or 60000))
@@ -147,7 +155,7 @@ class UniversalReasoningOrchestrator:
                 "validation": ValidationResult(accepted=False, issues=["orchestrator_timeout"]),
                 "stage_timings_ms": {"total": round((time.perf_counter() - t_total) * 1000.0, 2)},
             }
-        
+
         stage_timings = dict(final_state.get("stage_timings_ms") or {})
         stage_timings["total"] = round((time.perf_counter() - t_total) * 1000.0, 2)
         final_state["stage_timings_ms"] = stage_timings
@@ -184,9 +192,11 @@ class UniversalReasoningOrchestrator:
             intent = classify_intent(cmd.query, profile=cmd.agent_profile)
 
         if not isinstance(answer, AnswerDraft):
-            mode = retrieval_plan.mode if isinstance(retrieval_plan, RetrievalPlan) else "explicativa"
+            mode = (
+                retrieval_plan.mode if isinstance(retrieval_plan, RetrievalPlan) else "explicativa"
+            )
             answer = AnswerDraft(text="No tengo evidencia suficiente para responder.", mode=mode)
-            
+
         if not isinstance(validation, ValidationResult):
             if isinstance(retrieval_plan, RetrievalPlan):
                 validation = self.validator.validate(answer, retrieval_plan, cmd.query)

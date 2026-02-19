@@ -8,7 +8,8 @@ from app.agent.models import (
     ToolCall,
     ToolResult,
 )
-from app.graph.universal_flow import UniversalReasoningOrchestrator
+from app.graph.universal.flow import UniversalReasoningOrchestrator
+from app.graph.universal.steps import reflect_node
 
 
 class _DummyRetriever:
@@ -64,7 +65,7 @@ def _state_with_last_tool(last: ToolResult) -> dict[str, object]:
 @pytest.mark.asyncio
 async def test_reflect_does_not_retry_non_retryable_errors() -> None:
     flow = _orchestrator()
-    updates = await flow._reflect_node(
+    updates = await reflect_node(
         _state_with_last_tool(
             ToolResult(tool="python_calculator", ok=False, error="missing_expression")
         )
@@ -77,7 +78,7 @@ async def test_reflect_does_not_retry_non_retryable_errors() -> None:
 @pytest.mark.asyncio
 async def test_reflect_retries_retryable_errors() -> None:
     flow = _orchestrator()
-    updates = await flow._reflect_node(
+    updates = await reflect_node(
         _state_with_last_tool(ToolResult(tool="semantic_retrieval", ok=False, error="empty_retrieval"))
     )
     assert updates["next_action"] == "replan"
@@ -97,7 +98,7 @@ async def test_reflect_retries_on_strong_retrieval_signal_with_empty_results() -
         )
     )
     state["retrieval"] = RetrievalDiagnostics(contract="advanced", strategy="multi_query_primary")
-    updates = await flow._reflect_node(state)
+    updates = await reflect_node(state)
     assert updates["next_action"] == "replan"
     assert updates["reflections"] == 1
     assert updates["plan_attempts"] == 2
@@ -118,7 +119,7 @@ async def test_reflect_retries_on_scope_mismatch_signal() -> None:
         strategy="multi_query_primary",
         scope_validation={"valid": False},
     )
-    updates = await flow._reflect_node(state)
+    updates = await reflect_node(state)
     assert updates["next_action"] == "replan"
     assert updates["reflections"] == 1
     assert updates["plan_attempts"] == 2

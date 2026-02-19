@@ -23,6 +23,7 @@ RETRY_REASON_LIMIT = 120
 HARD_MAX_STEPS = 12
 HARD_MAX_REFLECTIONS = 6
 
+
 class UniversalState(TypedDict):
     user_query: str
     working_query: str
@@ -42,6 +43,8 @@ class UniversalState(TypedDict):
     chunks: list[EvidenceItem]
     summaries: list[EvidenceItem]
     retrieved_documents: list[EvidenceItem]
+    subquery_groups: NotRequired[list[dict[str, Any]]]
+    partial_answers: NotRequired[list[dict[str, Any]]]
     allowed_tools: NotRequired[list[str]]
     intent: NotRequired[object]
     retrieval_plan: NotRequired[RetrievalPlan]

@@ -569,6 +569,30 @@ class RetrievalFlow:
                 bool(mq_payload.get("partial", False)) if isinstance(mq_payload, dict) else False
             )
             subq = mq_payload.get("subqueries") if isinstance(mq_payload, dict) else None
+            subq_groups = (
+                mq_payload.get("subquery_groups") if isinstance(mq_payload, dict) else None
+            )
+
+            planned_subquery_by_id: dict[str, dict[str, Any]] = {}
+            for planned in subqueries:
+                if not isinstance(planned, dict):
+                    continue
+                sq_id = str(planned.get("id") or "").strip()
+                if sq_id:
+                    planned_subquery_by_id[sq_id] = planned
+
+            if isinstance(subq, list):
+                for entry in subq:
+                    if not isinstance(entry, dict):
+                        continue
+                    sq_id = str(entry.get("id") or "").strip()
+                    if not sq_id:
+                        continue
+                    if str(entry.get("query") or "").strip():
+                        continue
+                    planned = planned_subquery_by_id.get(sq_id)
+                    if isinstance(planned, dict):
+                        entry["query"] = str(planned.get("query") or "").strip()[:280]
 
             if mq_error_code:
                 diag_trace_local = {
@@ -685,6 +709,7 @@ class RetrievalFlow:
                 "hybrid_trace": trace,
                 "multi_query_trace": mq_trace if isinstance(mq_trace, dict) else {},
                 "subqueries": subq if isinstance(subq, list) else [],
+                "subquery_groups": subq_groups if isinstance(subq_groups, list) else [],
                 "timings_ms": dict(timings_ms),
                 "rag_features": features_from_hybrid_trace(trace),
             }
@@ -928,6 +953,7 @@ class RetrievalFlow:
             if not sq_query:
                 return {
                     "id": sq_id,
+                    "query": "",
                     "ok": False,
                     "error_code": RETRIEVAL_CODE_INVALID_RESPONSE,
                     "error_detail": "empty_query",
@@ -970,6 +996,7 @@ class RetrievalFlow:
             sq_items = sq_items_raw if isinstance(sq_items_raw, list) else []
             return {
                 "id": sq_id,
+                "query": sq_query,
                 "ok": error_code is None,
                 "error_code": error_code,
                 "error_detail": error_detail,
@@ -992,12 +1019,14 @@ class RetrievalFlow:
 
         all_items: list[dict[str, Any]] = []
         subqueries_trace: list[dict[str, Any]] = []
+        subquery_groups: list[dict[str, Any]] = []
         error_codes: list[str] = []
         first_error_code: str | None = None
         first_error_detail: str | None = None
         for result in results:
             sq_items = [it for it in result.get("items") or [] if isinstance(it, dict)]
             all_items.extend(sq_items)
+            sq_query = str(result.get("query") or "").strip()
             sq_error_code = result.get("error_code")
             sq_error_detail = result.get("error_detail")
             if isinstance(sq_error_code, str) and sq_error_code:
@@ -1010,9 +1039,19 @@ class RetrievalFlow:
             subqueries_trace.append(
                 {
                     "id": str(result.get("id") or ""),
+                    "query": sq_query[:280],
                     "ok": bool(result.get("ok")),
                     "item_count": len(sq_items),
                     "error_code": sq_error_code,
+                }
+            )
+            subquery_groups.append(
+                {
+                    "id": str(result.get("id") or ""),
+                    "query": sq_query[:520],
+                    "ok": bool(result.get("ok")),
+                    "error_code": sq_error_code,
+                    "items": sq_items[:10],
                 }
             )
 
@@ -1023,6 +1062,7 @@ class RetrievalFlow:
             "items": merged_items,
             "partial": partial,
             "subqueries": subqueries_trace,
+            "subquery_groups": subquery_groups,
             "trace": {
                 "fanout": True,
                 "max_parallel": max_parallel,

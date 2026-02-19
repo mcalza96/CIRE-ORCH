@@ -6,7 +6,7 @@ from app.cartridges.models import (
     QueryModesPolicy,
     RouterHeuristics,
 )
-from app.graph.nodes.universal_planner import build_universal_plan
+from app.graph.universal.planning import build_universal_plan
 
 
 def test_universal_planner_simple_query_uses_single_retrieval_step() -> None:

@@ -72,6 +72,7 @@ class SemanticRetrievalTool:
                 )
             except Exception as exc:
                 import structlog
+
                 structlog.get_logger(__name__).warning(
                     "semantic_retrieval_partial_fallback",
                     error=str(exc),
@@ -93,6 +94,7 @@ class SemanticRetrievalTool:
                 )
             except Exception as exc:
                 import structlog
+
                 structlog.get_logger(__name__).warning(
                     "semantic_retrieval_partial_fallback",
                     error=str(exc),
@@ -113,6 +115,7 @@ class SemanticRetrievalTool:
                 )
             except Exception as exc:
                 import structlog
+
                 structlog.get_logger(__name__).warning(
                     "semantic_retrieval_partial_fallback",
                     error=str(exc),
@@ -125,6 +128,10 @@ class SemanticRetrievalTool:
             diagnostics
             if isinstance(diagnostics, RetrievalDiagnostics)
             else RetrievalDiagnostics(contract="advanced", strategy="unknown_advanced")
+        )
+        trace = retrieval.trace if isinstance(retrieval.trace, dict) else {}
+        subquery_groups = (
+            trace.get("subquery_groups") if isinstance(trace.get("subquery_groups"), list) else []
         )
         evidence: list[EvidenceItem] = [*list(chunks), *list(summaries)]
         return ToolResult(
@@ -142,6 +149,7 @@ class SemanticRetrievalTool:
                 "retrieval": retrieval,
                 "chunks": list(chunks),
                 "summaries": list(summaries),
+                "subquery_groups": list(subquery_groups),
                 "timings_ms": timings_ms,
             },
             evidence=evidence,

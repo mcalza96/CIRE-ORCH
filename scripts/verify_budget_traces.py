@@ -1,7 +1,7 @@
 import asyncio
 import json
 from unittest.mock import MagicMock
-from app.graph.universal_flow import UniversalReasoningOrchestrator, UniversalState
+from app.graph.universal.flow import UniversalReasoningOrchestrator, UniversalState
 from app.agent.application import HandleQuestionCommand
 
 async def test_budget_trace():

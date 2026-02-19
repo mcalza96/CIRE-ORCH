@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from typing import Any, cast, Protocol
 
@@ -21,7 +22,7 @@ from app.agent.models import (
 from app.agent.tools import AgentTool, ToolRuntimeContext, get_tool, resolve_allowed_tools
 from app.cartridges.models import AgentProfile
 from app.core.config import settings
-from app.graph.nodes.universal_planner import build_universal_plan
+from app.graph.universal.planning import build_universal_plan
 from app.graph.universal.state import (
     ANSWER_PREVIEW_LIMIT,
     DEFAULT_MAX_REFLECTIONS,
@@ -50,6 +51,36 @@ from app.graph.universal.logic import (
 logger = structlog.get_logger(__name__)
 
 
+def _tokenize(text: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-zA-Z0-9áéíóúñÁÉÍÓÚÑ]{3,}", str(text or "").lower())
+        if token
+    }
+
+
+def _keyword_overlap_score(query: str, content: str) -> int:
+    q_tokens = _tokenize(query)
+    if not q_tokens:
+        return 0
+    c_tokens = _tokenize(content)
+    return sum(1 for token in q_tokens if token in c_tokens)
+
+
+def _query_mode_aggregation_mode(state: UniversalState) -> str:
+    profile = state.get("agent_profile")
+    plan = state.get("retrieval_plan")
+    if not isinstance(profile, AgentProfile) or not isinstance(plan, RetrievalPlan):
+        return ""
+    mode_cfg = profile.query_modes.modes.get(str(plan.mode or "").strip())
+    if mode_cfg is None:
+        return ""
+    policy = getattr(mode_cfg, "decomposition_policy", None)
+    if not isinstance(policy, dict):
+        return ""
+    return str(policy.get("subquery_aggregation_mode") or "").strip().lower()
+
+
 class OrchestratorComponents(Protocol):
     retriever: RetrieverPort
     answer_generator: AnswerGeneratorPort
@@ -60,8 +91,7 @@ class OrchestratorComponents(Protocol):
 
 
 async def planner_node(
-    state: UniversalState, 
-    components: OrchestratorComponents
+    state: UniversalState, components: OrchestratorComponents
 ) -> dict[str, object]:
     t0 = time.perf_counter()
     query = str(state.get("working_query") or state.get("user_query") or "").strip()
@@ -127,8 +157,7 @@ async def planner_node(
 
 
 async def execute_tool_node(
-    state: UniversalState, 
-    components: OrchestratorComponents
+    state: UniversalState, components: OrchestratorComponents
 ) -> dict[str, object]:
     t0 = time.perf_counter()
     plan = state.get("reasoning_plan")
@@ -169,6 +198,14 @@ async def execute_tool_node(
         result = ToolResult(tool=tool_name, ok=False, error="tool_not_registered")
     else:
         payload = dict(step_call.input or {})
+        # ── Piping: inject previous tool output so tools can chain ──
+        if cursor > 0 and tool_results:
+            prev = tool_results[-1]
+            if isinstance(prev, ToolResult) and prev.ok:
+                if prev.output:
+                    payload.setdefault("previous_tool_output", dict(prev.output))
+                if prev.metadata:
+                    payload.setdefault("previous_tool_metadata", dict(prev.metadata))
         if tool_name == "python_calculator" and not payload.get("expression"):
             inferred = _infer_expression_from_query(str(state.get("working_query") or ""))
             if inferred:
@@ -242,11 +279,16 @@ async def execute_tool_node(
     if result.tool == "semantic_retrieval" and result.metadata:
         chunks = list(result.metadata.get("chunks") or [])
         summaries = list(result.metadata.get("summaries") or [])
+        subquery_groups = list(result.metadata.get("subquery_groups") or [])
         retrieval = result.metadata.get("retrieval")
         if chunks or summaries:
             updates["chunks"] = chunks
             updates["summaries"] = summaries
             updates["retrieved_documents"] = [*chunks, *summaries]
+        if subquery_groups:
+            updates["subquery_groups"] = [
+                group for group in subquery_groups if isinstance(group, dict)
+            ]
         if isinstance(retrieval, RetrievalDiagnostics):
             updates["retrieval"] = retrieval
     elif result.ok:
@@ -366,9 +408,250 @@ async def reflect_node(state: UniversalState) -> dict[str, object]:
     return updates
 
 
+async def aggregate_subqueries_node(state: UniversalState) -> dict[str, object]:
+    t0 = time.perf_counter()
+    enabled_by_settings = bool(getattr(settings, "ORCH_SUBQUERY_GROUPED_MAP_REDUCE_ENABLED", False))
+    aggregation_mode = _query_mode_aggregation_mode(state)
+    enabled = enabled_by_settings or aggregation_mode == "grouped_map_reduce"
+    if not enabled:
+        return {
+            "stage_timings_ms": _append_stage_timing(
+                state, stage="subquery_aggregate", elapsed_ms=(time.perf_counter() - t0) * 1000.0
+            )
+        }
+
+    retrieval = state.get("retrieval")
+    trace = retrieval.trace if isinstance(retrieval, RetrievalDiagnostics) else {}
+    subqueries_from_trace = trace.get("subqueries") if isinstance(trace, dict) else []
+    raw_groups = state.get("subquery_groups")
+    subquery_groups_list: list[Any] = raw_groups if isinstance(raw_groups, list) else []
+    chunks = cast(list[EvidenceItem], list(state.get("chunks") or []))
+
+    max_subqueries = max(
+        1,
+        int(getattr(settings, "ORCH_SUBQUERY_MAP_MAX_SUBQUERIES", 8) or 8),
+    )
+    max_items_per_subquery = max(
+        1,
+        int(getattr(settings, "ORCH_SUBQUERY_MAP_ITEMS_PER_SUBQUERY", 5) or 5),
+    )
+
+    groups: list[dict[str, Any]] = [
+        group for group in subquery_groups_list if isinstance(group, dict)
+    ][:max_subqueries]
+
+    if not groups and isinstance(subqueries_from_trace, list):
+        groups = [item for item in subqueries_from_trace if isinstance(item, dict)][:max_subqueries]
+
+    if not groups:
+        return {
+            "stage_timings_ms": _append_stage_timing(
+                state, stage="subquery_aggregate", elapsed_ms=(time.perf_counter() - t0) * 1000.0
+            )
+        }
+
+    partial_answers: list[dict[str, Any]] = []
+    for idx, group in enumerate(groups, start=1):
+        sq_id = str(group.get("id") or f"q{idx}").strip() or f"q{idx}"
+        sq_query = str(group.get("query") or "").strip()
+        raw_items = [it for it in list(group.get("items") or []) if isinstance(it, dict)]
+
+        candidates: list[EvidenceItem] = []
+        if raw_items:
+            for i, item in enumerate(raw_items[:max_items_per_subquery]):
+                content = str(item.get("content") or "").strip()
+                if not content:
+                    continue
+                source = str(item.get("source") or f"C{i + 1}").strip() or f"C{i + 1}"
+                score_raw = item.get("score")
+                if score_raw is None:
+                    score_raw = item.get("similarity")
+                try:
+                    score = float(score_raw or 0.0)
+                except (TypeError, ValueError):
+                    score = 0.0
+                candidates.append(
+                    EvidenceItem(
+                        source=source, content=content, score=score, metadata={"row": item}
+                    )
+                )
+        elif sq_query and chunks:
+            ranked = sorted(
+                chunks,
+                key=lambda item: (
+                    _keyword_overlap_score(sq_query, item.content),
+                    float(item.score or 0.0),
+                ),
+                reverse=True,
+            )
+            candidates = ranked[:max_items_per_subquery]
+
+        if not candidates:
+            partial_answers.append(
+                {
+                    "id": sq_id,
+                    "query": sq_query,
+                    "status": "no_evidence",
+                    "evidence_sources": [],
+                    "summary": "Sin evidencia suficiente para esta subconsulta.",
+                }
+            )
+            continue
+
+        snippets = [
+            f"{ev.source}: {_clip_text(ev.content, limit=220)}"
+            for ev in candidates[:2]
+            if str(ev.content or "").strip()
+        ]
+        partial_answers.append(
+            {
+                "id": sq_id,
+                "query": sq_query,
+                "status": "ok",
+                "evidence_sources": [str(ev.source or "") for ev in candidates],
+                "summary": " | ".join(snippets) if snippets else "Evidencia recuperada.",
+            }
+        )
+
+    return {
+        "partial_answers": partial_answers,
+        "stage_timings_ms": _append_stage_timing(
+            state, stage="subquery_aggregate", elapsed_ms=(time.perf_counter() - t0) * 1000.0
+        ),
+    }
+
+
+
+# ── Working-memory → EvidenceItem converters ──────────────────────────
+
+
+def _format_expectation_coverage(data: dict[str, object]) -> list[str]:
+    """Format expectation_coverage output (preserves legacy R999 behaviour)."""
+    covered = list(data.get("covered") or [])
+    missing = list(data.get("missing") or [])
+    ratio = data.get("coverage_ratio")
+    lines = [
+        "[EXPECTATION_COVERAGE]",
+        f"coverage_ratio={ratio}",
+        f"covered={len(covered)}",
+        f"missing={len(missing)}",
+    ]
+    for row in missing[:6]:
+        if not isinstance(row, dict):
+            continue
+        eid = str(row.get("id") or "expectation")
+        risk = str(row.get("missing_risk") or "").strip()
+        reason = str(row.get("reason") or "").strip()
+        lines.append(f"- missing:{eid} risk={risk} reason={reason}")
+    return lines
+
+
+def _format_logical_comparison(data: dict[str, object]) -> list[str]:
+    """Format logical_comparison output as a markdown comparison table."""
+    lines = ["[LOGICAL_COMPARISON]"]
+    topic = str(data.get("topic") or "").strip()
+    if topic:
+        lines.append(f"topic={topic}")
+    md = str(data.get("comparison_markdown") or "").strip()
+    if md:
+        lines.append(md)
+    else:
+        rows = list(data.get("rows") or [])
+        if rows:
+            lines.append("| Scope | Evidence |")
+            lines.append("|---|---|")
+            for row in rows[:12]:
+                if isinstance(row, dict):
+                    lines.append(f"| {row.get('scope', '')} | {row.get('evidence', '')} |")
+    # LLM-enriched fields
+    llm_analysis = str(data.get("llm_analysis") or "").strip()
+    if llm_analysis:
+        lines.append(f"analysis={llm_analysis}")
+    for key in ("commonalities", "differences", "gaps"):
+        items = data.get(key)
+        if isinstance(items, list) and items:
+            lines.append(f"{key}={', '.join(str(i) for i in items[:6])}")
+    return lines
+
+
+def _format_structural_extraction(data: dict[str, object]) -> list[str]:
+    """Format structural_extraction output as a record listing."""
+    lines = ["[STRUCTURAL_EXTRACTION]"]
+    schema_def = str(data.get("schema_definition") or "").strip()
+    if schema_def:
+        lines.append(f"schema={schema_def}")
+    records = list(data.get("records") or [])
+    lines.append(f"record_count={len(records)}")
+    for rec in records[:20]:
+        if isinstance(rec, dict):
+            label = str(rec.get("label") or "").strip()
+            value = rec.get("value", "")
+            unit = str(rec.get("unit") or "").strip()
+            src = str(rec.get("source") or "").strip()
+            suffix = f" [{src}]" if src else ""
+            lines.append(f"- {label}: {value} {unit}{suffix}")
+    # LLM-enriched: tables
+    tables = data.get("tables")
+    if isinstance(tables, list) and tables:
+        lines.append(f"tables_count={len(tables)}")
+        for tbl in tables[:5]:
+            if isinstance(tbl, dict):
+                title = str(tbl.get("title") or "").strip()
+                lines.append(f"table: {title}")
+    # LLM-enriched: key-value pairs
+    kvs = data.get("key_values")
+    if isinstance(kvs, list) and kvs:
+        for kv in kvs[:10]:
+            if isinstance(kv, dict):
+                lines.append(f"kv: {kv.get('key', '')}={kv.get('value', '')}")
+    return lines
+
+
+def _format_generic_tool(tool_name: str, data: dict[str, object]) -> list[str]:
+    """Fallback formatter for unknown tools."""
+    lines = [f"[TOOL_{tool_name.upper()}]"]
+    for key, value in list(data.items())[:10]:
+        text = str(value or "")
+        if len(text) > 200:
+            text = text[:200] + "..."
+        lines.append(f"{key}={text}")
+    return lines
+
+
+_TOOL_FORMATTERS: dict[str, object] = {
+    "expectation_coverage": _format_expectation_coverage,
+    "logical_comparison": _format_logical_comparison,
+    "structural_extraction": _format_structural_extraction,
+}
+
+
+def _working_memory_to_evidence(
+    working_memory: dict[str, object],
+) -> list[EvidenceItem]:
+    """Convert all working_memory tool outputs into synthetic EvidenceItems."""
+    items: list[EvidenceItem] = []
+    for tool_name, tool_output in working_memory.items():
+        if not isinstance(tool_output, dict):
+            continue
+        formatter = _TOOL_FORMATTERS.get(tool_name, _format_generic_tool)
+        if formatter is _format_generic_tool:
+            lines = _format_generic_tool(tool_name, tool_output)
+        else:
+            lines = formatter(tool_output)  # type: ignore[operator]
+        if lines:
+            items.append(
+                EvidenceItem(
+                    source=f"TOOL_{tool_name.upper()}",
+                    content="\n".join(lines),
+                    score=1.0,
+                    metadata={"synthetic": True, "tool": tool_name},
+                )
+            )
+    return items
+
+
 async def generator_node(
-    state: UniversalState, 
-    components: OrchestratorComponents
+    state: UniversalState, components: OrchestratorComponents
 ) -> dict[str, object]:
     t0 = time.perf_counter()
     plan = state.get("retrieval_plan")
@@ -387,35 +670,42 @@ async def generator_node(
         }
     chunks = cast(list[EvidenceItem], list(state.get("chunks") or []))
     summaries = cast(list[EvidenceItem], list(state.get("summaries") or []))
+    raw_partials = state.get("partial_answers")
+    partial_answers_list: list[Any] = raw_partials if isinstance(raw_partials, list) else []
+
+    if partial_answers_list:
+        synthesized_summaries: list[EvidenceItem] = []
+        for idx, partial in enumerate(partial_answers_list[:8], start=1):
+            if not isinstance(partial, dict):
+                continue
+            sq_id = str(partial.get("id") or f"q{idx}").strip() or f"q{idx}"
+            sq_query = str(partial.get("query") or "").strip()
+            status = str(partial.get("status") or "unknown").strip()
+            summary = str(partial.get("summary") or "").strip()
+            raw_sources = partial.get("evidence_sources")
+            sources_list: list[Any] = raw_sources if isinstance(raw_sources, list) else []
+            source_list = ", ".join(str(s) for s in sources_list if str(s).strip())
+            content = (
+                f"[SUBQUERY {sq_id}] query={sq_query}\n"
+                f"status={status}\n"
+                f"sources={source_list or 'none'}\n"
+                f"summary={summary or 'Sin resumen parcial.'}"
+            )
+            synthesized_summaries.append(
+                EvidenceItem(
+                    source=f"RMAP{idx}",
+                    content=content,
+                    score=1.0,
+                    metadata={"row": {"content": content, "metadata": {"subquery_id": sq_id}}},
+                )
+            )
+        if synthesized_summaries:
+            summaries = [*synthesized_summaries, *summaries]
 
     working_memory = dict(state.get("working_memory") or {})
-    expectation_data = working_memory.get("expectation_coverage")
-    if isinstance(expectation_data, dict):
-        covered = list(expectation_data.get("covered") or [])
-        missing = list(expectation_data.get("missing") or [])
-        ratio = expectation_data.get("coverage_ratio")
-        synthetic_lines = [
-            "[EXPECTATION_COVERAGE]",
-            f"coverage_ratio={ratio}",
-            f"covered={len(covered)}",
-            f"missing={len(missing)}",
-        ]
-        for row in missing[:6]:
-            if not isinstance(row, dict):
-                continue
-            eid = str(row.get("id") or "expectation")
-            risk = str(row.get("missing_risk") or "").strip()
-            reason = str(row.get("reason") or "").strip()
-            synthetic_lines.append(f"- missing:{eid} risk={risk} reason={reason}")
-        summaries = [
-            *summaries,
-            EvidenceItem(
-                source="R999",
-                content="\n".join(synthetic_lines),
-                score=1.0,
-                metadata={"row": {"content": "\n".join(synthetic_lines), "metadata": {}}},
-            ),
-        ]
+    synthetic_evidence = _working_memory_to_evidence(working_memory)
+    if synthetic_evidence:
+        summaries = [*summaries, *synthetic_evidence]
 
     try:
         generator_timeout_ms = get_adaptive_timeout_ms(
@@ -450,6 +740,7 @@ async def generator_node(
             output={
                 "answer_preview": _clip_text(answer.text, limit=ANSWER_PREVIEW_LIMIT),
                 "evidence_count": len(answer.evidence),
+                "partial_answers_count": len(partial_answers_list),
             },
         )
     )
@@ -463,17 +754,14 @@ async def generator_node(
 
 
 async def citation_validate_node(
-    state: UniversalState, 
-    components: OrchestratorComponents
+    state: UniversalState, components: OrchestratorComponents
 ) -> dict[str, object]:
     t0 = time.perf_counter()
     answer = state.get("generation")
     plan = state.get("retrieval_plan")
     if not isinstance(answer, AnswerDraft) or not isinstance(plan, RetrievalPlan):
         return {
-            "validation": ValidationResult(
-                accepted=False, issues=["missing_generation_or_plan"]
-            ),
+            "validation": ValidationResult(accepted=False, issues=["missing_generation_or_plan"]),
             "stop_reason": "validation_failed",
             "stage_timings_ms": _append_stage_timing(
                 state, stage="validation", elapsed_ms=(time.perf_counter() - t0) * 1000.0
