@@ -9,6 +9,9 @@ from app.cartridges.models import AgentProfile
 _ISO_RE = re.compile(r"\bISO\s*[-:]?\s*(\d{4,5})\b", re.IGNORECASE)
 _CLAUSE_ID_RE = re.compile(r"\[\s*CLAUSE_ID\s*:\s*([0-9]+(?:\.[0-9]+)+)\s*\]", re.IGNORECASE)
 _CLAUSE_RE = re.compile(r"\b(?:cl(?:a|á)usula\s*)?([0-9]+(?:\.[0-9]+)+)\b", re.IGNORECASE)
+_HYPOTHESIS_RE = re.compile(
+    r"\b(hip[oó]tesis|hipotesis|supuesto|asunci[oó]n|assumption)\b", re.IGNORECASE
+)
 
 
 def _compact_text(text: str, *, limit: int = 220) -> str:
@@ -41,6 +44,25 @@ def _extract_clause(row_meta: dict[str, Any], content: str) -> str:
     if m2:
         return m2.group(1)
     return ""
+
+
+def _merge_metadata(item_metadata: Any) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    if not isinstance(item_metadata, dict):
+        return merged
+
+    for field in ("source_standard", "standard", "scope", "clause_id", "clause_ref", "clause"):
+        value = item_metadata.get(field)
+        if isinstance(value, str) and value.strip():
+            merged[field] = value.strip()
+
+    row = item_metadata.get("row")
+    row_meta = row.get("metadata") if isinstance(row, dict) else None
+    if isinstance(row_meta, dict):
+        for key, value in row_meta.items():
+            if key not in merged and value is not None:
+                merged[key] = value
+    return merged
 
 
 def _is_noise(content: str, filters: list[str]) -> bool:
@@ -105,9 +127,7 @@ def build_citation_bundle(
         score = getattr(item, "score", None)
         content = str(getattr(item, "content", "") or "")
         metadata = getattr(item, "metadata", None)
-        row = metadata.get("row") if isinstance(metadata, dict) else None
-        row_meta_raw = row.get("metadata") if isinstance(row, dict) else None
-        row_meta: dict[str, Any] = row_meta_raw if isinstance(row_meta_raw, dict) else {}
+        row_meta = _merge_metadata(metadata)
 
         standard = _extract_standard(row_meta, content)
         clause_id = _extract_clause(row_meta, content)
@@ -162,6 +182,19 @@ def build_citation_bundle(
         if str(item.get("id") or "") and not bool(item.get("noise", False))
     ]
     ratio = float(structured_count / max(1, len(details)))
+    hypothesis_markers = len(_HYPOTHESIS_RE.findall(str(answer_text or "")))
+    missing_standard_count = sum(
+        1
+        for item in details
+        if isinstance(item.get("missing_fields"), list)
+        and "standard" in item.get("missing_fields", [])
+    )
+    missing_clause_count = sum(
+        1
+        for item in details
+        if isinstance(item.get("missing_fields"), list)
+        and "clause_id" in item.get("missing_fields", [])
+    )
     quality = {
         "schema_version": (
             str(synthesis.citation_schema_version).strip()
@@ -172,6 +205,9 @@ def build_citation_bundle(
         "structured_count": structured_count,
         "structured_ratio": round(ratio, 4),
         "discarded_noise": discarded_noise,
+        "missing_standard_count": int(missing_standard_count),
+        "missing_clause_count": int(missing_clause_count),
+        "hypothesis_markers": int(hypothesis_markers),
         "required_fields": required_fields,
         "min_structured_citation_ratio": (
             float(synthesis.min_structured_citation_ratio) if synthesis is not None else 0.5
