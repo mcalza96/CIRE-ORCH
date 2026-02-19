@@ -22,6 +22,7 @@ from app.cartridges.deps import resolve_agent_profile
 from app.cartridges.loader import get_cartridge_loader
 from app.clients.backend_selector import RagBackendSelector
 from app.core.config import settings
+from app.core.observability.logging_utils import compact_error, emit_event
 from app.core.rag_retrieval_contract_client import build_rag_http_client
 from app.core.scope_metrics import scope_metrics_store
 from app.security.tenant_authorizer import (
@@ -207,6 +208,7 @@ async def answer_with_orchestrator(
     current_user: UserContext = Depends(get_current_user),
     use_case: HandleQuestionUseCase = Depends(_build_use_case),
 ):
+    started = time.perf_counter()
     try:
         authorized_tenant = await authorize_requested_tenant(
             http_request, current_user, request.tenant_id
@@ -254,7 +256,8 @@ async def answer_with_orchestrator(
         )
         validation_accepted = bool(result.validation.accepted)
         clarification_present = bool(result.clarification)
-        logger.info(
+        emit_event(
+            logger,
             "orchestrator_answer_summary",
             user_id=current_user.user_id,
             tenant_id=authorized_tenant,
@@ -272,10 +275,12 @@ async def answer_with_orchestrator(
             agent_profile_version=agent_profile.version,
             agent_profile_source=resolved_profile.resolution.source,
             agent_profile_resolution_reason=resolved_profile.resolution.decision_reason,
+            duration_ms=round((time.perf_counter() - started) * 1000.0, 2),
         )
         if len(context_chunks) == 0:
             reason = "scope_validation_blocked" if blocked else "retrieval_empty"
-            logger.info(
+            emit_event(
+                logger,
                 "orchestrator_answer_empty_context",
                 user_id=current_user.user_id,
                 tenant_id=authorized_tenant,
@@ -363,14 +368,18 @@ async def answer_with_orchestrator(
         ).strip()
         corr_id = str(http_request.headers.get("X-Correlation-ID") or "").strip()
         error_code = _classify_orchestrator_error(exc)
-        logger.error(
+        emit_event(
+            logger,
             "orchestrator_answer_failed",
+            level="error",
             error_code=error_code,
-            error=str(exc),
+            error=compact_error(exc),
             request_id=req_id or None,
             correlation_id=corr_id or None,
-            exc_info=True,
+            duration_ms=round((time.perf_counter() - started) * 1000.0, 2),
         )
+        if bool(settings.ORCH_LOG_EXC_INFO):
+            logger.error("orchestrator_answer_failed_exc", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail={
@@ -389,6 +398,7 @@ async def answer_with_orchestrator_stream(
     current_user: UserContext = Depends(get_current_user),
     use_case: HandleQuestionUseCase = Depends(_build_use_case),
 ):
+    started = time.perf_counter()
     authorized_tenant = await authorize_requested_tenant(
         http_request, current_user, request.tenant_id
     )
@@ -471,14 +481,18 @@ async def answer_with_orchestrator_stream(
             yield _sse("done", {"ok": True})
         except Exception as exc:
             error_code = _classify_orchestrator_error(exc)
-            logger.error(
+            emit_event(
+                logger,
                 "orchestrator_answer_stream_failed",
+                level="error",
                 error_code=error_code,
-                error=str(exc),
+                error=compact_error(exc),
                 request_id=req_id or None,
                 correlation_id=corr_id or None,
-                exc_info=True,
+                duration_ms=round((time.perf_counter() - started) * 1000.0, 2),
             )
+            if bool(settings.ORCH_LOG_EXC_INFO):
+                logger.error("orchestrator_answer_stream_failed_exc", exc_info=True)
             yield _sse(
                 "error",
                 {
@@ -508,6 +522,7 @@ async def list_authorized_collections(
     tenant_id: str = Query(..., min_length=1),
     current_user: UserContext = Depends(get_current_user),
 ) -> CollectionListResponse:
+    started = time.perf_counter()
     authorized_tenant = await authorize_requested_tenant(http_request, current_user, tenant_id)
     try:
         req_id = str(
@@ -523,10 +538,13 @@ async def list_authorized_collections(
             )
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code if exc.response is not None else 502
-        logger.warning(
+        emit_event(
+            logger,
             "orchestrator_collection_proxy_failed",
+            level="warning",
             status=status,
             tenant_id=authorized_tenant,
+            duration_ms=round((time.perf_counter() - started) * 1000.0, 2),
         )
         code = "RAG_UPSTREAM_AUTH_FAILED" if status in {401, 403} else "RAG_UPSTREAM_ERROR"
         raise HTTPException(
@@ -538,10 +556,13 @@ async def list_authorized_collections(
             },
         ) from exc
     except httpx.RequestError as exc:
-        logger.warning(
+        emit_event(
+            logger,
             "orchestrator_collection_proxy_unreachable",
+            level="warning",
             tenant_id=authorized_tenant,
-            error=str(exc),
+            error=compact_error(exc),
+            duration_ms=round((time.perf_counter() - started) * 1000.0, 2),
         )
         raise HTTPException(
             status_code=502,
@@ -551,8 +572,13 @@ async def list_authorized_collections(
             },
         ) from exc
     except Exception as exc:
-        logger.warning(
-            "orchestrator_collection_proxy_error", tenant_id=authorized_tenant, error=str(exc)
+        emit_event(
+            logger,
+            "orchestrator_collection_proxy_error",
+            level="warning",
+            tenant_id=authorized_tenant,
+            error=compact_error(exc),
+            duration_ms=round((time.perf_counter() - started) * 1000.0, 2),
         )
         raise HTTPException(
             status_code=500,
@@ -561,6 +587,13 @@ async def list_authorized_collections(
                 "message": "Unexpected collection proxy error",
             },
         ) from exc
+    emit_event(
+        logger,
+        "orchestrator_collection_proxy_ok",
+        tenant_id=authorized_tenant,
+        collections_count=len(items),
+        duration_ms=round((time.perf_counter() - started) * 1000.0, 2),
+    )
     return CollectionListResponse(items=items)
 
 

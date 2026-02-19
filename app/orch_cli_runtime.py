@@ -11,7 +11,7 @@ from typing import Callable
 
 import httpx
 
-from app import chat_cli_runtime
+from app import chat_cli_runtime, ing_cli_runtime
 from app.core.auth_client import AuthClientError, decode_jwt_exp, ensure_access_token
 from app.core.orch_discovery_client import OrchestratorDiscoveryError, Tenant, list_authorized_tenants
 
@@ -208,72 +208,7 @@ async def _resolve_access_token(*, env: dict[str, str], non_interactive: bool) -
         raise RuntimeError(f"❌ {exc}") from exc
 
 
-async def build_ingest_exec_context(args: list[str], env: dict[str, str] | None = None) -> ExecContext:
-    merged_env = dict(env or os.environ)
-    debug = _debug_enabled(merged_env)
-    base_dir = _repo_root()
-    client_script = base_dir / "tools/ingestion-client/ing.sh"
-
-    if not client_script.exists():
-        raise RuntimeError(f"❌ Missing ingestion client at {client_script}")
-
-    non_interactive_flag, passthrough_args = _extract_internal_ingest_flags(args)
-    orchestrator_url = _resolve_orchestrator_url(merged_env)
-    merged_env["ORCH_URL"] = orchestrator_url
-
-    if _has_help_flag(passthrough_args):
-        return ExecContext(script=str(client_script), argv=[str(client_script), *passthrough_args], env=merged_env)
-
-    _require_orch_health(orchestrator_url)
-
-    if not str(merged_env.get("RAG_URL") or "").strip():
-        merged_env["RAG_URL"] = _resolve_rag_url(merged_env)
-
-    non_interactive = _is_truthy(merged_env.get("ORCH_AUTH_NON_INTERACTIVE")) or non_interactive_flag
-    token = await _resolve_access_token(env=merged_env, non_interactive=non_interactive)
-    merged_env["ORCH_ACCESS_TOKEN"] = token
-    if debug:
-        print(f"[orch-cli] ORCH_URL={orchestrator_url}")
-        print(f"[orch-cli] RAG_URL={merged_env.get('RAG_URL')}")
-        print(f"[orch-cli] token_present={'yes' if bool(token) else 'no'}")
-        print(f"[orch-cli] token_prefix={token[:8]}...")
-    has_tenant_from_env = bool(str(merged_env.get("TENANT_ID") or "").strip())
-    has_tenant_in_args = _has_flag(passthrough_args, "--tenant-id")
-    if debug:
-        print(f"[orch-cli] has_tenant_from_env={'yes' if has_tenant_from_env else 'no'}")
-        print(f"[orch-cli] has_tenant_in_args={'yes' if has_tenant_in_args else 'no'}")
-    if not has_tenant_from_env and not has_tenant_in_args:
-        selected_tenant, unauthorized = await _resolve_tenant_from_orch(
-            orchestrator_url=orchestrator_url,
-            token=token,
-            non_interactive=non_interactive,
-        )
-        if unauthorized:
-            if debug:
-                print("[orch-cli] tenant_discovery_401=yes -> intentando refrescar/login token")
-            try:
-                refreshed_token = await ensure_access_token(interactive=not non_interactive)
-                if refreshed_token and refreshed_token != token:
-                    token = refreshed_token
-                    merged_env["ORCH_ACCESS_TOKEN"] = refreshed_token
-                    if debug:
-                        print(f"[orch-cli] refreshed_token_prefix={refreshed_token[:8]}...")
-                    selected_tenant, _ = await _resolve_tenant_from_orch(
-                        orchestrator_url=orchestrator_url,
-                        token=refreshed_token,
-                        non_interactive=non_interactive,
-                    )
-            except AuthClientError as exc:
-                print(f"⚠️ No se pudo refrescar/login token tras 401: {exc}")
-        if selected_tenant:
-            merged_env["TENANT_ID"] = selected_tenant.id
-            merged_env["TENANT_NAME"] = selected_tenant.name
-            if debug:
-                print(f"[orch-cli] selected_tenant={selected_tenant.id}")
-        elif debug:
-            print("[orch-cli] selected_tenant=none (fallback to ingestion-client interactive setup)")
-
-    return ExecContext(script=str(client_script), argv=[str(client_script), *passthrough_args], env=merged_env)
+    return ExecContext(script="", argv=passthrough_args, env=merged_env)
 
 
 async def _run_chat(args: list[str]) -> int:
@@ -282,11 +217,16 @@ async def _run_chat(args: list[str]) -> int:
     logger.info("cli_command_end", extra={"event": "cli_command_end", "command": "chat"})
     return 0
 
-
 async def _run_ingest(args: list[str], *, exec_fn: ExecFn = os.execvpe) -> int:
     logger.info("cli_command_start", extra={"event": "cli_command_start", "command": "ingest"})
     context = await build_ingest_exec_context(args)
-    exec_fn(context.script, context.argv, context.env)
+    # Re-inyectamos el token al env si fue resuelto durante el build_context
+    if context.env.get("ORCH_ACCESS_TOKEN"):
+        os.environ["ORCH_ACCESS_TOKEN"] = context.env["ORCH_ACCESS_TOKEN"]
+    if context.env.get("TENANT_ID"):
+        os.environ["TENANT_ID"] = context.env["TENANT_ID"]
+    
+    await ing_cli_runtime.main(context.argv)
     logger.info("cli_command_end", extra={"event": "cli_command_end", "command": "ingest"})
     return 0
 

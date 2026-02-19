@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     )
 
     LOG_LEVEL: str = "INFO"
+    ORCH_LOG_EXC_INFO: bool = False
     ORCHESTRATOR_PORT: int = 8001
     RAG_ENGINE_LOCAL_URL: str = Field(
         default="http://localhost:8000",

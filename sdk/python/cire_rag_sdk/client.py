@@ -86,7 +86,10 @@ class TenantContext:
         except Exception:
             logger.warning(
                 "tenant_context_storage_invalid",
-                extra={"event": "tenant_context_storage_invalid", "storage_path": str(self.storage_path)},
+                extra={
+                    "event": "tenant_context_storage_invalid",
+                    "storage_path": str(self.storage_path),
+                },
             )
             return self.tenant_id
 
@@ -95,7 +98,10 @@ class TenantContext:
         if raw_tenant is not None and not normalized:
             logger.warning(
                 "tenant_context_storage_invalid_tenant",
-                extra={"event": "tenant_context_storage_invalid_tenant", "storage_path": str(self.storage_path)},
+                extra={
+                    "event": "tenant_context_storage_invalid_tenant",
+                    "storage_path": str(self.storage_path),
+                },
             )
             return self.tenant_id
 
@@ -133,7 +139,9 @@ class TenantSelectionRequiredError(Exception):
 
 @dataclass
 class TenantMismatchLocalError(Exception):
-    message: str = "Conflicto de organización. Recarga la vista o vuelve a seleccionar tu organización."
+    message: str = (
+        "Conflicto de organización. Recarga la vista o vuelve a seleccionar tu organización."
+    )
 
     def __str__(self) -> str:
         return self.message
@@ -162,7 +170,9 @@ def _build_auth_headers(
     return headers
 
 
-def _raise_from_http_error(status_code: int, response_text: str, response_headers: Dict[str, str], payload: Any) -> None:
+def _raise_from_http_error(
+    status_code: int, response_text: str, response_headers: Dict[str, str], payload: Any
+) -> None:
     error = payload.get("error") if isinstance(payload, dict) else None
     if not isinstance(error, dict):
         error = {
@@ -174,7 +184,9 @@ def _raise_from_http_error(status_code: int, response_text: str, response_header
 
     code = str(error.get("code") or "UNKNOWN_ERROR")
     message = str(error.get("message") or "Request failed")
-    request_id = str(error.get("request_id") or response_headers.get("X-Correlation-ID") or "unknown")
+    request_id = str(
+        error.get("request_id") or response_headers.get("X-Correlation-ID") or "unknown"
+    )
     details = error.get("details")
 
     if code in {TENANT_HEADER_REQUIRED_CODE, TENANT_MISMATCH_CODE}:
@@ -187,7 +199,9 @@ def _raise_from_http_error(status_code: int, response_text: str, response_header
             details=details,
         )
 
-    raise CireRagApiError(status=status_code, code=code, message=message, details=details, request_id=request_id)
+    raise CireRagApiError(
+        status=status_code, code=code, message=message, details=details, request_id=request_id
+    )
 
 
 class CireRagClient:
@@ -208,7 +222,9 @@ class CireRagClient:
         self.timeout_seconds = timeout_seconds
         self.default_headers = default_headers or {}
         self.session = session or requests.Session()
-        self.tenant_context = tenant_context or TenantContext(storage_path=Path(tenant_storage_path) if tenant_storage_path else None)
+        self.tenant_context = tenant_context or TenantContext(
+            storage_path=Path(tenant_storage_path) if tenant_storage_path else None
+        )
 
     def close(self) -> None:
         self.session.close()
@@ -222,13 +238,88 @@ class CireRagClient:
     def clear_tenant(self) -> None:
         self.tenant_context.clear_tenant()
 
-    def create_document(self, file_path: str | Path, metadata: Dict[str, Any] | str) -> Dict[str, Any]:
+    def create_document(
+        self, file_path: str | Path, metadata: Dict[str, Any] | str
+    ) -> Dict[str, Any]:
         path = Path(file_path)
         metadata_json = metadata if isinstance(metadata, str) else json.dumps(metadata)
         with path.open("rb") as fp:
             files = {"file": (path.name, fp)}
             data = {"metadata": metadata_json}
             return self._request("POST", "/documents", files=files, data=data, enforce_tenant=True)
+
+    def create_ingestion_batch(
+        self,
+        tenant_id: Optional[str] = None,
+        collection_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        embedding_mode: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {}
+        if collection_id:
+            payload["collection_id"] = collection_id
+        if metadata:
+            payload["metadata"] = metadata
+        if embedding_mode:
+            payload["embedding_mode"] = embedding_mode
+        return self._request(
+            "POST",
+            "/ingestion/batches",
+            json_body=payload,
+            tenant_id=tenant_id,
+            sync_tenant_body=True,
+            enforce_tenant=True,
+        )
+
+    def upload_file_to_batch(
+        self,
+        batch_id: str,
+        file_path: str | Path,
+        metadata: Optional[Dict[str, Any] | str] = None,
+    ) -> Dict[str, Any]:
+        path = Path(file_path)
+        with path.open("rb") as fp:
+            files = {"file": (path.name, fp)}
+            data = {}
+            if metadata:
+                data["metadata"] = metadata if isinstance(metadata, str) else json.dumps(metadata)
+            return self._request(
+                "POST",
+                f"/ingestion/batches/{batch_id}/upload",
+                files=files,
+                data=data,
+                enforce_tenant=True,
+            )
+
+    def seal_ingestion_batch(self, batch_id: str) -> Dict[str, Any]:
+        return self._request("POST", f"/ingestion/batches/{batch_id}/seal", enforce_tenant=True)
+
+    def get_batch_status(self, batch_id: str) -> Dict[str, Any]:
+        return self._request("GET", f"/ingestion/batches/{batch_id}/status", enforce_tenant=True)
+
+    def get_ingestion_job_status(self, job_id: str) -> Dict[str, Any]:
+        return self._request("GET", f"/ingestion/jobs/{job_id}", enforce_tenant=True)
+
+    def replay_enrichment(
+        self,
+        document_id: str,
+        include_visual: bool = True,
+        include_graph: bool = True,
+        include_raptor: bool = True,
+        tenant_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        payload = {
+            "include_visual": include_visual,
+            "include_graph": include_graph,
+            "include_raptor": include_raptor,
+        }
+        return self._request(
+            "POST",
+            f"/ingestion/enrich/{document_id}",
+            json_body=payload,
+            tenant_id=tenant_id,
+            enforce_tenant=True,
+        )
 
     def list_documents(self, limit: int = 20) -> Dict[str, Any]:
         return self._request("GET", "/documents", params={"limit": limit}, enforce_tenant=True)
@@ -265,7 +356,9 @@ class CireRagClient:
             enforce_tenant=True,
         )
 
-    def submit_chat_feedback(self, interaction_id: str, rating: str, comment: Optional[str] = None) -> Dict[str, Any]:
+    def submit_chat_feedback(
+        self, interaction_id: str, rating: str, comment: Optional[str] = None
+    ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {"interaction_id": interaction_id, "rating": rating}
         if comment:
             payload["comment"] = comment
@@ -399,7 +492,9 @@ class CireRagClient:
             enforce_tenant=True,
         )
 
-    def _resolve_tenant(self, tenant_id: Optional[str], *, endpoint: str, enforce_tenant: bool) -> Optional[str]:
+    def _resolve_tenant(
+        self, tenant_id: Optional[str], *, endpoint: str, enforce_tenant: bool
+    ) -> Optional[str]:
         explicit_tenant = _sanitize_tenant_id(tenant_id)
         context_tenant = self.tenant_context.get_tenant()
         if explicit_tenant and context_tenant and explicit_tenant != context_tenant:
@@ -417,7 +512,11 @@ class CireRagClient:
         if enforce_tenant and not resolved:
             logger.warning(
                 "tenant_missing_blocked",
-                extra={"event": "tenant_missing_blocked", "endpoint": endpoint, "status": "blocked"},
+                extra={
+                    "event": "tenant_missing_blocked",
+                    "endpoint": endpoint,
+                    "status": "blocked",
+                },
             )
             raise TenantSelectionRequiredError()
         return resolved
@@ -438,7 +537,9 @@ class CireRagClient:
         _retry_on_mismatch: bool = True,
     ) -> Dict[str, Any]:
         url = f"{self.base_url}/api/v1{path}"
-        resolved_tenant = self._resolve_tenant(tenant_id, endpoint=path, enforce_tenant=enforce_tenant)
+        resolved_tenant = self._resolve_tenant(
+            tenant_id, endpoint=path, enforce_tenant=enforce_tenant
+        )
         request_params = dict(params or {})
         request_json = dict(json_body or {})
 
@@ -470,9 +571,15 @@ class CireRagClient:
             payload = None
 
         payload_error = payload.get("error") if isinstance(payload, dict) else None
-        payload_code = str(payload_error.get("code") or "") if isinstance(payload_error, dict) else ""
+        payload_code = (
+            str(payload_error.get("code") or "") if isinstance(payload_error, dict) else ""
+        )
         payload_request_id = (
-            str(payload_error.get("request_id") or response.headers.get("X-Correlation-ID") or "unknown")
+            str(
+                payload_error.get("request_id")
+                or response.headers.get("X-Correlation-ID")
+                or "unknown"
+            )
             if isinstance(payload_error, dict)
             else str(response.headers.get("X-Correlation-ID") or "unknown")
         )
@@ -531,7 +638,9 @@ class AsyncCireRagClient:
         self.default_headers = default_headers or {}
         self._managed_client = client is None
         self.client = client or httpx.AsyncClient(timeout=timeout_seconds)
-        self.tenant_context = tenant_context or TenantContext(storage_path=Path(tenant_storage_path) if tenant_storage_path else None)
+        self.tenant_context = tenant_context or TenantContext(
+            storage_path=Path(tenant_storage_path) if tenant_storage_path else None
+        )
 
     async def __aenter__(self) -> "AsyncCireRagClient":
         return self
@@ -552,16 +661,99 @@ class AsyncCireRagClient:
     def clear_tenant(self) -> None:
         self.tenant_context.clear_tenant()
 
-    async def create_document(self, file_path: str | Path, metadata: Dict[str, Any] | str) -> Dict[str, Any]:
+    async def create_document(
+        self, file_path: str | Path, metadata: Dict[str, Any] | str
+    ) -> Dict[str, Any]:
         path = Path(file_path)
         metadata_json = metadata if isinstance(metadata, str) else json.dumps(metadata)
         file_bytes = path.read_bytes()
         files = {"file": (path.name, file_bytes)}
         data = {"metadata": metadata_json}
-        return await self._request("POST", "/documents", files=files, data=data, enforce_tenant=True)
+        return await self._request(
+            "POST", "/documents", files=files, data=data, enforce_tenant=True
+        )
+
+    async def create_ingestion_batch(
+        self,
+        tenant_id: Optional[str] = None,
+        collection_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        embedding_mode: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {}
+        if collection_id:
+            payload["collection_id"] = collection_id
+        if metadata:
+            payload["metadata"] = metadata
+        if embedding_mode:
+            payload["embedding_mode"] = embedding_mode
+        return await self._request(
+            "POST",
+            "/ingestion/batches",
+            json_body=payload,
+            tenant_id=tenant_id,
+            sync_tenant_body=True,
+            enforce_tenant=True,
+        )
+
+    async def upload_file_to_batch(
+        self,
+        batch_id: str,
+        file_path: str | Path,
+        metadata: Optional[Dict[str, Any] | str] = None,
+    ) -> Dict[str, Any]:
+        path = Path(file_path)
+        file_bytes = path.read_bytes()
+        files = {"file": (path.name, file_bytes)}
+        data = {}
+        if metadata:
+            data["metadata"] = metadata if isinstance(metadata, str) else json.dumps(metadata)
+        return await self._request(
+            "POST",
+            f"/ingestion/batches/{batch_id}/upload",
+            files=files,
+            data=data,
+            enforce_tenant=True,
+        )
+
+    async def seal_ingestion_batch(self, batch_id: str) -> Dict[str, Any]:
+        return await self._request(
+            "POST", f"/ingestion/batches/{batch_id}/seal", enforce_tenant=True
+        )
+
+    async def get_batch_status(self, batch_id: str) -> Dict[str, Any]:
+        return await self._request(
+            "GET", f"/ingestion/batches/{batch_id}/status", enforce_tenant=True
+        )
+
+    async def get_ingestion_job_status(self, job_id: str) -> Dict[str, Any]:
+        return await self._request("GET", f"/ingestion/jobs/{job_id}", enforce_tenant=True)
+
+    async def replay_enrichment(
+        self,
+        document_id: str,
+        include_visual: bool = True,
+        include_graph: bool = True,
+        include_raptor: bool = True,
+        tenant_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        payload = {
+            "include_visual": include_visual,
+            "include_graph": include_graph,
+            "include_raptor": include_raptor,
+        }
+        return await self._request(
+            "POST",
+            f"/ingestion/enrich/{document_id}",
+            json_body=payload,
+            tenant_id=tenant_id,
+            enforce_tenant=True,
+        )
 
     async def list_documents(self, limit: int = 20) -> Dict[str, Any]:
-        return await self._request("GET", "/documents", params={"limit": limit}, enforce_tenant=True)
+        return await self._request(
+            "GET", "/documents", params={"limit": limit}, enforce_tenant=True
+        )
 
     async def get_document_status(self, document_id: str) -> Dict[str, Any]:
         return await self._request("GET", f"/documents/{document_id}/status", enforce_tenant=True)
@@ -595,7 +787,9 @@ class AsyncCireRagClient:
             enforce_tenant=True,
         )
 
-    async def submit_chat_feedback(self, interaction_id: str, rating: str, comment: Optional[str] = None) -> Dict[str, Any]:
+    async def submit_chat_feedback(
+        self, interaction_id: str, rating: str, comment: Optional[str] = None
+    ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {"interaction_id": interaction_id, "rating": rating}
         if comment:
             payload["comment"] = comment
@@ -729,7 +923,9 @@ class AsyncCireRagClient:
             enforce_tenant=True,
         )
 
-    def _resolve_tenant(self, tenant_id: Optional[str], *, endpoint: str, enforce_tenant: bool) -> Optional[str]:
+    def _resolve_tenant(
+        self, tenant_id: Optional[str], *, endpoint: str, enforce_tenant: bool
+    ) -> Optional[str]:
         explicit_tenant = _sanitize_tenant_id(tenant_id)
         context_tenant = self.tenant_context.get_tenant()
         if explicit_tenant and context_tenant and explicit_tenant != context_tenant:
@@ -747,7 +943,11 @@ class AsyncCireRagClient:
         if enforce_tenant and not resolved:
             logger.warning(
                 "tenant_missing_blocked",
-                extra={"event": "tenant_missing_blocked", "endpoint": endpoint, "status": "blocked"},
+                extra={
+                    "event": "tenant_missing_blocked",
+                    "endpoint": endpoint,
+                    "status": "blocked",
+                },
             )
             raise TenantSelectionRequiredError()
         return resolved
@@ -768,7 +968,9 @@ class AsyncCireRagClient:
         _retry_on_mismatch: bool = True,
     ) -> Dict[str, Any]:
         url = f"{self.base_url}/api/v1{path}"
-        resolved_tenant = self._resolve_tenant(tenant_id, endpoint=path, enforce_tenant=enforce_tenant)
+        resolved_tenant = self._resolve_tenant(
+            tenant_id, endpoint=path, enforce_tenant=enforce_tenant
+        )
         request_params = dict(params or {})
         request_json = dict(json_body or {})
         if sync_tenant_body and resolved_tenant:
@@ -798,9 +1000,15 @@ class AsyncCireRagClient:
             payload = None
 
         payload_error = payload.get("error") if isinstance(payload, dict) else None
-        payload_code = str(payload_error.get("code") or "") if isinstance(payload_error, dict) else ""
+        payload_code = (
+            str(payload_error.get("code") or "") if isinstance(payload_error, dict) else ""
+        )
         payload_request_id = (
-            str(payload_error.get("request_id") or response.headers.get("X-Correlation-ID") or "unknown")
+            str(
+                payload_error.get("request_id")
+                or response.headers.get("X-Correlation-ID")
+                or "unknown"
+            )
             if isinstance(payload_error, dict)
             else str(response.headers.get("X-Correlation-ID") or "unknown")
         )
