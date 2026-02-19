@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from typing import Any
 
@@ -183,6 +184,143 @@ class RetrievalFlow:
         _push(direct)
         return tokens
 
+    @staticmethod
+    def _stable_item_key(item: dict[str, Any]) -> str:
+        source = str(item.get("source") or "")
+        meta_raw = item.get("metadata")
+        meta = meta_raw if isinstance(meta_raw, dict) else {}
+        row_raw = meta.get("row")
+        row = row_raw if isinstance(row_raw, dict) else {}
+        row_meta_raw = row.get("metadata")
+        row_meta = row_meta_raw if isinstance(row_meta_raw, dict) else {}
+        doc_id = str(row.get("doc_id") or row_meta.get("doc_id") or "")
+        chunk_id = str(
+            row.get("chunk_id")
+            or row.get("id")
+            or row_meta.get("chunk_id")
+            or row_meta.get("id")
+            or ""
+        )
+        composite = "::".join(part for part in [doc_id, chunk_id, source] if part)
+        return composite or source or str(hash(str(item)))
+
+    @staticmethod
+    def _scope_aliases(scope: str) -> tuple[str, ...]:
+        value = str(scope or "").strip().upper()
+        if not value:
+            return ()
+        aliases: list[str] = [value.casefold()]
+        digits = [m for m in re.findall(r"\b\d{3,6}\b", value)]
+        for digit in digits:
+            aliases.append(str(digit).casefold())
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for alias in aliases:
+            if alias in seen:
+                continue
+            seen.add(alias)
+            ordered.append(alias)
+        return tuple(ordered)
+
+    @classmethod
+    def _item_matches_scope(cls, item: dict[str, Any], scope: str) -> bool:
+        aliases = cls._scope_aliases(scope)
+        if not aliases:
+            return False
+        tokens = cls._item_scope_tokens(item)
+        if not tokens:
+            return False
+        for token in tokens:
+            for alias in aliases:
+                if alias in token or token in alias:
+                    return True
+        return False
+
+    @classmethod
+    def _rebalance_scope_coverage(
+        cls,
+        *,
+        items: list[dict[str, Any]],
+        requested_standards: tuple[str, ...],
+        top_k: int,
+        trace_target: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        requested = [
+            str(scope or "").strip().upper() for scope in requested_standards if str(scope).strip()
+        ]
+        if len(requested) < 2:
+            return items
+
+        per_scope: dict[str, list[dict[str, Any]]] = {scope: [] for scope in requested}
+        leftovers: list[dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            matched = False
+            for scope in requested:
+                if cls._item_matches_scope(item, scope):
+                    per_scope[scope].append(item)
+                    matched = True
+                    break
+            if not matched:
+                leftovers.append(item)
+
+        selected: list[dict[str, Any]] = []
+        seen_keys: set[str] = set()
+
+        def _append_unique(candidate: dict[str, Any]) -> None:
+            key = cls._stable_item_key(candidate)
+            if key in seen_keys:
+                return
+            seen_keys.add(key)
+            selected.append(candidate)
+
+        min_per_scope = 1
+        for scope in requested:
+            for candidate in per_scope.get(scope, [])[:min_per_scope]:
+                _append_unique(candidate)
+
+        cursor = {scope: min(len(per_scope.get(scope, [])), min_per_scope) for scope in requested}
+        while len(selected) < max(1, top_k):
+            progressed = False
+            for scope in requested:
+                bucket = per_scope.get(scope, [])
+                idx = cursor.get(scope, 0)
+                if idx >= len(bucket):
+                    continue
+                _append_unique(bucket[idx])
+                cursor[scope] = idx + 1
+                progressed = True
+                if len(selected) >= max(1, top_k):
+                    break
+            if not progressed:
+                break
+
+        for candidate in leftovers:
+            if len(selected) >= max(1, top_k):
+                break
+            _append_unique(candidate)
+
+        if len(selected) < max(1, top_k):
+            for candidate in items:
+                if len(selected) >= max(1, top_k):
+                    break
+                if isinstance(candidate, dict):
+                    _append_unique(candidate)
+
+        if isinstance(trace_target, dict):
+            trace_target["scope_balance"] = {
+                "enabled": True,
+                "requested_scopes": requested,
+                "per_scope_counts_before": {
+                    scope: len(per_scope.get(scope, [])) for scope in requested
+                },
+                "selected": len(selected),
+                "top_k": int(max(1, top_k)),
+            }
+
+        return selected[: max(1, top_k)]
+
     @classmethod
     def _enforce_collection_scope(
         cls,
@@ -323,7 +461,9 @@ class RetrievalFlow:
             )
             max_queries_for_plan = mode_max_subqueries
             if remaining_budget_ms() < 8000:
-                max_queries_for_plan = min(max_queries_for_plan, low_budget_cap)
+                scope_count = len(tuple(plan.requested_standards or ()))
+                budget_floor = max(low_budget_cap, scope_count)
+                max_queries_for_plan = min(max_queries_for_plan, budget_floor)
             subqueries_local = await planner.plan(
                 SubqueryPlanningContext(
                     query=query,
@@ -360,6 +500,7 @@ class RetrievalFlow:
                 2,
                 int(getattr(settings, "ORCH_MULTI_QUERY_FALLBACK_MAX_QUERIES", 3) or 3),
             )
+            fallback_max = max(fallback_max, len(tuple(plan.requested_standards or ())))
             fallback_max = min(mode_max_subqueries, fallback_max)
             if purpose == "fallback" and len(subqueries_local) > fallback_max:
                 subqueries_local = subqueries_local[:fallback_max]
@@ -405,6 +546,12 @@ class RetrievalFlow:
             items,
             collection_id=collection_id,
             requested_standards=plan.requested_standards,
+            trace_target=trace,
+        )
+        items = self._rebalance_scope_coverage(
+            items=items,
+            requested_standards=plan.requested_standards,
+            top_k=max(12, k),
             trace_target=trace,
         )
         if hint_trace.get("applied"):
@@ -495,7 +642,7 @@ class RetrievalFlow:
                 trace["subquery_cap_reason"] = "rate_limit_hint"
                 trace["subquery_cap_applied"] = rate_limit_cap
             if missing_scopes:
-                for scope in missing_scopes[:2]:
+                for scope in missing_scopes:
                     subqueries.insert(
                         0,
                         {
@@ -668,6 +815,12 @@ class RetrievalFlow:
                     trace_target=diag_trace_local,
                 )
                 items = reduce_structural_noise(items, query)
+                items = self._rebalance_scope_coverage(
+                    items=items,
+                    requested_standards=plan.requested_standards,
+                    top_k=max(12, k),
+                    trace_target=diag_trace_local,
+                )
                 return self._to_evidence(items)
 
             raw_mq_items = [it for it in mq_items if isinstance(it, dict)]
@@ -688,6 +841,12 @@ class RetrievalFlow:
                 trace_target=mq_trace if isinstance(mq_trace, dict) else None,
             )
             mq_items = reduce_structural_noise(mq_items, query)
+            mq_items = self._rebalance_scope_coverage(
+                items=mq_items,
+                requested_standards=plan.requested_standards,
+                top_k=max(12, k),
+                trace_target=mq_trace if isinstance(mq_trace, dict) else None,
+            )
             merged_items = self._merge_and_deduplicate(items, mq_items)
 
             diag_trace_fb: dict[str, Any] = {
@@ -769,6 +928,12 @@ class RetrievalFlow:
                 trace_target=diag_trace_fb,
             )
             repaired_items = reduce_structural_noise(repaired_items, query)
+            repaired_items = self._rebalance_scope_coverage(
+                items=repaired_items,
+                requested_standards=plan.requested_standards,
+                top_k=max(12, k),
+                trace_target=diag_trace_fb,
+            )
             self.last_diagnostics = RetrievalDiagnostics(
                 contract="advanced",
                 strategy="multi_query",
@@ -853,6 +1018,12 @@ class RetrievalFlow:
             trace_target=diag_trace_final,
         )
         items2 = reduce_structural_noise(items2, query)
+        items2 = self._rebalance_scope_coverage(
+            items=items2,
+            requested_standards=plan.requested_standards,
+            top_k=max(12, k),
+            trace_target=diag_trace_final,
+        )
         return self._to_evidence(items2)
 
     def _coverage_budget(
@@ -1083,29 +1254,10 @@ class RetrievalFlow:
         merged: list[dict[str, Any]] = []
         seen: set[str] = set()
 
-        def stable_key(item: dict[str, Any]) -> str:
-            source = str(item.get("source") or "")
-            meta_raw = item.get("metadata")
-            meta = meta_raw if isinstance(meta_raw, dict) else {}
-            row_raw = meta.get("row")
-            row = row_raw if isinstance(row_raw, dict) else {}
-            row_meta_raw = row.get("metadata")
-            row_meta = row_meta_raw if isinstance(row_meta_raw, dict) else {}
-            doc_id = str(row.get("doc_id") or row_meta.get("doc_id") or "")
-            chunk_id = str(
-                row.get("chunk_id")
-                or row.get("id")
-                or row_meta.get("chunk_id")
-                or row_meta.get("id")
-                or ""
-            )
-            composite = "::".join(part for part in [doc_id, chunk_id, source] if part)
-            return composite or source or str(hash(str(item)))
-
         for candidate in [*base_items, *new_items]:
             if not isinstance(candidate, dict):
                 continue
-            key = stable_key(candidate)
+            key = RetrievalFlow._stable_item_key(candidate)
             if key in seen:
                 continue
             seen.add(key)
@@ -1153,6 +1305,8 @@ class RetrievalFlow:
             return items
 
         cap = max(1, int(settings.ORCH_COVERAGE_GATE_MAX_MISSING or 2))
+        if len(plan.requested_standards) >= 2:
+            cap = max(cap, len(plan.requested_standards))
         missing_scopes = missing_scopes[:cap]
         missing_clauses = missing_clauses[:cap]
 
@@ -1241,8 +1395,7 @@ class RetrievalFlow:
         for it in [*items, *cov_items]:
             if not isinstance(it, dict):
                 continue
-            sid = str(it.get("source") or "")
-            key = sid or str(len(seen))
+            key = self._stable_item_key(it)
             if key in seen:
                 continue
             seen.add(key)
@@ -1339,8 +1492,7 @@ class RetrievalFlow:
                     for it in sb_items:
                         if not isinstance(it, dict):
                             continue
-                        sid = str(it.get("source") or "")
-                        key = sid or str(len(seen))
+                        key = self._stable_item_key(it)
                         if key in seen:
                             continue
                         seen.add(key)

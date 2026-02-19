@@ -143,3 +143,66 @@ def _keyword_overlap_score(query: str, content: str) -> int:
     c_tokens = _tokenize(content)
     return sum(1 for token in q_tokens if token in c_tokens)
 
+
+# --- Safe State Getters ---
+
+def state_get_list(state: UniversalState, key: str, default: list[Any] | None = None) -> list[Any]:
+    val = state.get(key)
+    if isinstance(val, list):
+        return val
+    return default if default is not None else []
+
+
+def state_get_dict(state: UniversalState, key: str, default: dict[str, Any] | None = None) -> dict[str, Any]:
+    val = state.get(key)
+    if isinstance(val, dict):
+        return val
+    return default if default is not None else {}
+
+
+def state_get_int(state: UniversalState, key: str, default: int = 0) -> int:
+    val = state.get(key)
+    try:
+        return int(val) if val is not None else default
+    except (ValueError, TypeError):
+        return default
+
+
+def state_get_str(state: UniversalState, key: str, default: str = "") -> str:
+    val = state.get(key)
+    return str(val).strip() if val is not None else default
+
+
+def state_get_float(state: UniversalState, key: str, default: float = 0.0) -> float:
+    val = state.get(key)
+    try:
+        return float(val) if val is not None else default
+    except (ValueError, TypeError):
+        return default
+
+
+# --- Node Timing Decorator ---
+
+import functools
+
+def track_node_timing(stage_name: str):
+    """
+    Decorator for LangGraph nodes to automatically track their execution time.
+    Instead of manually calling `_append_stage_timing` at every return, this handles it.
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        async def async_wrapper(state: UniversalState, *args, **kwargs) -> dict[str, Any]:
+            t0 = time.perf_counter()
+            result = await func(state, *args, **kwargs)
+            elapsed_ms = (time.perf_counter() - t0) * 1000.0
+            
+            if isinstance(result, dict):
+                # We inject the stage object
+                result["stage_timings_ms"] = _append_stage_timing(
+                    state, stage=stage_name, elapsed_ms=elapsed_ms
+                )
+            return result
+        return async_wrapper
+    return decorator
+

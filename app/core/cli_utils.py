@@ -27,20 +27,75 @@ def _extract_scope_list_from_answer(text: str) -> list[str]:
         normalized = value.lower()
         if normalized in {"comparar multiples", "alcance unico", "respuesta parcial"}:
             continue
-        # Keep only scope-like values (codes/standards), not generic phrases.
-        if not (
-            re.search(r"\d", value)
-            or re.search(
-                r"\b(?:iso|iec|nom|nmx|nfpa|osha|en|une|iram|bs|din)\b", value, flags=re.IGNORECASE
+        compact = re.sub(r"\s+", " ", value).strip()
+        # Keep only strict scope-like values (codes/standards), not generic phrases.
+        prefix_with_code = bool(
+            re.search(
+                r"^(?:iso|iec|nom|nmx|nfpa|osha|en|une|iram|bs|din)\s*[-:_]?\s*\d{2,6}(?:[:\-]\d{4})?$",
+                compact,
+                flags=re.IGNORECASE,
             )
-        ):
+        )
+        compact_code = bool(re.search(r"^[A-Za-z]{2,12}[-_ ]?\d{2,6}$", compact))
+        numeric_code = bool(re.search(r"^\d{3,6}$", compact))
+        # Sometimes users type '9001', which should be recognized!
+        if not (prefix_with_code or compact_code or numeric_code):
             continue
-        scopes.append(value)
+        
+        # If it's just a number, prepend ISO assuming that's the default context for such numbers
+        if numeric_code and not prefix_with_code and not compact_code:
+             compact = f"ISO {compact}"
+             
+        scopes.append(compact)
     return scopes[:5]
 
 
 def looks_like_scope_answer(text: str) -> bool:
     return len(_extract_scope_list_from_answer(text)) > 0
+
+
+def extract_scope_list_from_answer(text: str) -> list[str]:
+    return _extract_scope_list_from_answer(text)
+
+
+def build_clarification_context(
+    *,
+    clarification: dict[str, object] | None,
+    answer_text: str,
+    round_no: int,
+) -> dict[str, object]:
+    clarified = str(answer_text or "").strip()
+    lowered = clarified.lower()
+    kind = str((clarification or {}).get("kind") or "clarification").strip()
+    level = str((clarification or {}).get("level") or "L2").strip()
+    missing_slots_raw = (clarification or {}).get("missing_slots")
+    missing_slots = [
+        str(item).strip().lower()
+        for item in (missing_slots_raw if isinstance(missing_slots_raw, list) else [])
+        if str(item).strip()
+    ]
+    expected_answer = str((clarification or {}).get("expected_answer") or "").strip()
+    selected_option = lowered if lowered and len(lowered) <= 80 else ""
+    requested_scopes = _extract_scope_list_from_answer(clarified)
+
+    context: dict[str, object] = {
+        "round": max(0, int(round_no)),
+        "kind": kind or "clarification",
+        "level": level or "L2",
+        "missing_slots": missing_slots,
+        "expected_answer": expected_answer,
+        "answer_text": clarified,
+        "selected_option": selected_option,
+        "requested_scopes": requested_scopes,
+        "confirmed": lowered in {"si", "sí", "ok", "confirmo", "confirmado", "si, continuar"},
+        "plan_approved": kind == "plan_approval"
+        and lowered in {"si", "sí", "ok", "confirmo", "confirmado"},
+    }
+
+    if "scope" in missing_slots and not requested_scopes and clarified:
+        context["objective_hint"] = clarified
+
+    return context
 
 
 def propose_scope_candidates(query: str, clarification_answer: str) -> list[str]:

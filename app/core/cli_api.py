@@ -37,6 +37,7 @@ async def post_answer(
     query: str,
     collection_id: str | None,
     agent_profile_id: str | None,
+    clarification_context: dict[str, Any] | None = None,
     access_token: str | None = None,
     retry_on_mismatch: bool = True,
 ) -> dict[str, Any]:
@@ -50,6 +51,8 @@ async def post_answer(
     }
     if collection_id:
         payload["collection_id"] = collection_id
+    if isinstance(clarification_context, dict) and clarification_context:
+        payload["clarification_context"] = clarification_context
 
     headers = {"X-Tenant-ID": resolved_tenant}
     profile_header = str(settings.ORCH_AGENT_PROFILE_HEADER or "X-Agent-Profile").strip()
@@ -82,6 +85,7 @@ async def post_answer(
                     query=query,
                     collection_id=collection_id,
                     agent_profile_id=agent_profile_id,
+                    clarification_context=clarification_context,
                     access_token=access_token,
                     retry_on_mismatch=False,
                 )
@@ -146,6 +150,7 @@ async def post_answer_stream(
     query: str,
     collection_id: str | None,
     agent_profile_id: str | None,
+    clarification_context: dict[str, Any] | None = None,
     access_token: str | None = None,
     on_status: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
@@ -159,6 +164,8 @@ async def post_answer_stream(
     }
     if collection_id:
         payload["collection_id"] = collection_id
+    if isinstance(clarification_context, dict) and clarification_context:
+        payload["clarification_context"] = clarification_context
 
     headers = {"X-Tenant-ID": resolved_tenant}
     profile_header = str(settings.ORCH_AGENT_PROFILE_HEADER or "X-Agent-Profile").strip()

@@ -18,6 +18,99 @@ from app.core.rag_contract_schemas import SubQueryRequest
 logger = structlog.get_logger(__name__)
 
 
+def _extract_scope_filters(item: dict[str, Any]) -> tuple[str, ...]:
+    if not isinstance(item, dict):
+        return ()
+    raw_filters = item.get("filters")
+    if not isinstance(raw_filters, dict):
+        return ()
+    one = str(raw_filters.get("source_standard") or "").strip()
+    if one:
+        return (one.upper(),)
+    many = raw_filters.get("source_standards")
+    if not isinstance(many, list):
+        return ()
+    out: list[str] = []
+    for value in many:
+        text = str(value or "").strip().upper()
+        if text:
+            out.append(text)
+    return tuple(out)
+
+
+def _ensure_scope_coverage(
+    *,
+    context: SubqueryPlanningContext,
+    subqueries: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    requested = [
+        str(scope or "").strip().upper()
+        for scope in context.requested_standards
+        if str(scope).strip()
+    ]
+    if len(requested) < 2:
+        return subqueries[: max(1, context.max_queries)]
+
+    present_scopes: set[str] = set()
+    for item in subqueries:
+        for scope in _extract_scope_filters(item):
+            present_scopes.add(scope)
+
+    missing = [scope for scope in requested if scope not in present_scopes]
+    if not missing:
+        return subqueries[: max(1, context.max_queries)]
+
+    fillers = build_deterministic_subqueries(
+        query=context.query,
+        requested_standards=tuple(missing),
+        max_queries=len(missing),
+        mode=context.mode,
+        require_literal_evidence=context.require_literal_evidence,
+        include_semantic_tail=context.include_semantic_tail,
+        profile=context.profile,
+    )
+
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in [*subqueries, *fillers]:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("id") or "").strip() or str(item.get("query") or "").strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+
+    max_queries = max(1, context.max_queries)
+    if len(merged) <= max_queries:
+        return merged
+
+    selected: list[dict[str, Any]] = []
+    selected_ids: set[str] = set()
+    for scope in requested:
+        for item in merged:
+            scope_filters = _extract_scope_filters(item)
+            if scope not in scope_filters:
+                continue
+            key = str(item.get("id") or "").strip() or str(item.get("query") or "").strip().lower()
+            if not key or key in selected_ids:
+                continue
+            selected.append(item)
+            selected_ids.add(key)
+            break
+
+    for item in merged:
+        if len(selected) >= max_queries:
+            break
+        key = str(item.get("id") or "").strip() or str(item.get("query") or "").strip().lower()
+        if not key or key in selected_ids:
+            continue
+        selected.append(item)
+        selected_ids.add(key)
+
+    return selected[:max_queries]
+
+
 class SubqueryPlanPayload(BaseModel):
     subqueries: list[SubQueryRequest] = Field(default_factory=list)
 
@@ -25,7 +118,7 @@ class SubqueryPlanPayload(BaseModel):
 @dataclass
 class DeterministicSubqueryPlanner(SubqueryPlanner):
     async def plan(self, context: SubqueryPlanningContext) -> list[dict[str, Any]]:
-        return build_deterministic_subqueries(
+        planned = build_deterministic_subqueries(
             query=context.query,
             requested_standards=context.requested_standards,
             max_queries=context.max_queries,
@@ -34,6 +127,7 @@ class DeterministicSubqueryPlanner(SubqueryPlanner):
             include_semantic_tail=context.include_semantic_tail,
             profile=context.profile,
         )
+        return _ensure_scope_coverage(context=context, subqueries=planned)
 
 
 @dataclass
@@ -157,4 +251,5 @@ class HybridSubqueryPlanner(SubqueryPlanner):
             seen.add(key)
             merged.append(item)
 
-        return merged[: max(1, context.max_queries)]
+        covered = _ensure_scope_coverage(context=context, subqueries=merged)
+        return covered[: max(1, context.max_queries)]

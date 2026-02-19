@@ -10,15 +10,15 @@ class _FakeGroundedService:
         self.calls: list[dict] = []
 
     async def generate_answer(
-        self, 
-        query: str, 
-        context_chunks: list[str], 
-        *, 
-        mode: str, 
-        require_literal_evidence: bool, 
+        self,
+        query: str,
+        context_chunks: list[str],
+        *,
+        mode: str,
+        require_literal_evidence: bool,
         structured_context: str | None = None,
         max_chunks: int = 10,
-        agent_profile: AgentProfile | None = None
+        agent_profile: AgentProfile | None = None,
     ) -> str:  # type: ignore[override]
         self.calls.append(
             {
@@ -62,7 +62,7 @@ def test_grounded_answer_adapter_passes_labeled_context() -> None:
             summaries=summaries,
             working_memory={"tool": "result"},
             partial_answers=[],
-            agent_profile=AgentProfile(profile_id="test-profile")
+            agent_profile=AgentProfile(profile_id="test-profile"),
         )
     )
 
@@ -77,6 +77,67 @@ def test_grounded_answer_adapter_passes_labeled_context() -> None:
     assert "[R1]" in context
     assert "[C1]" in context
     assert "[C2]" in context
-    
+
     assert call["structured_context"] is not None
     assert "WORKING_MEMORY" in call["structured_context"]
+
+
+def test_grounded_answer_adapter_balances_cross_scope_context() -> None:
+    service = _FakeGroundedService()
+    adapter = GroundedAnswerAdapter(service=service)  # type: ignore[arg-type]
+
+    plan = RetrievalPlan(
+        mode="cross_scope_analysis",
+        chunk_k=35,
+        chunk_fetch_k=140,
+        summary_k=0,
+        require_literal_evidence=False,
+        requested_standards=("ISO 9001", "ISO 14001", "ISO 45001"),
+    )
+    chunks = [
+        EvidenceItem(
+            source="C1",
+            content="ISO 9001 requisito 1",
+            metadata={"row": {"metadata": {"source_standard": "ISO 9001"}}},
+        ),
+        EvidenceItem(
+            source="C2",
+            content="ISO 9001 requisito 2",
+            metadata={"row": {"metadata": {"source_standard": "ISO 9001"}}},
+        ),
+        EvidenceItem(
+            source="C3",
+            content="ISO 9001 requisito 3",
+            metadata={"row": {"metadata": {"source_standard": "ISO 9001"}}},
+        ),
+        EvidenceItem(
+            source="C4",
+            content="ISO 14001 requisito ambiental",
+            metadata={"row": {"metadata": {"source_standard": "ISO 14001"}}},
+        ),
+        EvidenceItem(
+            source="C5",
+            content="ISO 45001 requisito SST",
+            metadata={"row": {"metadata": {"source_standard": "ISO 45001"}}},
+        ),
+    ]
+
+    draft = asyncio.run(
+        adapter.generate(
+            query="compara objetivos principales",
+            scope_label="ISO",
+            plan=plan,
+            chunks=chunks,
+            summaries=[],
+            working_memory=None,
+            partial_answers=None,
+            agent_profile=AgentProfile(profile_id="test-profile"),
+        )
+    )
+
+    assert draft.text
+    assert service.calls
+    context = "\n".join(service.calls[0]["context_chunks"])
+    assert "ISO 9001" in context
+    assert "ISO 14001" in context
+    assert "ISO 45001" in context

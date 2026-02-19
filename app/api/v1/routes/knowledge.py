@@ -54,6 +54,7 @@ class OrchestratorQuestionRequest(BaseModel):
     query: str
     tenant_id: Optional[str] = None
     collection_id: Optional[str] = None
+    clarification_context: Optional[Dict[str, Any]] = None
 
 
 def _sse(event: str, payload: dict[str, Any]) -> bytes:
@@ -358,6 +359,11 @@ async def answer_with_orchestrator(
             profile_resolution=resolved_profile.resolution.model_dump(),
             request_id=req_id or None,
             correlation_id=corr_id or None,
+            clarification_context=(
+                dict(request.clarification_context)
+                if isinstance(request.clarification_context, dict)
+                else None
+            ),
         )
 
         result = await use_case.execute(command)
@@ -377,6 +383,7 @@ async def answer_with_orchestrator(
             answer_text=result.answer.text,
             evidence=result.answer.evidence,
             profile=agent_profile,
+            requested_scopes=tuple(result.plan.requested_standards or ()),
         )
         validation_accepted = bool(result.validation.accepted)
         clarification_present = bool(result.clarification)
@@ -565,6 +572,11 @@ async def answer_with_orchestrator_stream(
         profile_resolution=resolved_profile.resolution.model_dump(),
         request_id=req_id or None,
         correlation_id=corr_id or None,
+        clarification_context=(
+            dict(request.clarification_context)
+            if isinstance(request.clarification_context, dict)
+            else None
+        ),
     )
 
     async def _event_stream():
@@ -620,6 +632,7 @@ async def answer_with_orchestrator_stream(
                 answer_text=result.answer.text,
                 evidence=result.answer.evidence,
                 profile=agent_profile,
+                requested_scopes=tuple(result.plan.requested_standards or ()),
             )
             interaction_metrics = dict(
                 (result.retrieval.trace or {}).get("interaction_metrics") or {}

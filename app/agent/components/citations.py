@@ -88,6 +88,7 @@ def build_citation_bundle(
     answer_text: str,
     evidence: list[Any],
     profile: AgentProfile | None,
+    requested_scopes: tuple[str, ...] = (),
 ) -> tuple[list[str], list[dict[str, Any]], dict[str, Any]]:
     used_markers = {
         marker.upper()
@@ -195,6 +196,29 @@ def build_citation_bundle(
         if isinstance(item.get("missing_fields"), list)
         and "clause_id" in item.get("missing_fields", [])
     )
+
+    requested_scope_labels = [
+        str(scope or "").strip().upper() for scope in requested_scopes if str(scope).strip()
+    ]
+    citations_per_scope: dict[str, int] = {scope: 0 for scope in requested_scope_labels}
+    for item in details:
+        if bool(item.get("noise", False)):
+            continue
+        standard = str(item.get("standard") or "").strip().upper()
+        if not standard:
+            continue
+        for scope in requested_scope_labels:
+            if scope in standard or standard in scope:
+                citations_per_scope[scope] = int(citations_per_scope.get(scope, 0)) + 1
+                break
+            scope_digits = re.findall(r"\b\d{3,6}\b", scope)
+            if scope_digits and any(digit in standard for digit in scope_digits):
+                citations_per_scope[scope] = int(citations_per_scope.get(scope, 0)) + 1
+                break
+    missing_scope_citations = [
+        scope for scope, count in citations_per_scope.items() if int(count) <= 0
+    ]
+
     quality = {
         "schema_version": (
             str(synthesis.citation_schema_version).strip()
@@ -212,5 +236,7 @@ def build_citation_bundle(
         "min_structured_citation_ratio": (
             float(synthesis.min_structured_citation_ratio) if synthesis is not None else 0.5
         ),
+        "citations_per_scope": citations_per_scope,
+        "missing_scope_citations": missing_scope_citations,
     }
     return citations, details, quality

@@ -129,6 +129,11 @@ class UniversalReasoningOrchestrator:
             "correlation_id": cmd.correlation_id,
             "scope_label": (cmd.scope_label or ""),
             "agent_profile": cmd.agent_profile,
+            "clarification_context": (
+                dict(cmd.clarification_context)
+                if isinstance(cmd.clarification_context, dict)
+                else {}
+            ),
             "tool_results": [],
             "tool_cursor": 0,
             "plan_attempts": 1,

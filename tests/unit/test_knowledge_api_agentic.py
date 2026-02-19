@@ -132,3 +132,38 @@ def test_answer_stream_includes_context_chunks_count(client, mock_use_case):
     assert response.status_code == 200
     assert '"context_chunks_count": 1' in response.text
     assert '"context_chunks": ["fragmento"]' in response.text
+
+
+def test_answer_api_passes_clarification_context_to_command(client, mock_use_case):
+    captured = {}
+
+    async def _execute(cmd):
+        captured["context"] = cmd.clarification_context
+        return HandleQuestionResult(
+            intent=QueryIntent(mode="explicativa"),
+            answer=AnswerDraft(text="ok", mode="explicativa", evidence=[]),
+            plan=RetrievalPlan(mode="explicativa", chunk_k=10, chunk_fetch_k=50, summary_k=5),
+            retrieval=RetrievalDiagnostics(contract="legacy"),
+            validation=MagicMock(accepted=True, issues=[]),
+            clarification=None,
+        )
+
+    mock_use_case.execute = AsyncMock(side_effect=_execute)
+
+    response = client.post(
+        "/api/v1/knowledge/answer",
+        json={
+            "query": "test query",
+            "tenant_id": "test-tenant",
+            "clarification_context": {
+                "round": 1,
+                "kind": "clarification",
+                "requested_scopes": ["ISO 9001"],
+                "answer_text": "ISO 9001",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert isinstance(captured.get("context"), dict)
+    assert captured["context"].get("requested_scopes") == ["ISO 9001"]

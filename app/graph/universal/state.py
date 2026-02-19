@@ -34,6 +34,7 @@ class UniversalState(TypedDict):
     correlation_id: str | None
     scope_label: str
     agent_profile: AgentProfile | None
+    clarification_context: NotRequired[dict[str, Any]]
     tool_results: list[ToolResult]
     tool_cursor: int
     plan_attempts: int

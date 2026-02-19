@@ -134,6 +134,19 @@ def _row_matches_standards(row: dict[str, Any], standards: list[str]) -> bool:
     return any(s in content for s in canonical)
 
 
+def _scope_matches(row_scope: str, requested_scope: str) -> bool:
+    row_text = str(row_scope or "").strip().upper()
+    req_text = str(requested_scope or "").strip().upper()
+    if not row_text or not req_text:
+        return False
+    if req_text in row_text or row_text in req_text:
+        return True
+    req_digits = re.findall(r"\b\d{3,6}\b", req_text)
+    if req_digits and any(digit in row_text for digit in req_digits):
+        return True
+    return False
+
+
 def _rerank_for_literal(query: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     keywords = _extract_keywords(query)
     clause_refs = _extract_clause_refs(query)
@@ -485,6 +498,7 @@ class LiteralEvidenceValidator:
         if requested and draft.evidence:
             mismatched = 0
             total_with_scope = 0
+            covered_requested: set[str] = set()
             query_clause_refs = sorted(_extract_clause_refs(query)) if enforce_clause_refs else []
             matched_clause_refs: set[str] = set()
             for ev in draft.evidence:
@@ -495,7 +509,12 @@ class LiteralEvidenceValidator:
                 if not row_scope:
                     continue
                 total_with_scope += 1
-                if not any(target in row_scope for target in requested_upper):
+                matched_scope = False
+                for target in requested_upper:
+                    if _scope_matches(row_scope, target):
+                        covered_requested.add(target)
+                        matched_scope = True
+                if not matched_scope:
                     mismatched += 1
 
                 if query_clause_refs:
@@ -511,6 +530,16 @@ class LiteralEvidenceValidator:
                 issues.append(
                     "Scope mismatch detected: evidence includes sources outside requested standard scope."
                 )
+
+            if len(requested_upper) >= 2:
+                missing_scope_coverage = sorted(
+                    scope for scope in requested_upper if scope not in covered_requested
+                )
+                if missing_scope_coverage:
+                    issues.append(
+                        "Scope mismatch detected: missing evidence coverage for requested standards: "
+                        + ", ".join(missing_scope_coverage)
+                    )
 
             if query_clause_refs:
                 requested_count = len(query_clause_refs)

@@ -99,6 +99,7 @@ class HandleQuestionCommand:
     profile_resolution: dict[str, Any] | None = None
     request_id: str | None = None
     correlation_id: str | None = None
+    clarification_context: dict[str, Any] | None = None
     split_depth: int = 0
 
 
@@ -162,6 +163,7 @@ class HandleQuestionUseCase:
                 profile_resolution=cmd.profile_resolution,
                 request_id=cmd.request_id,
                 correlation_id=cmd.correlation_id,
+                clarification_context=cmd.clarification_context,
                 split_depth=cmd.split_depth + 1,
             )
             tasks.append(self.execute(child_cmd))

@@ -125,7 +125,7 @@ interaction_policy:
     cross_scope_analysis:
       require_plan_approval: false
       risk_level: medium
-      required_slots: [scope]
+      required_slots: [scope, objective]
     comprehensive_synthesis:
       require_plan_approval: true
       risk_level: high
@@ -208,7 +208,10 @@ query_modes:
         - "\\b\\d+(?:\\.\\d+)+\\b"
     - id: base_cross_scope
       mode: cross_scope_analysis
-      any_keywords: [compar, difer, vs, entre, respecto, impacto]
+      any_keywords: [vs, entre, respecto, impacto]
+      any_patterns:
+        - "\\bcompar(?:a|ar|aci[oó]n|ativo|ativa|ativos|ativas)?\\b"
+        - "\\bdifer(?:encia|encias|ente|entes|ir|iere|ieren)\\b"
     - id: base_scope_ambiguity
       mode: scope_clarification
       any_markers: ["__mode__=scope_clarification"]

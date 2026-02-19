@@ -361,7 +361,7 @@ def build_deterministic_subqueries(
             clause_by_standard[str(standard)] = str(maybe_clause)
 
     # Per-standard subqueries (bounded).
-    for standard in requested_standards[:3]:
+    for standard in requested_standards:
         clause = _clause_near_standard(raw_query, standard)
         key = _standard_key(standard).lower() or "scope"
         if include_semantic_tail:

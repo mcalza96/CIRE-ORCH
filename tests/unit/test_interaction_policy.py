@@ -112,3 +112,52 @@ def test_decide_interaction_l3_for_complex_high_risk_mode() -> None:
     assert decision.needs_interrupt is True
     assert decision.level == "L3"
     assert decision.kind == "plan_approval"
+
+
+def test_decide_interaction_respects_structured_clarification_context() -> None:
+    profile = _profile()
+    decision = decide_interaction(
+        query="Compara las normas iso",
+        intent=QueryIntent(mode="cross_scope_analysis"),
+        retrieval_plan=RetrievalPlan(
+            mode="cross_scope_analysis",
+            chunk_k=30,
+            chunk_fetch_k=120,
+            summary_k=5,
+            requested_standards=("ISO 9001", "ISO 14001"),
+        ),
+        reasoning_plan=ReasoningPlan(goal="x", steps=[ToolCall(tool="semantic_retrieval")]),
+        profile=profile,
+        prior_interruptions=0,
+        clarification_context={
+            "round": 1,
+            "kind": "clarification",
+            "selected_option": "si, continuar",
+            "confirmed": True,
+            "requested_scopes": ["ISO 9001", "ISO 14001"],
+            "answer_text": "Comparar por objetivo de riesgo operativo",
+        },
+    )
+    assert decision.needs_interrupt is False
+    assert decision.level == "L1"
+
+
+def test_decide_interaction_cross_scope_prompt_uses_generic_example_without_iso() -> None:
+    profile = _profile()
+    decision = decide_interaction(
+        query="compara los enfoques del libro",
+        intent=QueryIntent(mode="cross_scope_analysis"),
+        retrieval_plan=RetrievalPlan(
+            mode="cross_scope_analysis",
+            chunk_k=30,
+            chunk_fetch_k=120,
+            summary_k=5,
+            requested_standards=(),
+        ),
+        reasoning_plan=ReasoningPlan(goal="x", steps=[ToolCall(tool="semantic_retrieval")]),
+        profile=profile,
+        prior_interruptions=0,
+    )
+    assert decision.needs_interrupt is True
+    assert decision.level == "L2"
+    assert "ISO 9001" not in decision.question

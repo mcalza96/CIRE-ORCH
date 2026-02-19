@@ -48,3 +48,24 @@ def test_citation_bundle_marks_noise_items() -> None:
     assert citations == []
     assert details[0]["noise"] is True
     assert quality["discarded_noise"] == 1
+
+
+def test_citation_bundle_reports_missing_scope_citations() -> None:
+    profile = AgentProfile(profile_id="p")
+    evidence = [
+        EvidenceItem(
+            source="C1",
+            content="[CLAUSE_ID: 5.1] evidencia calidad",
+            score=0.9,
+            metadata={"row": {"metadata": {"source_standard": "ISO 9001"}}},
+        )
+    ]
+    _, _, quality = build_citation_bundle(
+        answer_text="segun C1",
+        evidence=evidence,
+        profile=profile,
+        requested_scopes=("ISO 9001", "ISO 14001", "ISO 45001"),
+    )
+    assert quality["citations_per_scope"].get("ISO 9001") == 1
+    assert "ISO 14001" in quality["missing_scope_citations"]
+    assert "ISO 45001" in quality["missing_scope_citations"]

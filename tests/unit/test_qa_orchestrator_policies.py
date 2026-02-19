@@ -5,8 +5,8 @@ from app.agent.policies import (
     detect_scope_candidates,
     suggest_scope_candidates,
 )
-from app.cartridges.builtin_profiles import BUILTIN_PROFILES
 from app.cartridges.models import AgentProfile
+from tests.fixtures.builtin_profiles import BUILTIN_PROFILES
 
 # Cargamos el perfil iso_auditor para los tests que dependen de patrones ISO
 ISO_PROFILE = AgentProfile.model_validate(BUILTIN_PROFILES["iso_auditor"])

@@ -200,3 +200,35 @@ def test_strong_claim_without_citation_is_rejected() -> None:
     assert any(
         "Strong risk claim without explicit evidence markers" in issue for issue in result.issues
     )
+
+
+def test_cross_scope_validation_requires_evidence_for_each_requested_scope() -> None:
+    validator = LiteralEvidenceValidator()
+    plan = RetrievalPlan(
+        mode="cross_scope_analysis",
+        chunk_k=20,
+        chunk_fetch_k=80,
+        summary_k=0,
+        require_literal_evidence=False,
+        requested_standards=("ISO 9001", "ISO 14001", "ISO 45001"),
+    )
+    draft = AnswerDraft(
+        text="Comparativa preliminar con referencia C1.",
+        mode=plan.mode,
+        evidence=[
+            EvidenceItem(
+                source="C1",
+                content="evidencia de ISO 9001",
+                metadata={"row": {"metadata": {"source_standard": "ISO 9001"}}},
+            )
+        ],
+    )
+
+    result = validator.validate(
+        draft=draft, plan=plan, query="compara ISO 9001, ISO 14001 y ISO 45001"
+    )
+
+    assert result.accepted is False
+    assert any(
+        "missing evidence coverage for requested standards" in issue for issue in result.issues
+    )

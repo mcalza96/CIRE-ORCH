@@ -33,6 +33,12 @@ def test_build_deterministic_subqueries_bounded() -> None:
     ids = {item["id"] for item in subqueries}
     # Agnostic bridge queries should be present when there is room.
     assert "bridge_contexto" in ids or "step_back" in ids
+    scope_filters = {
+        str((item.get("filters") or {}).get("source_standard") or "").upper()
+        for item in subqueries
+        if isinstance(item, dict)
+    }
+    assert {"ISO 45001", "ISO 14001", "ISO 9001"}.issubset(scope_filters)
 
 
 def test_build_deterministic_subqueries_literal_mode_defers_step_back() -> None:

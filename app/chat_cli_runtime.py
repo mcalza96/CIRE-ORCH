@@ -259,6 +259,7 @@ async def main(argv: list[str] | None = None) -> None:
                         query=effective_query,
                         collection_id=collection_id,
                         agent_profile_id=agent_profile_id,
+                        clarification_context=None,
                         access_token=access_token,
                     )
                 else:
@@ -270,6 +271,7 @@ async def main(argv: list[str] | None = None) -> None:
                         query=effective_query,
                         collection_id=collection_id,
                         agent_profile_id=agent_profile_id,
+                        clarification_context=None,
                         access_token=access_token,
                         on_status=lambda st: _print_thinking_status(st, seen_phases),
                     )
@@ -350,6 +352,7 @@ async def main(argv: list[str] | None = None) -> None:
                             confirm = cli_utils.prompt("📝 ¿Confirmas esta propuesta? [s/N]: ")
                             if confirm.strip().lower() in {"s", "si", "sí", "y", "yes"}:
                                 reply = ", ".join(proposed_scopes)
+                                clarification_query_base = f"__requested_scopes__=[{'|'.join(proposed_scopes)}] {clarification_query_base}"
                             else:
                                 manual = cli_utils.prompt(
                                     "📝 Indica alcances exactos separados por coma: "
@@ -358,14 +361,10 @@ async def main(argv: list[str] | None = None) -> None:
                                     reply = manual
                     if not reply:
                         break
-                    clarified_query = cli_utils.rewrite_query_with_clarification(
-                        clarification_query_base,
-                        reply,
-                        clarification_kind=clar_kind,
-                    )
-                    clarification_query_base = cli_utils.apply_mode_override(
-                        clarified_query,
-                        forced_mode,
+                    clarification_context = cli_utils.build_clarification_context(
+                        clarification=clarification,
+                        answer_text=reply,
+                        round_no=rounds + 1,
                     )
                     result = await cli_api.post_answer(
                         client=client,
@@ -374,6 +373,7 @@ async def main(argv: list[str] | None = None) -> None:
                         query=clarification_query_base,
                         collection_id=collection_id,
                         agent_profile_id=agent_profile_id,
+                        clarification_context=clarification_context,
                         access_token=access_token,
                     )
                     clarification = (

@@ -35,6 +35,11 @@ from app.graph.universal.state import (
     UniversalState,
 )
 from app.graph.universal.utils import (
+    state_get_list,
+    state_get_dict,
+    state_get_int,
+    state_get_str,
+    track_node_timing,
     _append_stage_timing,
     _append_tool_timing,
     _clip_text,
@@ -63,10 +68,10 @@ class OrchestratorComponents(Protocol):
     def _runtime_context(self) -> ToolRuntimeContext: ...
 
 
+@track_node_timing("planner")
 async def planner_node(
     state: UniversalState, components: OrchestratorComponents
 ) -> dict[str, object]:
-    t0 = time.perf_counter()
     query = str(state.get("working_query") or state.get("user_query") or "").strip()
     profile = state.get("agent_profile")
     allowed_tools = resolve_allowed_tools(profile, components.tools or {})
@@ -93,9 +98,6 @@ async def planner_node(
         return {
             "next_action": "generate",
             "stop_reason": "planner_timeout",
-            "stage_timings_ms": _append_stage_timing(
-                state, stage="planner", elapsed_ms=(time.perf_counter() - t0) * 1000.0
-            ),
         }
 
     max_steps = DEFAULT_MAX_STEPS
@@ -111,8 +113,29 @@ async def planner_node(
         steps=list(reasoning_plan.steps[: max(1, max_steps)]),
         complexity=reasoning_plan.complexity,
     )
-    existing_steps = list(state.get("reasoning_steps") or [])
-    prior_interruptions = int(state.get("interaction_interruptions") or 0)
+    existing_steps = state_get_list(state, "reasoning_steps")
+    prior_interruptions = state_get_int(state, "interaction_interruptions", 0)
+    
+    clarification_context = state.get("clarification_context")
+    if isinstance(clarification_context, dict):
+        ans_text = str(clarification_context.get("answer_text") or "").strip()
+        req_scopes = clarification_context.get("requested_scopes")
+        missing_slots = clarification_context.get("missing_slots")
+        if ans_text and isinstance(missing_slots, list) and missing_slots:
+            from app.graph.universal.clarification_llm import extract_clarification_slots_with_llm
+            extracted_slots = await extract_clarification_slots_with_llm(
+                clarification_text=ans_text,
+                original_query=query,
+                missing_slots=missing_slots,
+            )
+            if isinstance(extracted_slots, dict):
+                for slot_name, slot_values in extracted_slots.items():
+                    if not isinstance(slot_values, list) or not slot_values:
+                        continue
+                    # Map the conceptual 'scope' slot to the internal key 'requested_scopes'
+                    storage_key = "requested_scopes" if slot_name == "scope" else slot_name
+                    clarification_context[storage_key] = slot_values
+
     interaction = decide_interaction(
         query=query,
         intent=intent,
@@ -120,7 +143,18 @@ async def planner_node(
         reasoning_plan=reasoning_plan,
         profile=profile if isinstance(profile, AgentProfile) else None,
         prior_interruptions=prior_interruptions,
+        clarification_context=clarification_context,
     )
+
+    if isinstance(clarification_context, dict):
+        context_scopes = clarification_context.get("requested_scopes")
+        if isinstance(context_scopes, list) and context_scopes:
+            from dataclasses import replace
+            merged = list(retrieval_plan.requested_standards)
+            for s in context_scopes:
+                if s not in merged:
+                    merged.append(s)
+            retrieval_plan = replace(retrieval_plan, requested_standards=tuple(merged))
 
     updates: dict[str, object] = {
         "intent": intent,
@@ -207,44 +241,32 @@ async def planner_node(
             ),
         ]
 
-    updates["stage_timings_ms"] = _append_stage_timing(
-        state, stage="planner", elapsed_ms=(time.perf_counter() - t0) * 1000.0
-    )
     return updates
 
 
+@track_node_timing("execute_tool")
 async def execute_tool_node(
     state: UniversalState, components: OrchestratorComponents
 ) -> dict[str, object]:
-    t0 = time.perf_counter()
     plan = state.get("reasoning_plan")
     if not isinstance(plan, ReasoningPlan):
         return {
             "next_action": "generate",
             "stop_reason": "missing_plan",
-            "stage_timings_ms": _append_stage_timing(
-                state, stage="execute_tool", elapsed_ms=(time.perf_counter() - t0) * 1000.0
-            ),
         }
 
-    cursor = int(state.get("tool_cursor") or 0)
+    cursor = state_get_int(state, "tool_cursor", 0)
     if cursor >= len(plan.steps):
         return {
             "next_action": "generate",
-            "stage_timings_ms": _append_stage_timing(
-                state, stage="execute_tool", elapsed_ms=(time.perf_counter() - t0) * 1000.0
-            ),
         }
 
     max_steps = min(HARD_MAX_STEPS, int(state.get("max_steps") or DEFAULT_MAX_STEPS))
-    tool_results = list(state.get("tool_results") or [])
+    tool_results = state_get_list(state, "tool_results")
     if len(tool_results) >= max_steps:
         return {
             "next_action": "generate",
             "stop_reason": "max_steps_reached",
-            "stage_timings_ms": _append_stage_timing(
-                state, stage="execute_tool", elapsed_ms=(time.perf_counter() - t0) * 1000.0
-            ),
         }
 
     step_call = plan.steps[cursor]
@@ -265,7 +287,7 @@ async def execute_tool_node(
                     payload.setdefault("previous_tool_metadata", dict(prev.metadata))
 
         # ── Full Context Piping ──
-        working_memory = dict(state.get("working_memory") or {})
+        working_memory = dict(state_get_dict(state, "working_memory"))
         if working_memory:
             payload["working_memory"] = working_memory
 
@@ -317,7 +339,7 @@ async def execute_tool_node(
     # --- END DIAGNOSTIC ---
 
     updated_results = [*tool_results, result]
-    trace_steps = list(state.get("reasoning_steps") or [])
+    trace_steps = state_get_list(state, "reasoning_steps")
     trace_steps.append(
         ReasoningStep(
             index=len(trace_steps) + 1,
@@ -355,12 +377,9 @@ async def execute_tool_node(
         if isinstance(retrieval, RetrievalDiagnostics):
             updates["retrieval"] = retrieval
     elif result.ok:
-        memory = dict(state.get("working_memory") or {})
+        memory = dict(state_get_dict(state, "working_memory"))
         memory[result.tool] = dict(result.output or {})
         updates["working_memory"] = memory
-    updates["stage_timings_ms"] = _append_stage_timing(
-        state, stage="execute_tool", elapsed_ms=(time.perf_counter() - t0) * 1000.0
-    )
     if tool_name:
         updates["tool_timings_ms"] = _append_tool_timing(
             state,
@@ -370,31 +389,28 @@ async def execute_tool_node(
     return updates
 
 
+@track_node_timing("reflect")
 async def reflect_node(state: UniversalState) -> dict[str, object]:
-    t0 = time.perf_counter()
     plan = state.get("reasoning_plan")
     if not isinstance(plan, ReasoningPlan):
         return {
             "next_action": "generate",
             "stop_reason": "missing_plan",
-            "stage_timings_ms": _append_stage_timing(
-                state, stage="reflect", elapsed_ms=(time.perf_counter() - t0) * 1000.0
-            ),
         }
 
-    cursor = int(state.get("tool_cursor") or 0)
-    reflections = int(state.get("reflections") or 0)
+    cursor = state_get_int(state, "tool_cursor", 0)
+    reflections = state_get_int(state, "reflections", 0)
     max_reflections = min(
         HARD_MAX_REFLECTIONS,
         int(state.get("max_reflections") or DEFAULT_MAX_REFLECTIONS),
     )
     plan_attempts = int(state.get("plan_attempts") or 1)
-    tool_results = list(state.get("tool_results") or [])
+    tool_results = state_get_list(state, "tool_results")
     last = tool_results[-1] if tool_results else None
-    trace_steps = list(state.get("reasoning_steps") or [])
+    trace_steps = state_get_list(state, "reasoning_steps")
 
     next_action = "generate"
-    stop_reason = str(state.get("stop_reason") or "")
+    stop_reason = state_get_str(state, "stop_reason", "")
     retry_reason = ""
     retryable = False
     if isinstance(last, ToolResult) and not last.ok:
@@ -465,24 +481,19 @@ async def reflect_node(state: UniversalState) -> dict[str, object]:
             str(state.get("user_query") or "")
             + f"\n\n[REPLAN_REASON] {reason[:RETRY_REASON_LIMIT]}"
         )
-    updates["stage_timings_ms"] = _append_stage_timing(
-        state, stage="reflect", elapsed_ms=(time.perf_counter() - t0) * 1000.0
-    )
     return updates
 
 
+@track_node_timing("subquery_aggregate")
 async def aggregate_subqueries_node(
     state: UniversalState, components: OrchestratorComponents | None = None
 ) -> dict[str, object]:
-    t0 = time.perf_counter()
     enabled_by_settings = bool(getattr(settings, "ORCH_SUBQUERY_GROUPED_MAP_REDUCE_ENABLED", False))
     aggregation_mode = _query_mode_aggregation_mode(state)
     enabled = enabled_by_settings or aggregation_mode == "grouped_map_reduce"
     if not enabled:
         return {
-            "stage_timings_ms": _append_stage_timing(
-                state, stage="subquery_aggregate", elapsed_ms=(time.perf_counter() - t0) * 1000.0
-            )
+            
         }
 
     retrieval = state.get("retrieval")
@@ -510,9 +521,7 @@ async def aggregate_subqueries_node(
 
     if not groups:
         return {
-            "stage_timings_ms": _append_stage_timing(
-                state, stage="subquery_aggregate", elapsed_ms=(time.perf_counter() - t0) * 1000.0
-            )
+            
         }
 
     async def _summarize_one(
@@ -634,19 +643,16 @@ async def aggregate_subqueries_node(
 
     return {
         "partial_answers": partial_answers,
-        "stage_timings_ms": _append_stage_timing(
-            state, stage="subquery_aggregate", elapsed_ms=(time.perf_counter() - t0) * 1000.0
-        ),
     }
 
 
 # ── Working-memory → EvidenceItem converters ──────────────────────────
 
 
+@track_node_timing("generator")
 async def generator_node(
     state: UniversalState, components: OrchestratorComponents
 ) -> dict[str, object]:
-    t0 = time.perf_counter()
     plan = state.get("retrieval_plan")
     logger.warning(
         "DIAG_generator_entry",
@@ -657,13 +663,10 @@ async def generator_node(
     if not isinstance(plan, RetrievalPlan):
         return {
             "stop_reason": "missing_retrieval_plan",
-            "stage_timings_ms": _append_stage_timing(
-                state, stage="generator", elapsed_ms=(time.perf_counter() - t0) * 1000.0
-            ),
         }
     chunks = cast(list[EvidenceItem], list(state.get("chunks") or []))
     summaries = cast(list[EvidenceItem], list(state.get("summaries") or []))
-    working_memory = dict(state.get("working_memory") or {})
+    working_memory = state_get_dict(state, "working_memory")
     raw_partials = state.get("partial_answers")
     partial_answers_list: list[Any] = raw_partials if isinstance(raw_partials, list) else []
 
@@ -678,8 +681,8 @@ async def generator_node(
         )
         answer = await asyncio.wait_for(
             components.answer_generator.generate(
-                query=str(state.get("user_query") or ""),
-                scope_label=str(state.get("scope_label") or ""),
+                query = state_get_str(state, "user_query", ""),
+                scope_label = state_get_str(state, "scope_label", ""),
                 plan=plan,
                 chunks=chunks,
                 summaries=summaries,
@@ -692,11 +695,8 @@ async def generator_node(
     except TimeoutError:
         return {
             "stop_reason": "generator_timeout",
-            "stage_timings_ms": _append_stage_timing(
-                state, stage="generator", elapsed_ms=(time.perf_counter() - t0) * 1000.0
-            ),
         }
-    trace_steps = list(state.get("reasoning_steps") or [])
+    trace_steps = state_get_list(state, "reasoning_steps")
     trace_steps.append(
         ReasoningStep(
             index=len(trace_steps) + 1,
@@ -712,28 +712,22 @@ async def generator_node(
     return {
         "generation": answer,
         "reasoning_steps": trace_steps,
-        "stage_timings_ms": _append_stage_timing(
-            state, stage="generator", elapsed_ms=(time.perf_counter() - t0) * 1000.0
-        ),
     }
 
 
+@track_node_timing("validation")
 async def citation_validate_node(
     state: UniversalState, components: OrchestratorComponents
 ) -> dict[str, object]:
-    t0 = time.perf_counter()
     answer = state.get("generation")
     plan = state.get("retrieval_plan")
     if not isinstance(answer, AnswerDraft) or not isinstance(plan, RetrievalPlan):
         return {
             "validation": ValidationResult(accepted=False, issues=["missing_generation_or_plan"]),
             "stop_reason": "validation_failed",
-            "stage_timings_ms": _append_stage_timing(
-                state, stage="validation", elapsed_ms=(time.perf_counter() - t0) * 1000.0
-            ),
         }
 
-    allowed = list(state.get("allowed_tools") or [])
+    allowed = state_get_list(state, "allowed_tools")
     if "citation_validator" in allowed:
         tool = get_tool(components.tools or {}, "citation_validator")
         if tool is not None:
@@ -767,7 +761,7 @@ async def citation_validate_node(
     else:
         validation = components.validator.validate(answer, plan, str(state.get("user_query") or ""))
 
-    trace_steps = list(state.get("reasoning_steps") or [])
+    trace_steps = state_get_list(state, "reasoning_steps")
     trace_steps.append(
         ReasoningStep(
             index=len(trace_steps) + 1,
@@ -778,28 +772,25 @@ async def citation_validate_node(
             ok=bool(validation.accepted),
         )
     )
-    stop_reason = str(state.get("stop_reason") or "")
+    stop_reason = state_get_str(state, "stop_reason", "")
     if not stop_reason:
         stop_reason = "done" if validation.accepted else "validation_failed"
     return {
         "validation": validation,
         "reasoning_steps": trace_steps,
         "stop_reason": stop_reason,
-        "stage_timings_ms": _append_stage_timing(
-            state, stage="validation", elapsed_ms=(time.perf_counter() - t0) * 1000.0
-        ),
     }
 
 
 def route_after_planner(state: UniversalState) -> str:
-    next_action = str(state.get("next_action") or "")
+    next_action = state_get_str(state, "next_action", "")
     if next_action == "interrupt":
         return "interrupt"
     return "execute" if next_action == "execute" else "generate"
 
 
 def route_after_reflect(state: UniversalState) -> str:
-    next_action = str(state.get("next_action") or "")
+    next_action = state_get_str(state, "next_action", "")
     if next_action == "replan":
         return "replan"
     if next_action == "execute_tool":

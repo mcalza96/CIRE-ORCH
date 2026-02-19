@@ -34,6 +34,17 @@ def _plan() -> RetrievalPlan:
     )
 
 
+def _plan_three_scopes() -> RetrievalPlan:
+    return RetrievalPlan(
+        mode="comparativa",
+        chunk_k=12,
+        chunk_fetch_k=60,
+        summary_k=0,
+        require_literal_evidence=False,
+        requested_standards=("ISO 9001", "ISO 14001", "ISO 45001"),
+    )
+
+
 def _set_retrieval_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_MULTI_QUERY_PRIMARY", True)
     monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_MULTI_QUERY_MIN_ITEMS", 3)
@@ -249,3 +260,39 @@ async def test_multi_query_client_fanout_uses_parallel_hybrid_calls(
     assert flow.last_diagnostics.trace.get("multi_query_execution_mode") == "client_fanout"
     mq_trace = flow.last_diagnostics.trace.get("multi_query_trace", {})
     assert bool(mq_trace.get("fanout")) is True
+
+
+@pytest.mark.asyncio
+async def test_low_budget_subquery_cap_still_covers_all_requested_scopes(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    _set_retrieval_defaults(monkeypatch)
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_COVERAGE_GATE_ENABLED", False)
+    monkeypatch.setattr("app.agent.retrieval_flow.settings.ORCH_TIMEOUT_EXECUTE_TOOL_MS", 7000)
+    monkeypatch.setattr(
+        "app.agent.retrieval_flow.settings.ORCH_RETRIEVAL_LOW_BUDGET_SUBQUERY_CAP", 2
+    )
+
+    contract_client = AsyncMock()
+    contract_client.hybrid = AsyncMock(return_value={"items": [], "trace": {}})
+    contract_client.multi_query = AsyncMock(return_value={"items": []})
+
+    flow = RetrievalFlow(contract_client=contract_client, subquery_planner=_FakePlanner())
+    await flow.execute(
+        query="compara iso 9001, iso 14001 e iso 45001",
+        tenant_id="t1",
+        collection_id=None,
+        plan=_plan_three_scopes(),
+        user_id="u1",
+    )
+
+    assert contract_client.multi_query.await_count >= 1
+    queries = contract_client.multi_query.await_args.kwargs.get("queries")
+    assert isinstance(queries, list)
+    requested = {"ISO 9001", "ISO 14001", "ISO 45001"}
+    present = {
+        str((q.get("filters") or {}).get("source_standard") or "").upper()
+        for q in queries
+        if isinstance(q, dict)
+    }
+    assert requested.issubset(present)

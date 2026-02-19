@@ -12,6 +12,7 @@ from urllib.parse import quote
 import httpx
 import structlog
 
+from app.cartridges.db import fetch_db_profile_async
 from app.cartridges.dev_assignments import get_dev_profile_assignments_store
 from app.cartridges.models import AgentProfile, ProfileResolution, ResolvedAgentProfile
 from app.core.config import PROJECT_ROOT, settings
@@ -91,6 +92,12 @@ def _parse_json_map(raw: str | None) -> dict[str, str]:
 
 
 def _tenant_profile_map() -> dict[str, str]:
+    app_env = str(getattr(settings, "APP_ENV", "development") or "development").strip().lower()
+    is_production = app_env in {"prod", "production"}
+    raw_map = str(settings.ORCH_TENANT_PROFILE_MAP or "").strip()
+    if is_production and raw_map:
+        raise RuntimeError("ORCH_TENANT_PROFILE_MAP is not allowed in production")
+
     parsed = _parse_json_map(settings.ORCH_TENANT_PROFILE_MAP)
     if parsed:
         return parsed
@@ -226,10 +233,6 @@ class CartridgeLoader:
         return get_dev_profile_assignments_store().snapshot()
 
     async def _fetch_db_profile_async(self, tenant_id: str) -> AgentProfile | None:
-        if not bool(settings.ORCH_CARTRIDGE_DB_ENABLED):
-            self._last_db_resolution_reason = "db_override_disabled"
-            return None
-
         tenant = str(tenant_id or "").strip()
         if not tenant:
             self._last_db_resolution_reason = "empty_tenant_id"
@@ -242,89 +245,11 @@ class CartridgeLoader:
             self._last_db_resolution_reason = "db_profile_cache_hit"
             return cached[1]
 
-        rest_url = settings.resolved_supabase_rest_url
-        service_role = str(settings.SUPABASE_SERVICE_ROLE_KEY or "").strip()
-        if not rest_url or not service_role:
-            self._last_db_resolution_reason = "db_credentials_missing"
-            return None
-
-        table = str(settings.ORCH_CARTRIDGE_DB_TABLE or "tenant_configs").strip()
-        tenant_col = str(settings.ORCH_CARTRIDGE_DB_TENANT_COLUMN or "tenant_id").strip()
-        profile_col = str(settings.ORCH_CARTRIDGE_DB_PROFILE_COLUMN or "agent_profile").strip()
-        profile_id_col = str(settings.ORCH_CARTRIDGE_DB_PROFILE_ID_COLUMN or "profile_id").strip()
-        version_col = str(settings.ORCH_CARTRIDGE_DB_VERSION_COLUMN or "profile_version").strip()
-        status_col = str(settings.ORCH_CARTRIDGE_DB_STATUS_COLUMN or "status").strip()
-        updated_col = str(settings.ORCH_CARTRIDGE_DB_UPDATED_COLUMN or "updated_at").strip()
-
-        select_columns = ",".join([profile_col, profile_id_col, version_col, status_col])
-        url = f"{rest_url.rstrip('/')}/{quote(table, safe='')}"
-        params = {
-            "select": select_columns,
-            tenant_col: f"eq.{tenant}",
-            "order": f"{updated_col}.desc",
-            "limit": "1",
-        }
-        headers = {
-            "apikey": service_role,
-            "Authorization": f"Bearer {service_role}",
-        }
-        timeout = float(settings.ORCH_CARTRIDGE_DB_TIMEOUT_SECONDS or 1.8)
-
-        try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.get(url, params=params, headers=headers)
-                response.raise_for_status()
-                payload = response.json()
-        except Exception as exc:
-            logger.warning("cartridge_db_lookup_failed", tenant_id=tenant, error=str(exc))
-            self._last_db_resolution_reason = "db_lookup_failed"
-            return None
-
-        if not isinstance(payload, list) or not payload:
-            self._last_db_resolution_reason = "db_profile_not_found"
-            return None
-
-        row = payload[0]
-        if not isinstance(row, dict):
-            self._last_db_resolution_reason = "db_profile_not_found"
-            return None
-
-        profile_payload = row.get(profile_col)
-        if isinstance(profile_payload, str):
-            try:
-                profile_payload = json.loads(profile_payload)
-            except Exception:
-                profile_payload = None
-
-        if not isinstance(profile_payload, dict):
-            self._last_db_resolution_reason = "db_profile_not_found"
-            return None
-
-        profile_dict = dict(profile_payload)
-        if (
-            not isinstance(profile_dict.get("profile_id"), str)
-            or not str(profile_dict.get("profile_id")).strip()
-        ):
-            db_profile_id = str(row.get(profile_id_col) or "").strip()
-            profile_dict["profile_id"] = db_profile_id or f"tenant_{tenant}"
-
-        db_version = str(row.get(version_col) or "").strip()
-        if db_version and not profile_dict.get("version"):
-            profile_dict["version"] = db_version
-
-        db_status = str(row.get(status_col) or "").strip()
-        if db_status and not profile_dict.get("status"):
-            profile_dict["status"] = db_status
-
-        try:
-            profile = AgentProfile.model_validate(profile_dict)
-        except Exception as exc:
-            logger.warning("cartridge_db_invalid_profile", tenant_id=tenant, error=str(exc))
-            self._last_db_resolution_reason = "db_profile_invalid"
-            return None
-
-        self._tenant_db_cache[tenant] = (now, profile)
-        self._last_db_resolution_reason = "db_profile_applied"
+        profile, reason = await fetch_db_profile_async(tenant)
+        self._last_db_resolution_reason = reason
+        
+        if profile is not None:
+            self._tenant_db_cache[tenant] = (now, profile)
         return profile
 
     def _resolve_profile_choice(
@@ -332,93 +257,37 @@ class CartridgeLoader:
     ) -> ProfileChoice:
         tenant = str(tenant_id or "").strip()
         requested = str(explicit_profile_id or "").strip() or None
-        override_denied = False
+        fallback_prefix = ""
 
         if requested:
-            candidate = requested
-            if self._is_profile_allowed_for_tenant(tenant_id=tenant, profile_id=candidate):
-                logger.info(
-                    "profile_header_override_allowed",
-                    tenant_id=tenant,
-                    requested_profile_id=candidate,
-                )
+            if self._is_profile_allowed_for_tenant(tenant_id=tenant, profile_id=requested):
+                logger.info("profile_header_override_allowed", tenant_id=tenant, requested_profile_id=requested)
+                return ProfileChoice(candidate_id=requested, source="header", decision_reason="authorized_header_override", requested_profile_id=requested)
+            
+            logger.warning("profile_header_override_denied", tenant_id=tenant, requested_profile_id=requested, reason="tenant_whitelist_denied")
+            fallback_prefix = "unauthorized_header_override_fallback_"
+
+        candidates = [
+            ("dev_map", self.get_dev_profile_override(tenant), f"{fallback_prefix}dev_profile_map_match"),
+            ("tenant_map", _tenant_profile_map().get(tenant), f"{fallback_prefix}tenant_profile_map_match"),
+        ]
+
+        if tenant and (self._cartridges_dir / f"{tenant}.yaml").exists():
+            candidates.append(("tenant_yaml", tenant, f"{fallback_prefix}tenant_yaml_found"))
+
+        default_base = str(settings.ORCH_DEFAULT_PROFILE_ID or "base").strip() or "base"
+        candidates.append(("base", default_base, f"{fallback_prefix}default_profile_fallback"))
+
+        for source, candidate, reason in candidates:
+            if candidate:
                 return ProfileChoice(
                     candidate_id=candidate,
-                    source="header",
-                    decision_reason="authorized_header_override",
+                    source=source,
+                    decision_reason=reason,
                     requested_profile_id=requested,
                 )
-            logger.warning(
-                "profile_header_override_denied",
-                tenant_id=tenant,
-                requested_profile_id=candidate,
-                reason="tenant_whitelist_denied",
-            )
-            override_denied = True
-
-        dev_mapped = self.get_dev_profile_override(tenant)
-        if dev_mapped:
-            if override_denied:
-                return ProfileChoice(
-                    candidate_id=dev_mapped,
-                    source="dev_map",
-                    decision_reason="unauthorized_header_override_fallback_dev_map",
-                    requested_profile_id=requested,
-                )
-            return ProfileChoice(
-                candidate_id=dev_mapped,
-                source="dev_map",
-                decision_reason="dev_profile_map_match",
-                requested_profile_id=requested,
-            )
-
-        mapped = _tenant_profile_map().get(tenant)
-        if mapped:
-            if override_denied:
-                return ProfileChoice(
-                    candidate_id=mapped,
-                    source="tenant_map",
-                    decision_reason="unauthorized_header_override_fallback_tenant_map",
-                    requested_profile_id=requested,
-                )
-            return ProfileChoice(
-                candidate_id=mapped,
-                source="tenant_map",
-                decision_reason="tenant_profile_map_match",
-                requested_profile_id=requested,
-            )
-
-        if tenant:
-            candidate_path = self._cartridges_dir / f"{tenant}.yaml"
-            if candidate_path.exists():
-                if override_denied:
-                    return ProfileChoice(
-                        candidate_id=tenant,
-                        source="tenant_yaml",
-                        decision_reason="unauthorized_header_override_fallback_tenant_yaml",
-                        requested_profile_id=requested,
-                    )
-                return ProfileChoice(
-                    candidate_id=tenant,
-                    source="tenant_yaml",
-                    decision_reason="tenant_yaml_found",
-                    requested_profile_id=requested,
-                )
-
-        default_profile = str(settings.ORCH_DEFAULT_PROFILE_ID or "base").strip()
-        if override_denied:
-            return ProfileChoice(
-                candidate_id=default_profile or "base",
-                source="base",
-                decision_reason="unauthorized_header_override_fallback_base",
-                requested_profile_id=requested,
-            )
-        return ProfileChoice(
-            candidate_id=default_profile or "base",
-            source="base",
-            decision_reason="default_profile_fallback",
-            requested_profile_id=requested,
-        )
+        
+        return ProfileChoice(candidate_id="base", source="base", decision_reason="hard_fallback_base", requested_profile_id=requested)
 
     def resolve_profile_id(
         self, tenant_id: str | None, explicit_profile_id: str | None = None
@@ -461,6 +330,9 @@ class CartridgeLoader:
         return profile
 
     def validate_cartridge_files_strict(self) -> None:
+        # Safety guard: env JSON map is dev-only and must never be active in production.
+        _tenant_profile_map()
+
         if not self._cartridges_dir.exists():
             raise RuntimeError(f"Cartridges directory not found: {self._cartridges_dir}")
 
@@ -548,22 +420,6 @@ class CartridgeLoader:
         )
         return ResolvedAgentProfile(profile=profile, resolution=resolution)
 
-    def load_for_tenant(
-        self,
-        *,
-        tenant_id: str | None,
-        explicit_profile_id: str | None = None,
-    ) -> AgentProfile:
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(
-                self.load_for_tenant_async(
-                    tenant_id=tenant_id,
-                    explicit_profile_id=explicit_profile_id,
-                )
-            )
-        raise RuntimeError("Use load_for_tenant_async inside async context")
 
 
 @lru_cache(maxsize=1)

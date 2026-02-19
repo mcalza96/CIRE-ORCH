@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     )
 
     LOG_LEVEL: str = "INFO"
+    APP_ENV: str = "development"
     ORCH_LOG_EXC_INFO: bool = False
     ORCHESTRATOR_PORT: int = 8001
     RAG_ENGINE_LOCAL_URL: str = Field(
@@ -106,6 +107,8 @@ class Settings(BaseSettings):
     ORCH_COVERAGE_GATE_MAX_MISSING: int = 2
     ORCH_COVERAGE_GATE_STEP_BACK: bool = True
     ORCH_COVERAGE_REQUIRED: bool = True
+    ORCH_SCOPE_BALANCE_FINAL_ENABLED: bool = True
+    ORCH_SCOPE_BALANCE_MIN_PER_SCOPE: int = 2
     ORCH_COVERAGE_AUTO_PARTIAL_COMPARATIVA: bool = True
     ORCH_LITERAL_LOCK_ENABLED: bool = True
     ORCH_MIN_SCORE_BACKSTOP_ENABLED: bool = True

@@ -111,16 +111,27 @@ def _classify_with_profile_rules(
             continue
         if not _has_all_keywords(lowered, tuple(rule.all_keywords)):
             continue
-        if tuple(rule.any_keywords) and not _has_any_keyword(lowered, tuple(rule.any_keywords)):
-            continue
         if not _has_all_patterns(text, tuple(rule.all_patterns)):
-            continue
-        if tuple(rule.any_patterns) and not _has_any_pattern(text, tuple(rule.any_patterns)):
             continue
         if not _has_all_keywords(lowered, tuple(rule.all_markers)):
             continue
-        if tuple(rule.any_markers) and not _has_any_keyword(lowered, tuple(rule.any_markers)):
-            continue
+
+        any_kw = tuple(rule.any_keywords)
+        any_pat = tuple(rule.any_patterns)
+        any_mk = tuple(rule.any_markers)
+
+        has_any_constraints = bool(any_kw or any_pat or any_mk)
+        if has_any_constraints:
+            matched_any = False
+            if any_kw and _has_any_keyword(lowered, any_kw):
+                matched_any = True
+            if any_pat and _has_any_pattern(text, any_pat):
+                matched_any = True
+            if any_mk and _has_any_keyword(lowered, any_mk):
+                matched_any = True
+            
+            if not matched_any:
+                continue
 
         return QueryIntent(mode=mode, rationale=f"profile_rule:{rule.id}"), {
             "version": "profile_rules_v1",

@@ -13,7 +13,7 @@ def test_loader_falls_back_to_base_for_unknown_profile(monkeypatch) -> None:
     get_cartridge_loader.cache_clear()
     monkeypatch.setattr(settings, "ORCH_DEV_PROFILE_ASSIGNMENTS_ENABLED", False)
     loader = get_cartridge_loader()
-    profile = loader.load_for_tenant(tenant_id="unknown-tenant")
+    profile = asyncio.run(loader.load_for_tenant_async(tenant_id="unknown-tenant"))
     assert profile.profile_id == "base"
 
 
@@ -25,7 +25,7 @@ def test_loader_uses_tenant_profile_map(monkeypatch) -> None:
     monkeypatch.setattr(settings, "ORCH_TENANT_PROFILE_MAP", '{"tenant-iso":"iso_auditor"}')
     loader = get_cartridge_loader()
 
-    profile = loader.load_for_tenant(tenant_id="tenant-iso")
+    profile = asyncio.run(loader.load_for_tenant_async(tenant_id="tenant-iso"))
     assert profile.profile_id == "iso_auditor"
 
 
@@ -139,7 +139,7 @@ def test_loader_resolution_reason_tracks_unauthorized_header_fallback(monkeypatc
         loader.resolve_for_tenant_async(tenant_id="tenant-iso", explicit_profile_id="legal_cl")
     )
     assert resolved.profile.profile_id == "iso_auditor"
-    assert resolved.resolution.decision_reason == "unauthorized_header_override_fallback_tenant_map"
+    assert resolved.resolution.decision_reason == "unauthorized_header_override_fallback_tenant_profile_map_match"
 
 
 def test_loader_validate_cartridge_files_strict_rejects_missing_v2_keys(tmp_path) -> None:
@@ -229,4 +229,4 @@ def test_loader_unauthorized_header_falls_back_to_dev_map(monkeypatch, tmp_path)
     )
     assert resolved.profile.profile_id == "iso_auditor"
     assert resolved.resolution.source == "dev_map"
-    assert resolved.resolution.decision_reason == "unauthorized_header_override_fallback_dev_map"
+    assert resolved.resolution.decision_reason == "unauthorized_header_override_fallback_dev_profile_map_match"
