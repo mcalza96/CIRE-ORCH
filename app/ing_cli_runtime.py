@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import glob
 import os
+import time
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -13,10 +14,36 @@ from uuid import uuid4
 from app.core.auth_client import ensure_access_token
 from app.core.observability.ingestion_utils import human_ingestion_stage
 from app.core.orch_discovery_client import list_authorized_collections, list_authorized_tenants
+from app.core.orch_discovery_client import create_dev_tenant
 from sdk.python.cire_rag_sdk.client import AsyncCireRagClient, TenantContext
 
 BATCH_TERMINAL_STATES = {"DONE", "ERROR", "CANCELLED"}
 JOB_TERMINAL_STATES = {"completed", "failed", "cancelled", "error"}
+HEARTBEAT_SECONDS = 1.5
+
+_BATCH_STAGE_LABELS: dict[str, str] = {
+    "RECEIVED": "Analizando batch de ingesta",
+    "VALIDATING": "Validando archivos y metadatos",
+    "UPLOADING": "Subiendo archivos",
+    "PARSING": "Extrayendo contenido",
+    "CHUNKING": "Fragmentando contenido",
+    "EMBEDDING": "Generando embeddings",
+    "PERSISTING": "Persistiendo chunks indexables",
+    "ENRICHING": "Ejecutando enriquecimientos",
+    "GRAPH": "Construyendo grafo semantico",
+    "RAPTOR": "Construyendo jerarquia RAPTOR",
+    "FINALIZING": "Finalizando batch",
+    "OTHER": "Procesando pipeline",
+}
+
+_JOB_STAGE_LABELS: dict[str, str] = {
+    "pending": "En cola para ejecutar enrichment",
+    "processing": "Ejecutando enrichment",
+    "completed": "Enrichment finalizado",
+    "failed": "Enrichment finalizado con error",
+    "cancelled": "Enrichment cancelado",
+    "error": "Enrichment finalizado con error",
+}
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -72,6 +99,23 @@ def _prompt(message: str) -> str:
     return input(message).strip()
 
 
+def _resolve_input_path(raw: str) -> str:
+    value = str(raw or "").strip()
+    if not value:
+        return ""
+
+    candidates = [
+        value,
+        os.path.expanduser(value),
+        os.path.abspath(value),
+        os.path.abspath(os.path.join(os.getcwd(), "..", value)),
+    ]
+    for candidate in candidates:
+        if os.path.isdir(candidate) or os.path.isfile(candidate):
+            return candidate
+    return ""
+
+
 async def resolve_tenant(args: argparse.Namespace, access_token: str) -> str:
     if args.tenant_id:
         return args.tenant_id
@@ -85,10 +129,34 @@ async def resolve_tenant(args: argparse.Namespace, access_token: str) -> str:
     if not tenants:
         if args.non_interactive:
             raise RuntimeError("Tenant selection required")
-        manual = _prompt("🏢 Tenant ID (UUID): ")
-        if not manual:
-            raise SystemExit("Tenant ID requerido.")
-        return manual
+        print("🏢 No hay tenants autorizados visibles.")
+        print("  0) Ingresar tenant manual")
+        print("  9) Crear tenant (dev)")
+        while True:
+            pick = _prompt("📝 Elige opción [0/9]: ")
+            if pick == "0":
+                manual = _prompt("🏢 Tenant ID (UUID): ")
+                if manual:
+                    return manual
+                print("Tenant ID requerido.")
+                continue
+            if pick == "9":
+                name = _prompt("🏢 Nombre del nuevo tenant (dev): ")
+                if not name:
+                    print("Nombre requerido.")
+                    continue
+                try:
+                    created = await create_dev_tenant(
+                        args.orchestrator_url,
+                        access_token,
+                        name=name,
+                    )
+                except Exception as exc:
+                    print(f"⚠️ No se pudo crear tenant dev: {exc}")
+                    continue
+                print(f"✅ Tenant creado: {created.name} ({created.id})")
+                return created.id
+            print("Opción inválida.")
 
     if len(tenants) == 1:
         print(f"🏢 Tenant auto-seleccionado: {tenants[0].name}")
@@ -97,9 +165,33 @@ async def resolve_tenant(args: argparse.Namespace, access_token: str) -> str:
     print("🏢 Tenants disponibles:")
     for idx, t in enumerate(tenants, start=1):
         print(f"  {idx}) {t.name} ({t.id})")
+    print("  0) Ingresar tenant manual")
+    print("  9) Crear tenant (dev)")
 
     while True:
-        opt = _prompt(f"📝 Elige tenant [1-{len(tenants)}]: ")
+        opt = _prompt(f"📝 Elige tenant [0-{len(tenants)}] o 9: ")
+        if opt == "0":
+            manual = _prompt("🏢 Tenant ID (UUID): ")
+            if manual:
+                return manual
+            print("Tenant ID requerido.")
+            continue
+        if opt == "9":
+            name = _prompt("🏢 Nombre del nuevo tenant (dev): ")
+            if not name:
+                print("Nombre requerido.")
+                continue
+            try:
+                created = await create_dev_tenant(
+                    args.orchestrator_url,
+                    access_token,
+                    name=name,
+                )
+            except Exception as exc:
+                print(f"⚠️ No se pudo crear tenant dev: {exc}")
+                continue
+            print(f"✅ Tenant creado: {created.name} ({created.id})")
+            return created.id
         if opt.isdigit() and 1 <= int(opt) <= len(tenants):
             return tenants[int(opt) - 1].id
         print("Opción inválida.")
@@ -109,26 +201,71 @@ async def resolve_collection(args: argparse.Namespace, tenant_id: str, access_to
     if args.collection_id:
         return args.collection_id
 
-    try:
-        cols = await list_authorized_collections(args.orchestrator_url, access_token, tenant_id)
-    except Exception:
-        cols = []
-
-    if not cols:
-        if args.non_interactive:
-            return "default"
-        manual = _prompt("📁 Collection Key (default): ")
-        return manual or "default"
-
-    print("📁 Colecciones disponibles:")
-    for idx, c in enumerate(cols, start=1):
-        print(f"  {idx}) {c.name} ({c.collection_key or c.id})")
-    print("  0) Crear nueva")
-
     while True:
-        opt = _prompt(f"📝 Elige colección [0-{len(cols)}]: ")
+        try:
+            cols = await list_authorized_collections(args.orchestrator_url, access_token, tenant_id)
+        except Exception as exc:
+            if args.non_interactive:
+                raise RuntimeError(f"No se pudieron listar colecciones: {exc}")
+            print(f"⚠️ No se pudieron listar colecciones: {exc}")
+            print("  1) Reintentar")
+            print("  2) Crear nueva colección")
+            print("  3) Ingresar collection key manual")
+            retry_opt = _prompt("📝 Elige opción [1-3]: ")
+            if retry_opt == "1":
+                continue
+            if retry_opt == "2":
+                created = _prompt("📁 Nombre de la nueva colección: ")
+                if created:
+                    return created
+                print("Nombre requerido.")
+                continue
+            if retry_opt == "3":
+                manual = _prompt("📁 Collection Key/ID: ")
+                if manual:
+                    return manual
+                print("Collection Key/ID requerido.")
+                continue
+            print("Opción inválida.")
+            continue
+
+        if not cols:
+            if args.non_interactive:
+                return "default"
+            print("📁 No hay colecciones en este tenant.")
+            print("  0) Crear nueva")
+            print("  9) Ingresar collection key manual")
+            opt_empty = _prompt("📝 Elige opción [0/9]: ")
+            if opt_empty == "0":
+                created = _prompt("📁 Nombre de la nueva colección: ")
+                if created:
+                    return created
+                print("Nombre requerido.")
+                continue
+            if opt_empty == "9":
+                manual = _prompt("📁 Collection Key/ID: ")
+                if manual:
+                    return manual
+                print("Collection Key/ID requerido.")
+                continue
+            print("Opción inválida.")
+            continue
+
+        print("📁 Colecciones disponibles:")
+        for idx, c in enumerate(cols, start=1):
+            print(f"  {idx}) {c.name} ({c.collection_key or c.id})")
+        print("  0) Crear nueva")
+        print("  9) Reintentar listado")
+
+        opt = _prompt(f"📝 Elige colección [0-{len(cols)}] o 9: ")
         if opt == "0":
-            return _prompt("Nombre de la nueva colección: ")
+            created = _prompt("📁 Nombre de la nueva colección: ")
+            if created:
+                return created
+            print("Nombre requerido.")
+            continue
+        if opt == "9":
+            continue
         if opt.isdigit() and 1 <= int(opt) <= len(cols):
             col = cols[int(opt) - 1]
             return col.collection_key or col.id
@@ -171,6 +308,37 @@ def _status_timestamp(status: dict[str, Any]) -> str:
         return updated
     created = str(status.get("created_at") or "").strip()
     return created
+
+
+def _detect_resilient_mode(payload: Any) -> bool:
+    if isinstance(payload, dict):
+        for key in (
+            "fallback",
+            "fallback_used",
+            "fallback_reason",
+            "fallback_blocked_by_literal_lock",
+        ):
+            if payload.get(key):
+                return True
+
+        for key in ("error_codes", "warning_codes", "warnings"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                text = " ".join(str(x).lower() for x in value)
+                if "fallback" in text:
+                    return True
+
+        for value in payload.values():
+            if _detect_resilient_mode(value):
+                return True
+
+    if isinstance(payload, list):
+        return any(_detect_resilient_mode(item) for item in payload)
+
+    if isinstance(payload, str):
+        return "fallback" in payload.lower()
+
+    return False
 
 
 def _choose_menu_option(args: argparse.Namespace) -> str:
@@ -268,30 +436,69 @@ async def run_batch_monitoring(
 ):
     print(f"🔎 Monitoreando batch {batch_id}...")
     last_snapshot = ""
+    last_stage = ""
+    next_poll_at = 0.0
+    last_event_at = time.monotonic()
+    last_heartbeat_at = 0.0
+    resilient_mode_reported = False
+    started_at = time.monotonic()
     while True:
-        try:
-            status = await client.get_batch_status(batch_id)
-            batch = status.get("batch", {})
-            obs = status.get("observability", {})
+        now = time.monotonic()
+        if now >= next_poll_at:
+            try:
+                status = await client.get_batch_status(batch_id)
+                batch = status.get("batch", {})
+                obs = status.get("observability", {})
 
-            state = batch.get("status", "unknown")
-            percent = obs.get("progress_percent", 0.0)
-            stage = obs.get("dominant_stage", "OTHER")
+                if not resilient_mode_reported and _detect_resilient_mode(status):
+                    print(
+                        "🛟 Modo resiliente activado: se aplicaron rutas de fallback para completar."
+                    )
+                    resilient_mode_reported = True
 
-            snapshot = f"{state}|{percent}|{stage}"
-            if snapshot != last_snapshot:
-                print(
-                    f"📡 Estado: {state} | Progreso: {percent}% | Etapa: {human_ingestion_stage(stage)}"
-                )
-                last_snapshot = snapshot
+                state = batch.get("status", "unknown")
+                percent = obs.get("progress_percent", 0.0)
+                stage = str(obs.get("dominant_stage", "OTHER") or "OTHER").upper()
 
-            if str(state) in BATCH_TERMINAL_STATES:
-                print(f"✅ Batch finalizado con estado: {state}")
-                break
-        except Exception as exc:
-            print(f"⚠️ Error monitoreando: {exc}")
+                snapshot = f"{state}|{percent}|{stage}"
+                if stage and stage != last_stage:
+                    if last_stage:
+                        print(
+                            f"✅ {(_BATCH_STAGE_LABELS.get(last_stage) or human_ingestion_stage(last_stage))} completado"
+                        )
+                    print(
+                        f"🧠 {(_BATCH_STAGE_LABELS.get(stage) or human_ingestion_stage(stage))}..."
+                    )
+                    last_stage = stage
 
-        await asyncio.sleep(max(1.0, float(poll_seconds)))
+                if snapshot != last_snapshot:
+                    print(
+                        f"📡 Estado: {state} | Progreso: {percent}% | Etapa: {human_ingestion_stage(stage)}"
+                    )
+                    last_snapshot = snapshot
+                    last_event_at = time.monotonic()
+
+                if str(state) in BATCH_TERMINAL_STATES:
+                    elapsed = round(time.monotonic() - started_at, 1)
+                    print(f"✅ Batch finalizado con estado: {state} ({elapsed}s)")
+                    break
+            except Exception as exc:
+                print(f"⚠️ Error monitoreando: {exc}")
+                last_event_at = time.monotonic()
+
+            next_poll_at = time.monotonic() + max(1.0, float(poll_seconds))
+
+        idle = time.monotonic() - last_event_at
+        if (
+            idle >= HEARTBEAT_SECONDS
+            and (time.monotonic() - last_heartbeat_at) >= HEARTBEAT_SECONDS
+        ):
+            elapsed = round(time.monotonic() - started_at, 1)
+            label = _BATCH_STAGE_LABELS.get(last_stage, "Procesando pipeline")
+            print(f"⏳ {label}... {elapsed}s")
+            last_heartbeat_at = time.monotonic()
+
+        await asyncio.sleep(0.35)
 
 
 async def run_job_monitoring(
@@ -302,31 +509,64 @@ async def run_job_monitoring(
 ):
     print(f"🔎 Monitoreando job {job_id}...")
     last_snapshot = ""
+    next_poll_at = 0.0
+    last_event_at = time.monotonic()
+    last_heartbeat_at = 0.0
+    last_state = ""
+    resilient_mode_reported = False
+    started_at = time.monotonic()
     while True:
-        try:
-            status = await client.get_ingestion_job_status(job_id)
-            state = str(status.get("status") or "unknown").strip().lower()
-            job_type = str(status.get("job_type") or "unknown").strip()
-            err = str(status.get("error_message") or "").strip()
-            stamp = _status_timestamp(status)
+        now = time.monotonic()
+        if now >= next_poll_at:
+            try:
+                status = await client.get_ingestion_job_status(job_id)
+                state = str(status.get("status") or "unknown").strip().lower()
+                job_type = str(status.get("job_type") or "unknown").strip()
+                err = str(status.get("error_message") or "").strip()
+                stamp = _status_timestamp(status)
 
-            snapshot = f"{job_type}|{state}|{err}|{stamp}"
-            if snapshot != last_snapshot:
-                suffix = f" | error={err}" if err else ""
-                stamp_suffix = f" | updated_at={stamp}" if stamp else ""
-                print(f"📡 Job: {job_type} | Estado: {state}{stamp_suffix}{suffix}")
-                last_snapshot = snapshot
+                if not resilient_mode_reported and _detect_resilient_mode(status):
+                    print(
+                        "🛟 Modo resiliente activado: se aplicaron rutas de fallback para completar."
+                    )
+                    resilient_mode_reported = True
 
-            if state in JOB_TERMINAL_STATES:
-                if state == "completed":
-                    print("✅ Replay finalizado correctamente.")
-                else:
-                    print(f"❌ Replay terminó con estado: {state}")
-                break
-        except Exception as exc:
-            print(f"⚠️ Error monitoreando job: {exc}")
+                if state != last_state and state in _JOB_STAGE_LABELS:
+                    print(f"🧠 {_JOB_STAGE_LABELS[state]}...")
+                    last_state = state
 
-        await asyncio.sleep(max(1.0, float(poll_seconds)))
+                snapshot = f"{job_type}|{state}|{err}|{stamp}"
+                if snapshot != last_snapshot:
+                    suffix = f" | error={err}" if err else ""
+                    stamp_suffix = f" | updated_at={stamp}" if stamp else ""
+                    print(f"📡 Job: {job_type} | Estado: {state}{stamp_suffix}{suffix}")
+                    last_snapshot = snapshot
+                    last_event_at = time.monotonic()
+
+                if state in JOB_TERMINAL_STATES:
+                    elapsed = round(time.monotonic() - started_at, 1)
+                    if state == "completed":
+                        print(f"✅ Replay finalizado correctamente ({elapsed}s).")
+                    else:
+                        print(f"❌ Replay terminó con estado: {state} ({elapsed}s)")
+                    break
+            except Exception as exc:
+                print(f"⚠️ Error monitoreando job: {exc}")
+                last_event_at = time.monotonic()
+
+            next_poll_at = time.monotonic() + max(1.0, float(poll_seconds))
+
+        idle = time.monotonic() - last_event_at
+        if (
+            idle >= HEARTBEAT_SECONDS
+            and (time.monotonic() - last_heartbeat_at) >= HEARTBEAT_SECONDS
+        ):
+            elapsed = round(time.monotonic() - started_at, 1)
+            label = _JOB_STAGE_LABELS.get(last_state, "Procesando enrichment")
+            print(f"⏳ {label}... {elapsed}s")
+            last_heartbeat_at = time.monotonic()
+
+        await asyncio.sleep(0.35)
 
 
 async def main(argv: list[str] | None = None) -> None:
@@ -417,14 +657,18 @@ async def main(argv: list[str] | None = None) -> None:
             if args.non_interactive:
                 print("❌ No hay archivos para subir.")
                 return
-            path = _prompt("📝 Ruta al archivo o carpeta: ")
-            if os.path.isdir(path):
-                files_to_upload.extend(glob.glob(os.path.join(path, "*")))
-            elif os.path.isfile(path):
-                files_to_upload.append(path)
-            else:
-                print("⚠️ Ruta inválida.")
-                return
+            while True:
+                path_raw = _prompt("📝 Ruta al archivo o carpeta: ")
+                path = _resolve_input_path(path_raw)
+                if os.path.isdir(path):
+                    files_to_upload.extend(glob.glob(os.path.join(path, "*")))
+                    break
+                if os.path.isfile(path):
+                    files_to_upload.append(path)
+                    break
+                print(
+                    "⚠️ Ruta inválida. Usa ruta absoluta, ~/..., o relativa a este directorio / al repo."
+                )
 
         print(f"📦 Creando batch para {len(files_to_upload)} archivos...")
         batch = await client.create_ingestion_batch(

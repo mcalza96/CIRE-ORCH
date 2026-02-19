@@ -25,6 +25,12 @@ class Collection:
     collection_key: str | None = None
 
 
+@dataclass(frozen=True)
+class TenantCreateResult:
+    id: str
+    name: str
+
+
 def _headers(token: str) -> dict[str, str]:
     value = str(token or "").strip()
     if not value:
@@ -121,3 +127,38 @@ async def list_authorized_collections(
         name = str(item.get("name") or collection_key or collection_id).strip() or collection_id
         out.append(Collection(id=collection_id, name=name, collection_key=collection_key))
     return out
+
+
+async def create_dev_tenant(
+    base_url: str,
+    token: str,
+    *,
+    name: str,
+    timeout_seconds: float = 6.0,
+) -> TenantCreateResult:
+    tenant_name = str(name or "").strip()
+    if not tenant_name:
+        raise OrchestratorDiscoveryError("Tenant name is required")
+
+    url = f"{base_url.rstrip('/')}/api/v1/knowledge/dev/tenants"
+    payload = {"name": tenant_name}
+    async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=3.0)) as client:
+        try:
+            response = await client.post(url, json=payload, headers=_headers(token))
+        except httpx.RequestError as exc:
+            detail = f"{type(exc).__name__}: {exc!r}"
+            raise OrchestratorDiscoveryError(
+                f"Discovery request failed (network) POST {url}: {detail}",
+                status_code=None,
+            ) from exc
+    _raise_for_status(response)
+
+    body: Any = response.json() if response.text else {}
+    if not isinstance(body, dict):
+        raise OrchestratorDiscoveryError("Invalid tenant creation response")
+
+    tenant_id = str(body.get("tenant_id") or body.get("id") or "").strip()
+    created_name = str(body.get("name") or tenant_name).strip() or tenant_name
+    if not tenant_id:
+        raise OrchestratorDiscoveryError("Tenant creation response missing tenant_id")
+    return TenantCreateResult(id=tenant_id, name=created_name)

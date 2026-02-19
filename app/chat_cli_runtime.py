@@ -30,6 +30,31 @@ from sdk.python.cire_rag_sdk import (
 
 logger = logging.getLogger(__name__)
 
+
+def _print_thinking_status(status: dict[str, Any], seen: set[str]) -> None:
+    status_type = str(status.get("type") or "").strip().lower()
+    phase = str(status.get("phase") or "").strip().lower()
+    label = str(status.get("label") or "").strip()
+    elapsed_ms = status.get("elapsed_ms")
+    elapsed_s = (
+        round(float(elapsed_ms) / 1000.0, 1) if isinstance(elapsed_ms, (int, float)) else None
+    )
+
+    if status_type == "thinking" and phase:
+        if phase in seen:
+            return
+        seen.add(phase)
+        suffix = f" [{elapsed_s}s]" if elapsed_s is not None else ""
+        print(f"⏳ {label or phase}{suffix}")
+        return
+
+    if status_type == "working":
+        pulse = status.get("pulse")
+        if isinstance(pulse, int) and pulse % 5 == 0:
+            suffix = f" {elapsed_s}s" if elapsed_s is not None else ""
+            print(f"⏳ Procesando...{suffix}")
+
+
 async def main(argv: list[str] | None = None) -> None:
     args = cli_args.parse_chat_args(argv)
 
@@ -67,7 +92,9 @@ async def main(argv: list[str] | None = None) -> None:
             tenant_id=tenant_id,
             access_token=access_token,
         )
-        agent_profile_id = await discovery_utils.resolve_agent_profile(args=args, access_token=access_token)
+        agent_profile_id = await discovery_utils.resolve_agent_profile(
+            args=args, access_token=access_token
+        )
     except OrchestratorDiscoveryError as exc:
         if exc.status_code != 401:
             print(f"❌ {exc}")
@@ -85,7 +112,9 @@ async def main(argv: list[str] | None = None) -> None:
                 tenant_id=tenant_id,
                 access_token=access_token,
             )
-            agent_profile_id = await discovery_utils.resolve_agent_profile(args=args, access_token=access_token)
+            agent_profile_id = await discovery_utils.resolve_agent_profile(
+                args=args, access_token=access_token
+            )
         except Exception as retry_exc:
             print(f"❌ {retry_exc}")
             raise SystemExit(1)
@@ -221,19 +250,33 @@ async def main(argv: list[str] | None = None) -> None:
 
             try:
                 t0 = time.perf_counter()
-                result = await cli_api.post_answer(
-                    client=client,
-                    orchestrator_url=args.orchestrator_url,
-                    tenant_context=tenant_context,
-                    query=cli_utils.apply_mode_override(query, forced_mode),
-                    collection_id=collection_id,
-                    agent_profile_id=agent_profile_id,
-                    access_token=access_token,
-                )
+                effective_query = cli_utils.apply_mode_override(query, forced_mode)
+                if args.no_thinking_stream:
+                    result = await cli_api.post_answer(
+                        client=client,
+                        orchestrator_url=args.orchestrator_url,
+                        tenant_context=tenant_context,
+                        query=effective_query,
+                        collection_id=collection_id,
+                        agent_profile_id=agent_profile_id,
+                        access_token=access_token,
+                    )
+                else:
+                    seen_phases: set[str] = set()
+                    result = await cli_api.post_answer_stream(
+                        client=client,
+                        orchestrator_url=args.orchestrator_url,
+                        tenant_context=tenant_context,
+                        query=effective_query,
+                        collection_id=collection_id,
+                        agent_profile_id=agent_profile_id,
+                        access_token=access_token,
+                        on_status=lambda st: _print_thinking_status(st, seen_phases),
+                    )
                 latency_ms = (time.perf_counter() - t0) * 1000.0
                 renderers.print_answer(result)
                 last_result = result if isinstance(result, dict) else {}
-                last_query = cli_utils.apply_mode_override(query, forced_mode)
+                last_query = effective_query
                 if args.obs:
                     renderers.print_obs_answer(result, latency_ms)
 
@@ -258,7 +301,9 @@ async def main(argv: list[str] | None = None) -> None:
                         for idx, opt in enumerate(options, start=1):
                             print(f"  {idx}) {opt}")
                         while True:
-                            selected_raw = cli_utils.prompt(f"📝 Selecciona opcion [1-{len(options)}]: ")
+                            selected_raw = cli_utils.prompt(
+                                f"📝 Selecciona opcion [1-{len(options)}]: "
+                            )
                             if not selected_raw:
                                 reply = ""
                                 break

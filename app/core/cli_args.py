@@ -6,6 +6,7 @@ from typing import Final
 
 DOCTOR_DEFAULT_QUERY: Final = "Que exige la referencia 7.5.3 en este alcance?"
 
+
 def parse_chat_args(argv: list[str] | None = None) -> argparse.Namespace:
     default_orchestrator_url = (
         os.getenv("ORCH_URL") or os.getenv("ORCHESTRATOR_URL") or "http://localhost:8001"
@@ -70,5 +71,10 @@ def parse_chat_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--debug",
         action="store_true",
         help="Print verbose error diagnostics (exception types, traces, HTTP payload snippets)",
+    )
+    parser.add_argument(
+        "--no-thinking-stream",
+        action="store_true",
+        help="Disable SSE thinking stream and use blocking /answer",
     )
     return parser.parse_args(argv)

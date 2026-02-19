@@ -170,6 +170,7 @@ class Settings(BaseSettings):
 
     RAG_SERVICE_SECRET: str | None = Field(default=None, validation_alias="RAG_SERVICE_SECRET")
     ORCH_AUTH_REQUIRED: bool = True
+    ORCH_DEV_TENANT_CREATE_ENABLED: bool = False
     SUPABASE_URL: str | None = Field(
         default=None,
         validation_alias=AliasChoices("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"),

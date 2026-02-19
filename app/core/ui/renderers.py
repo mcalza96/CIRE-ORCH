@@ -7,6 +7,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+
 def _parse_error_payload(response: httpx.Response) -> dict[str, Any]:
     try:
         data = response.json()
@@ -18,6 +19,7 @@ def _parse_error_payload(response: httpx.Response) -> dict[str, Any]:
         if isinstance(data.get("detail"), dict):
             return data["detail"]
     return {}
+
 
 def print_profile_snapshot(last_result: dict[str, Any], forced_mode: str | None = None) -> None:
     profile_resolution = (
@@ -57,6 +59,7 @@ def print_profile_snapshot(last_result: dict[str, Any], forced_mode: str | None 
     if error_codes:
         print("   error_codes=" + ", ".join(str(code) for code in error_codes))
 
+
 def print_debug_http_error(response: httpx.Response) -> None:
     try:
         body_text = response.text
@@ -88,14 +91,17 @@ def print_debug_http_error(response: httpx.Response) -> None:
             snippet = snippet[:800] + "..."
         print(f"   body={snippet}")
 
+
 def print_debug_exception(exc: BaseException) -> None:
     import traceback
+
     print(f"   exc_type={type(exc).__name__}")
     try:
         print(f"   exc_repr={exc!r}")
     except Exception:
         pass
     traceback.print_exception(exc)
+
 
 def _extract_retrieval_warnings(data: dict[str, Any]) -> list[str]:
     retrieval = data.get("retrieval") if isinstance(data.get("retrieval"), dict) else {}
@@ -144,17 +150,31 @@ def _extract_retrieval_warnings(data: dict[str, Any]) -> list[str]:
         deduped.append(item)
     return deduped
 
+
+def _context_chunks_count(data: dict[str, Any]) -> int | None:
+    context_chunks = data.get("context_chunks")
+    if isinstance(context_chunks, list):
+        return len(context_chunks)
+    raw_count = data.get("context_chunks_count")
+    if isinstance(raw_count, bool):
+        return None
+    if isinstance(raw_count, (int, float)):
+        try:
+            return max(0, int(raw_count))
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
 def print_answer_diagnostics(data: dict[str, Any]) -> None:
     retrieval = data.get("retrieval") if isinstance(data.get("retrieval"), dict) else {}
     validation = data.get("validation") if isinstance(data.get("validation"), dict) else {}
-    context_chunks = (
-        data.get("context_chunks") if isinstance(data.get("context_chunks"), list) else []
-    )
+    context_count = _context_chunks_count(data)
     citations = data.get("citations") if isinstance(data.get("citations"), list) else []
     issues = validation.get("issues") if isinstance(validation.get("issues"), list) else []
     accepted = bool(validation.get("accepted", True))
 
-    degraded = (not accepted) or (len(context_chunks) == 0) or (len(citations) == 0)
+    degraded = (not accepted) or (context_count == 0) or (len(citations) == 0)
     if not degraded:
         return
 
@@ -166,9 +186,17 @@ def print_answer_diagnostics(data: dict[str, Any]) -> None:
 
     stage = "synthesis"
     reason = "respuesta sin evidencia suficiente o con validacion fallida"
-    if len(context_chunks) == 0:
+    if not accepted:
+        stage = "validation"
+        reason = "validacion rechazo la respuesta final"
+        if issues:
+            reason = str(issues[0])
+    if context_count == 0 and (accepted or not issues):
         stage = "retrieval"
         reason = "no se recuperaron chunks para la respuesta"
+    if context_count is None and len(citations) == 0 and accepted and not issues:
+        stage = "contract"
+        reason = "respuesta sin metrica de contexto en contrato de salida"
     if "source markers" in issues_text:
         stage = "synthesis"
         reason = "la generacion no incluyo marcadores C#/R# exigidos por validacion"
@@ -196,6 +224,7 @@ def print_answer_diagnostics(data: dict[str, Any]) -> None:
         top = " | ".join(warnings[:2])
         print(f"   warnings={top}")
     print("   next=/trace (detalle) | /explain (ranking de retrieval)")
+
 
 def print_trace(last_result: dict[str, Any]) -> None:
     retrieval = (
@@ -321,6 +350,7 @@ def print_trace(last_result: dict[str, Any]) -> None:
         if bool(query_scope.get("requires_scope_clarification", False)):
             print("   requires_scope_clarification=true")
 
+
 def print_explain(payload: dict[str, Any]) -> None:
     items = payload.get("items") if isinstance(payload.get("items"), list) else []
     trace = payload.get("trace") if isinstance(payload.get("trace"), dict) else {}
@@ -349,6 +379,7 @@ def print_explain(payload: dict[str, Any]) -> None:
         print(
             f"   {idx}) {source} score={score} final={final_score} sim={base_sim} jina={jina} penalized={penalized}"
         )
+
 
 def print_answer(data: dict[str, Any]) -> None:
     answer = str(data.get("answer") or "").strip()
@@ -407,10 +438,12 @@ def print_answer(data: dict[str, Any]) -> None:
             print(line)
     if not accepted and issues:
         print("⚠️ Validacion: " + "; ".join(str(issue) for issue in issues))
-    if not citations and not (data.get("context_chunks")):
+    context_count = _context_chunks_count(data)
+    if not citations and context_count == 0:
         print("💡 Sin evidencia recuperada. Prueba con otra colección o con '0) Todas / Default'.")
     print_answer_diagnostics(data)
     print("=" * 60 + "\n")
+
 
 def print_citations_only(data: dict[str, Any]) -> None:
     citation_details = (
@@ -435,11 +468,10 @@ def print_citations_only(data: dict[str, Any]) -> None:
             cid = str(raw.get("id") or "?")
             print("- " + cid)
 
+
 def print_obs_answer(result: dict[str, Any], latency_ms: float) -> None:
     mode = str(result.get("mode") or "unknown")
-    context_chunks = (
-        result.get("context_chunks") if isinstance(result.get("context_chunks"), list) else []
-    )
+    context_count = _context_chunks_count(result)
     citations = result.get("citations") if isinstance(result.get("citations"), list) else []
     validation = result.get("validation") if isinstance(result.get("validation"), dict) else {}
     accepted = bool(validation.get("accepted", True))
@@ -462,11 +494,12 @@ def print_obs_answer(result: dict[str, Any], latency_ms: float) -> None:
                 parts.append(f"{key}={round(float(value), 1)}")
         if parts:
             timings_compact = " timings_ms(" + ", ".join(parts) + ")"
+    context_obs = str(context_count) if context_count is not None else "unknown"
     print(
         "📈 obs:"
         f" mode={mode}"
         f" retrieval={contract}/{strategy}"
-        f" context_chunks={len(context_chunks)}"
+        f" context_chunks={context_obs}"
         f" citations={len(citations)}"
         f" validation={accepted}"
         f" latency_ms={round(latency_ms, 2)}"

@@ -1,7 +1,8 @@
 import argparse
 import asyncio
 
-from app import chat_cli_runtime
+from app.core.ui import renderers
+from app.core import discovery_utils
 from app.core.orch_discovery_client import Collection
 
 
@@ -15,7 +16,7 @@ def _args() -> argparse.Namespace:
 
 
 def test_print_answer_shows_empty_retrieval_hint(capsys):
-    chat_cli_runtime._print_answer(
+    renderers.print_answer(
         {
             "answer": "No tengo informacion suficiente en el contexto para responder.",
             "mode": "explicativa",
@@ -35,11 +36,11 @@ def test_resolve_collection_displays_id_and_key(monkeypatch, capsys):
             Collection(id="c2", name="SM 24 - micro", collection_key=None),
         ]
 
-    monkeypatch.setattr(chat_cli_runtime, "list_authorized_collections", _collections)
-    monkeypatch.setattr(chat_cli_runtime, "_prompt", lambda _msg: "0")
+    monkeypatch.setattr(discovery_utils, "list_authorized_collections", _collections)
+    monkeypatch.setattr(discovery_utils, "_prompt", lambda _msg: "0")
 
     collection_id, collection_name = asyncio.run(
-        chat_cli_runtime._resolve_collection(
+        discovery_utils.resolve_collection(
             args=_args(),
             tenant_id="t1",
             access_token="token",
@@ -53,7 +54,7 @@ def test_resolve_collection_displays_id_and_key(monkeypatch, capsys):
 
 
 def test_print_answer_diagnostics_maps_preflight_signature_warning(capsys):
-    chat_cli_runtime._print_answer_diagnostics(
+    renderers.print_answer_diagnostics(
         {
             "context_chunks": [],
             "citations": [],
@@ -75,3 +76,41 @@ def test_print_answer_diagnostics_maps_preflight_signature_warning(capsys):
     out = capsys.readouterr().out
     assert "stage=rag_sql_contract" in out
     assert "desalineacion de firma RPC" in out
+
+
+def test_print_answer_diagnostics_stream_missing_context_not_marked_retrieval(capsys):
+    renderers.print_answer_diagnostics(
+        {
+            "citations": ["C5"],
+            "validation": {
+                "accepted": False,
+                "issues": [
+                    "Grounded inference requires at least 2 citations in Inferencias section."
+                ],
+            },
+            "retrieval": {
+                "contract": "advanced",
+                "strategy": "langgraph_universal_flow",
+                "trace": {},
+            },
+        }
+    )
+    out = capsys.readouterr().out
+    assert "stage=validation" in out
+    assert "no se recuperaron chunks para la respuesta" not in out
+
+
+def test_print_answer_uses_context_chunks_count_in_stream_payload(capsys):
+    renderers.print_answer(
+        {
+            "answer": "respuesta",
+            "mode": "explicativa",
+            "citations": [],
+            "context_chunks_count": 0,
+            "validation": {"accepted": True, "issues": []},
+            "retrieval": {"contract": "advanced", "strategy": "langgraph_universal_flow"},
+        }
+    )
+    out = capsys.readouterr().out
+    assert "Sin evidencia recuperada" in out
+    assert "stage=retrieval" in out

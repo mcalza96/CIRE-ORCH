@@ -1,8 +1,10 @@
 import asyncio
 from contextlib import asynccontextmanager
 import json
+import re
 import time
 from typing import Any, Dict, Optional
+from uuid import uuid4
 
 import httpx
 import structlog
@@ -58,6 +60,35 @@ def _sse(event: str, payload: dict[str, Any]) -> bytes:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=True)}\n\n".encode("utf-8")
 
 
+_THINKING_PHASES: list[dict[str, Any]] = [
+    {
+        "at_seconds": 0.4,
+        "phase": "intent_analysis",
+        "label": "Analizando intencion y alcance",
+    },
+    {
+        "at_seconds": 1.2,
+        "phase": "retrieval",
+        "label": "Recuperando clausulas y evidencia",
+    },
+    {
+        "at_seconds": 2.4,
+        "phase": "graph_reasoning",
+        "label": "Navegando relaciones semanticas",
+    },
+    {
+        "at_seconds": 3.6,
+        "phase": "coverage_validation",
+        "label": "Validando suficiencia de evidencia",
+    },
+    {
+        "at_seconds": 4.6,
+        "phase": "synthesis",
+        "label": "Generando respuesta final",
+    },
+]
+
+
 class OrchestratorValidateScopeRequest(BaseModel):
     query: str
     tenant_id: Optional[str] = None
@@ -111,6 +142,15 @@ class TenantProfileUpdateRequest(BaseModel):
     tenant_id: str
     profile_id: Optional[str] = None
     clear: bool = False
+
+
+class DevTenantCreateRequest(BaseModel):
+    name: str
+
+
+class DevTenantCreateResponse(BaseModel):
+    tenant_id: str
+    name: str
 
 
 def _build_use_case(http_request: Request) -> HandleQuestionUseCase:
@@ -199,6 +239,90 @@ async def _rag_http_client_ctx(http_request: Request):
         yield client
     finally:
         await client.aclose()
+
+
+def _supabase_rest_headers() -> dict[str, str]:
+    service_role = str(settings.SUPABASE_SERVICE_ROLE_KEY or "").strip()
+    if not service_role:
+        raise RuntimeError("supabase_service_role_missing")
+    return {
+        "apikey": service_role,
+        "Authorization": f"Bearer {service_role}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
+
+
+def _slugify_name(name: str) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", str(name or "").strip().lower()).strip("-")
+    if not base:
+        base = "tenant"
+    return base[:48]
+
+
+async def _create_dev_tenant_in_supabase(*, user_id: str, name: str) -> tuple[str, str]:
+    rest_url = str(settings.resolved_supabase_rest_url or "").strip()
+    if not rest_url:
+        raise RuntimeError("supabase_rest_url_missing")
+
+    tenant_id = str(uuid4())
+    tenant_name = str(name or "").strip()
+    if not tenant_name:
+        raise RuntimeError("tenant_name_required")
+
+    headers = _supabase_rest_headers()
+    institutions_url = f"{rest_url.rstrip('/')}/institutions"
+    memberships_url = f"{rest_url.rstrip('/')}/{settings.SUPABASE_MEMBERSHIPS_TABLE}"
+
+    institution_payload = {
+        "id": tenant_id,
+        "name": tenant_name,
+    }
+    membership_payload = {
+        str(settings.SUPABASE_MEMBERSHIP_USER_COLUMN): str(user_id),
+        str(settings.SUPABASE_MEMBERSHIP_TENANT_COLUMN): str(tenant_id),
+    }
+
+    async with httpx.AsyncClient(timeout=6.0) as client:
+        response = await client.post(institutions_url, json=institution_payload, headers=headers)
+        if response.status_code >= 400:
+            raise RuntimeError(f"institution_insert_failed:{response.text}")
+
+        membership_error: str | None = None
+        membership_response = await client.post(
+            memberships_url,
+            json=membership_payload,
+            headers=headers,
+        )
+        if membership_response.status_code >= 400:
+            fallback_payload = {
+                str(settings.SUPABASE_MEMBERSHIP_USER_COLUMN): str(user_id),
+                "institution_id": str(tenant_id),
+            }
+            fallback_response = await client.post(
+                memberships_url,
+                json=fallback_payload,
+                headers=headers,
+            )
+            if fallback_response.status_code >= 400:
+                membership_error = (
+                    "membership_insert_failed:"
+                    f"{membership_response.text} || fallback={fallback_response.text}"
+                )
+        if membership_error and bool(settings.ORCH_AUTH_REQUIRED):
+            raise RuntimeError(membership_error)
+        if membership_error:
+            emit_event(
+                logger,
+                "dev_tenant_membership_skipped",
+                level="warning",
+                reason="auth_disabled_or_non_uuid_user",
+                error=membership_error,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+
+    return tenant_id, tenant_name
 
 
 @router.post("/answer", response_model=Dict[str, Any])
@@ -436,9 +560,28 @@ async def answer_with_orchestrator_stream(
         )
         task = asyncio.create_task(use_case.execute(command))
         pulse = 0
+        emitted_phase_index = -1
         while not task.done():
             pulse += 1
             elapsed_ms = round((time.perf_counter() - started) * 1000.0, 2)
+            elapsed_seconds = elapsed_ms / 1000.0
+            while emitted_phase_index + 1 < len(_THINKING_PHASES) and elapsed_seconds >= float(
+                _THINKING_PHASES[emitted_phase_index + 1].get("at_seconds") or 0.0
+            ):
+                emitted_phase_index += 1
+                phase_item = _THINKING_PHASES[emitted_phase_index]
+                yield _sse(
+                    "status",
+                    {
+                        "type": "thinking",
+                        "phase": phase_item.get("phase"),
+                        "label": phase_item.get("label"),
+                        "step": emitted_phase_index + 1,
+                        "total_steps": len(_THINKING_PHASES),
+                        "elapsed_ms": elapsed_ms,
+                    },
+                )
+
             yield _sse(
                 "status",
                 {
@@ -452,10 +595,26 @@ async def answer_with_orchestrator_stream(
 
         try:
             result = await task
+            context_chunks = [item.content for item in result.answer.evidence]
             citations, citations_detailed, citation_quality = build_citation_bundle(
                 answer_text=result.answer.text,
                 evidence=result.answer.evidence,
                 profile=agent_profile,
+            )
+            emit_event(
+                logger,
+                "orchestrator_answer_stream_summary",
+                user_id=current_user.user_id,
+                tenant_id=authorized_tenant,
+                collection_id=request.collection_id,
+                mode=result.plan.mode,
+                context_chunks_count=len(context_chunks),
+                citations_count=len(citations),
+                validation_accepted=bool(result.validation.accepted),
+                citation_structured_ratio=citation_quality.get("structured_ratio"),
+                citation_missing_standard_count=citation_quality.get("missing_standard_count"),
+                citation_missing_clause_count=citation_quality.get("missing_clause_count"),
+                duration_ms=round((time.perf_counter() - started) * 1000.0, 2),
             )
             payload = {
                 "type": "final_answer",
@@ -466,6 +625,8 @@ async def answer_with_orchestrator_stream(
                 "citations": citations,
                 "citations_detailed": citations_detailed,
                 "citation_quality": citation_quality,
+                "context_chunks": context_chunks,
+                "context_chunks_count": len(context_chunks),
                 "retrieval": {
                     "contract": result.retrieval.contract,
                     "strategy": result.retrieval.strategy,
@@ -514,6 +675,63 @@ async def list_authorized_tenants(
     names = await fetch_tenant_names(tenant_ids)
     items = [TenantItem(id=tid, name=names.get(tid) or tid) for tid in tenant_ids]
     return TenantListResponse(items=items)
+
+
+@router.post("/dev/tenants", response_model=DevTenantCreateResponse)
+async def create_dev_tenant(
+    request: Request,
+    body: DevTenantCreateRequest,
+    current_user: UserContext = Depends(get_current_user),
+) -> DevTenantCreateResponse:
+    if not bool(settings.ORCH_DEV_TENANT_CREATE_ENABLED):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "DEV_TENANT_CREATE_DISABLED",
+                "message": "Dev tenant creation is disabled",
+            },
+        )
+
+    tenant_name = str(body.name or "").strip()
+    if not tenant_name:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "TENANT_NAME_REQUIRED",
+                "message": "Tenant name is required",
+            },
+        )
+
+    try:
+        tenant_id, created_name = await _create_dev_tenant_in_supabase(
+            user_id=current_user.user_id,
+            name=tenant_name,
+        )
+    except Exception as exc:
+        emit_event(
+            logger,
+            "dev_tenant_create_failed",
+            level="warning",
+            user_id=current_user.user_id,
+            error=compact_error(exc),
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "DEV_TENANT_CREATE_FAILED",
+                "message": "Could not create tenant in dev mode",
+            },
+        ) from exc
+
+    emit_event(
+        logger,
+        "dev_tenant_created",
+        user_id=current_user.user_id,
+        tenant_id=tenant_id,
+        tenant_name=created_name,
+        request_id=str(request.headers.get("X-Request-ID") or "").strip() or None,
+    )
+    return DevTenantCreateResponse(tenant_id=tenant_id, name=created_name)
 
 
 @router.get("/collections", response_model=CollectionListResponse)

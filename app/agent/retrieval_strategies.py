@@ -8,27 +8,58 @@ from app.agent.error_codes import (
 )
 from app.core.config import settings
 
+
+_INTRO_QUERY_TOKENS = (
+    "introduccion",
+    "introducción",
+    "prefacio",
+    "preface",
+    "prologo",
+    "prólogo",
+    "foreword",
+)
+
+
+def _item_text_haystack(item: dict[str, Any]) -> str:
+    content = str(item.get("content") or "").strip().lower()
+    meta_raw = item.get("metadata")
+    meta: dict[str, Any] = meta_raw if isinstance(meta_raw, dict) else {}
+    row_raw = meta.get("row")
+    row: dict[str, Any] = row_raw if isinstance(row_raw, dict) else {}
+    row_meta_raw = row.get("metadata")
+    row_meta: dict[str, Any] = row_meta_raw if isinstance(row_meta_raw, dict) else {}
+    title = str(row_meta.get("title") or "").strip().lower()
+    heading = str(row_meta.get("heading") or row_meta.get("section_title") or "").strip().lower()
+    return "\n".join(part for part in (title, heading, content[:1200]) if part)
+
+
+def _matches_intro_intent(item: dict[str, Any]) -> bool:
+    hay = _item_text_haystack(item)
+    return any(token in hay for token in _INTRO_QUERY_TOKENS)
+
+
 def calculate_layer_stats(raw_items: list[dict[str, Any]]) -> dict[str, Any]:
     counts: dict[str, int] = {}
     raptor = 0
     for it in raw_items:
         meta_raw = it.get("metadata")
         meta: dict[str, Any] = meta_raw if isinstance(meta_raw, dict) else {}
-        
+
         # Resilient row lookup: Check row key first, then fallback to flat meta
         row_raw = meta.get("row")
         row = row_raw if isinstance(row_raw, dict) else meta
-        
+
         layer = str(row.get("source_layer") or "").strip() or "unknown"
         counts[layer] = counts.get(layer, 0) + 1
-        
+
         # Resilient metadata lookup within row
         row_meta_raw = row.get("metadata")
         row_meta: dict[str, Any] = row_meta_raw if isinstance(row_meta_raw, dict) else row
-        
+
         if bool(row_meta.get("is_raptor_summary", False)) or row.get("source_layer") == "raptor":
             raptor += 1
     return {"layer_counts": counts, "raptor_summary_count": raptor}
+
 
 def features_from_hybrid_trace(trace: Any) -> dict[str, Any]:
     if not isinstance(trace, dict):
@@ -40,6 +71,7 @@ def features_from_hybrid_trace(trace: Any) -> dict[str, Any]:
         "fallback_used": bool(trace.get("fallback_used", False)),
     }
 
+
 def extract_row_scope(row: dict[str, Any]) -> str:
     """
     Ultra-resilient Scope Extraction.
@@ -50,15 +82,15 @@ def extract_row_scope(row: dict[str, Any]) -> str:
     meta = meta if isinstance(meta, dict) else {}
     nested_row = row.get("row")
     nested_row = nested_row if isinstance(nested_row, dict) else {}
-    
+
     search_targets = [
-        row,                              # 1. API item root
-        meta,                             # 2. item.metadata (JSONB or full row)
-        meta.get("metadata", {}),          # 3. item.metadata.metadata (JSONB inner)
-        nested_row,                        # 4. item.row (orchestrator wrap)
-        nested_row.get("metadata", {}),    # 5. item.row.metadata
+        row,  # 1. API item root
+        meta,  # 2. item.metadata (JSONB or full row)
+        meta.get("metadata", {}),  # 3. item.metadata.metadata (JSONB inner)
+        nested_row,  # 4. item.row (orchestrator wrap)
+        nested_row.get("metadata", {}),  # 5. item.row.metadata
     ]
-    
+
     # Also check for row inside metadata (double nesting)
     meta_row = meta.get("row")
     if isinstance(meta_row, dict):
@@ -75,8 +107,9 @@ def extract_row_scope(row: dict[str, Any]) -> str:
             val = target.get(key)
             if isinstance(val, str) and val.strip():
                 return val.strip().upper()
-    
+
     return "UNKNOWN"
+
 
 def find_missing_scopes(
     items: list[dict[str, Any]],
@@ -103,6 +136,7 @@ def find_missing_scopes(
     req_upper = [s.upper() for s in requested if s]
     return [s for s in req_upper if s not in present]
 
+
 def row_matches_clause_ref(row: dict[str, Any], clause_ref: str) -> bool:
     clause = str(clause_ref or "").strip()
     if not clause:
@@ -127,6 +161,7 @@ def row_matches_clause_ref(row: dict[str, Any], clause_ref: str) -> bool:
                 if val == clause or val.startswith(f"{clause}."):
                     return True
     return False
+
 
 def find_missing_clause_refs(
     items: list[dict[str, Any]],
@@ -159,6 +194,7 @@ def find_missing_clause_refs(
     shortfall = max(0, min_required - len(present))
     return missing[:shortfall] if shortfall else missing
 
+
 def looks_structural_toc(item: dict[str, Any]) -> bool:
     content = str(item.get("content") or "").strip().lower()
     if not content:
@@ -183,6 +219,7 @@ def looks_structural_toc(item: dict[str, Any]) -> bool:
             return True
     return False
 
+
 def looks_editorial_front_matter(item: dict[str, Any]) -> bool:
     content = str(item.get("content") or "").strip().lower()
     meta_raw = item.get("metadata")
@@ -192,9 +229,7 @@ def looks_editorial_front_matter(item: dict[str, Any]) -> bool:
     row_meta_raw = row.get("metadata")
     row_meta: dict[str, Any] = row_meta_raw if isinstance(row_meta_raw, dict) else {}
     title = str(row_meta.get("title") or "").strip().lower()
-    heading = (
-        str(row_meta.get("heading") or row_meta.get("section_title") or "").strip().lower()
-    )
+    heading = str(row_meta.get("heading") or row_meta.get("section_title") or "").strip().lower()
     source_type = str(row.get("source_type") or "").strip().lower()
 
     hay = "\n".join(part for part in [title, heading, content[:600]] if part)
@@ -235,6 +270,7 @@ def looks_editorial_front_matter(item: dict[str, Any]) -> bool:
     )
     return shortish and institutional_markers >= 2
 
+
 def reduce_structural_noise(items: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
     q = str(query or "").lower()
     if any(token in q for token in ("indice", "índice", "tabla de contenido")):
@@ -255,6 +291,16 @@ def reduce_structural_noise(items: list[dict[str, Any]], query: str) -> list[dic
         body_items.append(item)
 
     if not body_items:
+        intro_intent = any(token in q for token in _INTRO_QUERY_TOKENS)
+        if intro_intent:
+            intro_editorial = [item for item in editorial_items if _matches_intro_intent(item)]
+            intro_toc = [item for item in toc_items if _matches_intro_intent(item)]
+            if intro_editorial:
+                return intro_editorial[:4] + intro_toc[:1]
+            if editorial_items:
+                return editorial_items[:4] + toc_items[:1]
+            # Last resort: avoid sending a wide TOC-only pack for intro-like queries.
+            return items[: min(6, len(items))]
         return items
     if not toc_items and not editorial_items:
         return items

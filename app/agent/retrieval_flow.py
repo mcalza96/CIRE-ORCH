@@ -91,6 +91,119 @@ class RetrievalFlow:
         )
 
     @staticmethod
+    def _safe_score(item: dict[str, Any]) -> float:
+        if not isinstance(item, dict):
+            return -1.0
+        raw = item.get("score")
+        if raw is None:
+            raw = item.get("similarity")
+        if raw is None:
+            return -1.0
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return -1.0
+
+    def _ensure_non_empty_candidates(
+        self,
+        *,
+        raw_items: list[dict[str, Any]],
+        filtered_items: list[dict[str, Any]],
+        trace_target: dict[str, Any] | None,
+        stage: str,
+    ) -> list[dict[str, Any]]:
+        if filtered_items or not raw_items:
+            return filtered_items
+        top_n = max(1, int(getattr(settings, "ORCH_EMPTY_RESULT_BACKSTOP_TOP_N", 8) or 8))
+        rescued = sorted(raw_items, key=self._safe_score, reverse=True)[:top_n]
+        if isinstance(trace_target, dict):
+            trace_target["empty_result_backstop"] = {
+                "stage": stage,
+                "applied": True,
+                "kept": len(rescued),
+                "top_n": top_n,
+            }
+        return rescued
+
+    @staticmethod
+    def _item_collection_id(item: dict[str, Any]) -> str:
+        if not isinstance(item, dict):
+            return ""
+        direct = str(item.get("collection_id") or "").strip()
+        if direct:
+            return direct
+        meta = item.get("metadata")
+        if isinstance(meta, dict):
+            meta_direct = str(meta.get("collection_id") or "").strip()
+            if meta_direct:
+                return meta_direct
+            row = meta.get("row")
+            if isinstance(row, dict):
+                row_direct = str(row.get("collection_id") or "").strip()
+                if row_direct:
+                    return row_direct
+                row_meta = row.get("metadata")
+                if isinstance(row_meta, dict):
+                    row_meta_direct = str(row_meta.get("collection_id") or "").strip()
+                    if row_meta_direct:
+                        return row_meta_direct
+        return ""
+
+    @staticmethod
+    def _item_scope_tokens(item: dict[str, Any]) -> list[str]:
+        if not isinstance(item, dict):
+            return []
+
+        tokens: list[str] = []
+
+        def _push(value: Any) -> None:
+            text = str(value or "").strip()
+            if text:
+                tokens.append(text.casefold())
+
+        def _push_from_meta(meta: dict[str, Any]) -> None:
+            _push(meta.get("source_standard"))
+            _push(meta.get("standard"))
+            standards = meta.get("source_standards")
+            if isinstance(standards, list):
+                for s in standards:
+                    _push(s)
+
+        meta = item.get("metadata")
+        if isinstance(meta, dict):
+            _push_from_meta(meta)
+            row = meta.get("row")
+            if isinstance(row, dict):
+                _push(row.get("source_standard"))
+                row_meta = row.get("metadata")
+                if isinstance(row_meta, dict):
+                    _push_from_meta(row_meta)
+
+        direct = item.get("source_standard")
+        _push(direct)
+        return tokens
+
+    @classmethod
+    def _enforce_collection_scope(
+        cls,
+        items: list[dict[str, Any]],
+        *,
+        collection_id: str | None,
+        requested_standards: tuple[str, ...] = (),
+        trace_target: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        if isinstance(trace_target, dict):
+            trace_target["collection_scope"] = {
+                "selected_collection_id": str(collection_id or "").strip(),
+                "enforced": False,
+                "reason": "collection_scope_filter_disabled",
+                "requested_standards": list(requested_standards),
+                "kept": len(items),
+                "dropped": 0,
+            }
+        return [it for it in items if isinstance(it, dict)]
+
+    @staticmethod
     def _contains_rate_limit_hint(payload: Any) -> bool:
         if isinstance(payload, str):
             text = payload.lower()
@@ -277,8 +390,21 @@ class RetrievalFlow:
             items = []
         if not isinstance(trace, dict):
             trace = {}
+        raw_hybrid_items = [it for it in items if isinstance(it, dict)]
         items = self._filter_items_by_min_score(
-            [it for it in items if isinstance(it, dict)],
+            raw_hybrid_items,
+            trace_target=trace,
+        )
+        items = self._ensure_non_empty_candidates(
+            raw_items=raw_hybrid_items,
+            filtered_items=items,
+            trace_target=trace,
+            stage="hybrid_primary",
+        )
+        items = self._enforce_collection_scope(
+            items,
+            collection_id=collection_id,
+            requested_standards=plan.requested_standards,
             trace_target=trace,
         )
         if hint_trace.get("applied"):
@@ -500,15 +626,41 @@ class RetrievalFlow:
                         allow_step_back=allow_step_back,
                         k=k,
                     )
+                raw_local_items = [it for it in items if isinstance(it, dict)]
                 items = self._filter_items_by_min_score(
-                    [it for it in items if isinstance(it, dict)],
+                    raw_local_items,
+                    trace_target=diag_trace_local,
+                )
+                items = self._ensure_non_empty_candidates(
+                    raw_items=raw_local_items,
+                    filtered_items=items,
+                    trace_target=diag_trace_local,
+                    stage="hybrid_local_repair",
+                )
+                items = self._enforce_collection_scope(
+                    items,
+                    collection_id=collection_id,
+                    requested_standards=plan.requested_standards,
                     trace_target=diag_trace_local,
                 )
                 items = reduce_structural_noise(items, query)
                 return self._to_evidence(items)
 
+            raw_mq_items = [it for it in mq_items if isinstance(it, dict)]
             mq_items = self._filter_items_by_min_score(
-                [it for it in mq_items if isinstance(it, dict)],
+                raw_mq_items,
+                trace_target=mq_trace if isinstance(mq_trace, dict) else None,
+            )
+            mq_items = self._ensure_non_empty_candidates(
+                raw_items=raw_mq_items,
+                filtered_items=mq_items,
+                trace_target=mq_trace if isinstance(mq_trace, dict) else None,
+                stage="multi_query_fallback",
+            )
+            mq_items = self._enforce_collection_scope(
+                mq_items,
+                collection_id=collection_id,
+                requested_standards=plan.requested_standards,
                 trace_target=mq_trace if isinstance(mq_trace, dict) else None,
             )
             mq_items = reduce_structural_noise(mq_items, query)
@@ -574,8 +726,21 @@ class RetrievalFlow:
                     allow_step_back=allow_step_back,
                     k=k,
                 )
+            raw_repaired_items = [it for it in repaired_items if isinstance(it, dict)]
             repaired_items = self._filter_items_by_min_score(
-                [it for it in repaired_items if isinstance(it, dict)],
+                raw_repaired_items,
+                trace_target=diag_trace_fb,
+            )
+            repaired_items = self._ensure_non_empty_candidates(
+                raw_items=raw_repaired_items,
+                filtered_items=repaired_items,
+                trace_target=diag_trace_fb,
+                stage="multi_query_repair",
+            )
+            repaired_items = self._enforce_collection_scope(
+                repaired_items,
+                collection_id=collection_id,
+                requested_standards=plan.requested_standards,
                 trace_target=diag_trace_fb,
             )
             repaired_items = reduce_structural_noise(repaired_items, query)
@@ -645,8 +810,21 @@ class RetrievalFlow:
                 allow_step_back=allow_step_back,
                 k=k,
             )
+        raw_items2 = [it for it in items2 if isinstance(it, dict)]
         items2 = self._filter_items_by_min_score(
-            [it for it in items2 if isinstance(it, dict)],
+            raw_items2,
+            trace_target=diag_trace_final,
+        )
+        items2 = self._ensure_non_empty_candidates(
+            raw_items=raw_items2,
+            filtered_items=items2,
+            trace_target=diag_trace_final,
+            stage="hybrid_final",
+        )
+        items2 = self._enforce_collection_scope(
+            items2,
+            collection_id=collection_id,
+            requested_standards=plan.requested_standards,
             trace_target=diag_trace_final,
         )
         items2 = reduce_structural_noise(items2, query)
@@ -1143,6 +1321,13 @@ class RetrievalFlow:
         ):
             if isinstance(base_trace.get("coverage_gate"), dict):
                 base_trace["coverage_gate"]["step_back_skipped_by_budget"] = True
+
+        merged = self._enforce_collection_scope(
+            [it for it in merged if isinstance(it, dict)],
+            collection_id=collection_id,
+            requested_standards=plan.requested_standards,
+            trace_target=base_trace,
+        )
 
         final_missing = find_missing_scopes(
             merged, plan.requested_standards, enforce=require_all_scopes
