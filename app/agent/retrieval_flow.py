@@ -423,6 +423,46 @@ class RetrievalFlow:
             timeout_comprehensive_ms=timeout_comprehensive_ms,
         )
 
+    @staticmethod
+    def _build_budget_timeout_fn(
+        *, total_budget_ms: int, started_at: float
+    ) -> Callable[[int], int]:
+        def budgeted_timeout(default_timeout_ms: int) -> int:
+            elapsed = int((time.perf_counter() - started_at) * 1000)
+            remaining = max(0, total_budget_ms - elapsed)
+            if remaining <= 300:
+                return 200
+            return max(200, min(default_timeout_ms, remaining - 200))
+
+        return budgeted_timeout
+
+    def _finalize_diagnostics(
+        self,
+        *,
+        items: list[dict[str, Any]],
+        trace: dict[str, Any],
+        timings_ms: dict[str, float],
+        hint_trace: dict[str, Any],
+        validated_scope_payload: dict[str, Any] | None,
+    ) -> None:
+        if hint_trace.get("applied"):
+            trace["search_hint_expansions"] = hint_trace
+        if isinstance(self.profile_resolution_context, dict):
+            trace["agent_profile_resolution"] = dict(self.profile_resolution_context)
+        trace.setdefault("strategy_path", "comprehensive")
+        trace["timings_ms"] = {**dict(trace.get("timings_ms") or {}), **timings_ms}
+
+        diag_trace_final = dict(trace)
+        diag_trace_final.update(calculate_layer_stats([it for it in items if isinstance(it, dict)]))
+        diag_trace_final["rag_features"] = features_from_hybrid_trace(trace)
+        self.last_diagnostics = RetrievalDiagnostics(
+            contract="advanced",
+            strategy="comprehensive",
+            partial=False,
+            trace=diag_trace_final,
+            scope_validation=validated_scope_payload or {},
+        )
+
     async def _execute_comprehensive_primary(
         self,
         *,
@@ -537,14 +577,10 @@ class RetrievalFlow:
         total_budget_ms = max(
             1000, int(getattr(settings, "ORCH_TIMEOUT_EXECUTE_TOOL_MS", 30000) or 30000)
         )
-
-        def budgeted_timeout(default_timeout_ms: int) -> int:
-            elapsed = int((time.perf_counter() - execute_started_at) * 1000)
-            remaining = max(0, total_budget_ms - elapsed)
-            if remaining <= 300:
-                return 200
-            return max(200, min(default_timeout_ms, remaining - 200))
-
+        budgeted_timeout = self._build_budget_timeout_fn(
+            total_budget_ms=total_budget_ms,
+            started_at=execute_started_at,
+        )
         context = self._prepare_execution_context(
             query=query,
             plan=plan,
@@ -574,22 +610,12 @@ class RetrievalFlow:
                 f"comprehensive_retrieval_failed:{comprehensive_error_code}:{comprehensive_error_detail or ''}"
             )
 
-        if context.hint_trace.get("applied"):
-            trace["search_hint_expansions"] = context.hint_trace
-        if isinstance(self.profile_resolution_context, dict):
-            trace["agent_profile_resolution"] = dict(self.profile_resolution_context)
-        trace.setdefault("strategy_path", "comprehensive")
-        trace["timings_ms"] = {**dict(trace.get("timings_ms") or {}), **timings_ms}
-
-        diag_trace_final = dict(trace)
-        diag_trace_final.update(calculate_layer_stats([it for it in items if isinstance(it, dict)]))
-        diag_trace_final["rag_features"] = features_from_hybrid_trace(trace)
-        self.last_diagnostics = RetrievalDiagnostics(
-            contract="advanced",
-            strategy="comprehensive",
-            partial=False,
-            trace=diag_trace_final,
-            scope_validation=validated_scope_payload or {},
+        self._finalize_diagnostics(
+            items=items,
+            trace=trace,
+            timings_ms=timings_ms,
+            hint_trace=context.hint_trace,
+            validated_scope_payload=validated_scope_payload,
         )
         return self._to_evidence(items)
 
