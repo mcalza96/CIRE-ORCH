@@ -20,6 +20,20 @@ def _safe_score(raw: Any) -> float | None:
         return None
 
 
+def _item_score_space(item: dict[str, Any]) -> str:
+    score_space = str(item.get("score_space") or "").strip().lower()
+    if score_space:
+        return score_space
+    metadata_raw = item.get("metadata")
+    metadata = metadata_raw if isinstance(metadata_raw, dict) else {}
+    score_space = str(metadata.get("score_space") or "").strip().lower()
+    if score_space:
+        return score_space
+    row_raw = metadata.get("row")
+    row = row_raw if isinstance(row_raw, dict) else {}
+    return str(row.get("score_space") or "").strip().lower()
+
+
 def filter_items_by_min_score(
     items: list[dict[str, Any]],
     *,
@@ -39,6 +53,10 @@ def filter_items_by_min_score(
         score_raw = item.get("score")
         if score_raw is None:
             score_raw = item.get("similarity")
+        score_space = _item_score_space(item)
+        if score_space in {"rrf", "mixed"}:
+            kept.append(item)
+            continue
         score = _safe_score(score_raw)
         if score_raw is None or score is None:
             if score_raw is not None and score is None:

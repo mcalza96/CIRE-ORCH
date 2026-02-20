@@ -371,7 +371,17 @@ class CartridgeLoader:
             raise RuntimeError(f"No cartridge YAML files found in {self._cartridges_dir}")
 
         for path in yaml_paths:
-            self.load(path.stem)
+            payload = _safe_load_yaml(path)
+            
+            extends = str(payload.get("extends") or "").strip()
+            if extends and extends != path.stem:
+                base_profile = self.load(extends)
+                base_payload = base_profile.model_dump(exclude={"profile_id", "extends"})
+                payload = _deep_merge(base_payload, payload)
+            
+            _validate_v2_payload(path, payload)
+            payload.setdefault("profile_id", str(path.stem))
+            AgentProfile.model_validate(payload)
 
     async def load_for_tenant_async(
         self,

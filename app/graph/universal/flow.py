@@ -25,13 +25,15 @@ from app.agent.models import (
 from app.agent.policies import classify_intent
 from app.agent.tools import ToolRuntimeContext, create_default_tools
 from app.core.config import settings
-from app.graph.universal.steps import (
+from app.graph.universal.nodes import (
     aggregate_subqueries_node,
     citation_validate_node,
     execute_tool_node,
     generator_node,
     planner_node,
     reflect_node,
+)
+from app.graph.universal.routing import (
     route_after_planner,
     route_after_reflect,
 )
@@ -56,20 +58,20 @@ class UniversalReasoningOrchestrator:
     def _build_graph(self) -> StateGraph:
         orch = self  # capture for closures
 
-        async def _planner(s: UniversalState) -> dict[str, object]:
-            return await planner_node(s, orch)
+        async def _planner(state: UniversalState) -> dict[str, object]:
+            return await planner_node(state, orch)
 
-        async def _execute_tool(s: UniversalState) -> dict[str, object]:
-            return await execute_tool_node(s, orch)
+        async def _execute_tool(state: UniversalState) -> dict[str, object]:
+            return await execute_tool_node(state, orch)
 
-        async def _generator(s: UniversalState) -> dict[str, object]:
-            return await generator_node(s, orch)
+        async def _generator(state: UniversalState) -> dict[str, object]:
+            return await generator_node(state, orch)
 
-        async def _aggregate_subqueries(s: UniversalState) -> dict[str, object]:
-            return await aggregate_subqueries_node(s, orch)
+        async def _aggregate_subqueries(state: UniversalState) -> dict[str, object]:
+            return await aggregate_subqueries_node(state, orch)
 
-        async def _citation_validate(s: UniversalState) -> dict[str, object]:
-            return await citation_validate_node(s, orch)
+        async def _citation_validate(state: UniversalState) -> dict[str, object]:
+            return await citation_validate_node(state, orch)
 
         graph = StateGraph(UniversalState)
         graph.add_node("planner", _planner)

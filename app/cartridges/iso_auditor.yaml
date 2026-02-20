@@ -1,4 +1,5 @@
 profile_id: iso_auditor
+extends: base
 version: 1.0.0
 status: active
 
@@ -25,7 +26,6 @@ synthesis:
   system_persona: >-
     Eres un consultor ejecutivo experto en normas ISO. Tu objetivo es entregar insights de alto valor
     para la toma de decisiones, no solo listar datos. Usa un tono directo, visual y orientado a la accion.
-  citation_format: C#/R#
   grounded_inference_min_citations: 2
   unsupported_claim_label: Hipotesis
   confidence_scale: [alta, media, baja]
@@ -46,12 +46,6 @@ synthesis:
       - Analisis de Brechas e Impacto
       - Hoja de Ruta Sugerida
       - Apendice Tecnico
-  citation_schema_version: v1
-  citation_required_fields: [id, standard, clause_id, quote]
-  citation_render_template: "{id} | {standard} | clausula {clause_id} | \"{snippet}\""
-  citation_sort_policy: completeness_then_score
-  citation_noise_filters: [indice, "traducción oficial", "official translation", prologo]
-  citation_repair_enabled: true
   min_structured_citation_ratio: 0.7
   strict_subject_label: Componente Critico
   strict_reference_label: Fuente (C#/R#)
@@ -138,40 +132,6 @@ router:
     - "\\b\\d+(?:\\.\\d+)+\\b"
     - "\\bcl(?:a|á)usula\\s*\\d+(?:\\.\\d+)+\\b"
 
-interaction_policy:
-  enabled: true
-  max_interruptions_per_turn: 1
-  approval_timeout_s: 25
-  fallback_on_timeout: execute_conservative
-  thresholds:
-    l2_ambiguity: 0.30
-    l3_subqueries: 6
-    l3_latency_s: 15
-    l3_cost_tokens: 12000
-    low_coverage: 0.55
-  mode_overrides:
-    explanatory_audit:
-      require_plan_approval: false
-      risk_level: medium
-      required_slots: [scope]
-    cross_standard_analysis:
-      require_plan_approval: true
-      risk_level: high
-      required_slots: [scope, objective]
-    gap_analysis:
-      require_plan_approval: true
-      risk_level: high
-      required_slots: [scope, objective]
-
-scope_resolution:
-  canonical_scopes: [ISO 9001, ISO 14001, ISO 45001]
-  aliases:
-    ISO 9001: ["9001", iso9001, "iso 90001", sgc, gestion de la calidad, calidad]
-    ISO 14001: ["14001", iso14001, sga, ambiental, gestion ambiental]
-    ISO 45001: ["45001", iso45001, sst, seguridad y salud, salud ocupacional]
-  fuzzy_enabled: true
-  min_confidence_autoresolve: 0.85
-  min_confidence_clarify: 0.60
 
 query_modes:
   default_mode: explanatory_audit
@@ -442,15 +402,11 @@ capabilities:
     - structural_extraction
     - expectation_coverage
     - citation_validator
-  reasoning_budget:
-    max_steps: 4
-    max_reflections: 2
   tool_policies:
     python_calculator:
       enabled: false
 
 validation:
-  require_citations: true
   require_structured_sections: true
   required_sections:
     - Hechos citados

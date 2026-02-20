@@ -69,11 +69,7 @@ class Settings(BaseSettings):
     ORCH_MULTI_QUERY_REFINE: bool = False
     ORCH_MULTI_QUERY_MIN_ITEMS: int = 6
     ORCH_MULTI_QUERY_FALLBACK_MAX_QUERIES: int = 3
-    ORCH_MULTI_QUERY_CLIENT_FANOUT_ENABLED: bool = False
-    ORCH_MULTI_QUERY_CLIENT_FANOUT_MAX_PARALLEL: int = 2
-    ORCH_MULTI_QUERY_CLIENT_FANOUT_PER_QUERY_TIMEOUT_MS: int = 8000
-    ORCH_MULTI_QUERY_CLIENT_FANOUT_RERANK_ENABLED: bool = False
-    ORCH_MULTI_QUERY_CLIENT_FANOUT_GRAPH_MAX_HOPS: int = 2
+    ORCH_RETRIEVAL_COMPREHENSIVE_ENABLED: bool = True
     ORCH_MULTI_QUERY_EVALUATOR: bool = False
     ORCH_SUBQUERY_GROUPED_MAP_REDUCE_ENABLED: bool = False
     ORCH_SUBQUERY_MAP_MAX_SUBQUERIES: int = 8
@@ -93,19 +89,14 @@ class Settings(BaseSettings):
     # Retrieval-stage budgets for advanced contract orchestration.
     # These are INNER timeouts within EXECUTE_TOOL, must be < ORCH_TIMEOUT_EXECUTE_TOOL_MS.
     ORCH_TIMEOUT_RETRIEVAL_HYBRID_MS: int = 25000  # Single hybrid call: simple=3s, multihop=18s
+    ORCH_TIMEOUT_RETRIEVAL_COMPREHENSIVE_MS: int = 28000
     ORCH_TIMEOUT_RETRIEVAL_MULTI_QUERY_MS: int = 25000  # Multi-query refinement: up to 6 subqueries
     ORCH_TIMEOUT_RETRIEVAL_COVERAGE_REPAIR_MS: int = 15000  # Coverage gate repair: 2-4 extra calls
-    ORCH_RETRIEVAL_MIN_MQ_BUDGET_MS: int = 1200
-    ORCH_RETRIEVAL_MIN_REPAIR_BUDGET_MS: int = 800
     ORCH_RETRIEVAL_LOW_BUDGET_SUBQUERY_CAP: int = 2
     ORCH_RETRIEVAL_RATE_LIMIT_SUBQUERY_CAP: int = 3
-    ORCH_COVERAGE_GATE_STEP_BACK_MIN_BUDGET_MS: int = 1200
 
     # Agnostic coverage gate: ensure multi-scope queries retrieve evidence per requested scope.
-    ORCH_COVERAGE_GATE_ENABLED: bool = True
     ORCH_COVERAGE_GATE_TOP_N: int = 12
-    ORCH_COVERAGE_GATE_MAX_MISSING: int = 2
-    ORCH_COVERAGE_GATE_STEP_BACK: bool = True
     ORCH_COVERAGE_REQUIRED: bool = True
     ORCH_SCOPE_BALANCE_FINAL_ENABLED: bool = True
     ORCH_SCOPE_BALANCE_MIN_PER_SCOPE: int = 2

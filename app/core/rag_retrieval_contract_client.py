@@ -10,15 +10,10 @@ import structlog
 
 from app.clients.backend_selector import RagBackendSelector
 from app.core.config import settings
-from app.core.rag_contract_schemas import MergeOptions, MultiQueryRetrievalRequest, SubQueryRequest
 from app.core.retrieval_metrics import retrieval_metrics_store
 
 
 logger = structlog.get_logger(__name__)
-
-
-class RagContractNotSupportedError(RuntimeError):
-    pass
 
 
 def _rag_http_timeout(timeout_seconds: float | None = None) -> httpx.Timeout:
@@ -112,7 +107,7 @@ class RagRetrievalContractClient:
             retrieval_metrics_store.record_failure("validate_scope")
             raise
 
-    async def hybrid(
+    async def comprehensive(
         self,
         *,
         query: str,
@@ -126,8 +121,9 @@ class RagRetrievalContractClient:
         filters: dict[str, Any] | None = None,
         rerank: dict[str, Any] | None = None,
         graph: dict[str, Any] | None = None,
+        coverage_requirements: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        retrieval_metrics_store.record_request("hybrid")
+        retrieval_metrics_store.record_request("comprehensive")
         payload: dict[str, Any] = {
             "query": query,
             "tenant_id": tenant_id,
@@ -137,78 +133,22 @@ class RagRetrievalContractClient:
             "filters": filters,
             "rerank": rerank,
             "graph": graph,
+            "coverage_requirements": coverage_requirements,
         }
         try:
             data = await self._post_json(
-                "/api/v1/retrieval/hybrid",
+                "/api/v1/retrieval/comprehensive",
                 payload,
-                endpoint="hybrid",
+                endpoint="comprehensive",
                 tenant_id=tenant_id,
                 user_id=user_id,
                 request_id=request_id,
                 correlation_id=correlation_id,
             )
-            retrieval_metrics_store.record_success("hybrid")
+            retrieval_metrics_store.record_success("comprehensive")
             return data
         except Exception:
-            retrieval_metrics_store.record_failure("hybrid")
-            raise
-
-    async def multi_query(
-        self,
-        *,
-        tenant_id: str,
-        user_id: str | None,
-        request_id: str | None = None,
-        correlation_id: str | None = None,
-        collection_id: str | None,
-        queries: list[dict[str, Any]],
-        merge: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        retrieval_metrics_store.record_request("multi_query")
-
-        parsed_queries: list[SubQueryRequest] = []
-        for raw in queries:
-            if not isinstance(raw, dict):
-                continue
-            try:
-                parsed_queries.append(SubQueryRequest.model_validate(raw))
-            except Exception:
-                logger.warning(
-                    "multi_query_subquery_invalid_dropped",
-                    tenant_id=tenant_id,
-                    raw_id=str(raw.get("id") or ""),
-                )
-
-        # Only RRF is supported by the RAG contract at the moment.
-        merge_obj = MergeOptions()
-        if isinstance(merge, dict):
-            try:
-                merge_obj = MergeOptions.model_validate(merge)
-            except Exception:
-                logger.warning("multi_query_merge_invalid_defaulted", tenant_id=tenant_id)
-
-        request_obj = MultiQueryRetrievalRequest(
-            tenant_id=tenant_id,
-            collection_id=collection_id,
-            queries=parsed_queries,
-            merge=merge_obj,
-        )
-        payload = request_obj.model_dump(by_alias=True, exclude_none=True)
-        try:
-            data = await self._post_json(
-                "/api/v1/retrieval/multi-query",
-                payload,
-                endpoint="multi_query",
-                tenant_id=tenant_id,
-                user_id=user_id,
-                request_id=request_id,
-                correlation_id=correlation_id,
-            )
-            retrieval_metrics_store.record_success("multi_query")
-            return data
-        except Exception:
-            retrieval_metrics_store.record_failure("multi_query")
+            retrieval_metrics_store.record_failure("comprehensive")
             raise
 
     async def explain(
@@ -282,11 +222,6 @@ class RagRetrievalContractClient:
                 correlation_id=correlation_id,
             )
         except httpx.HTTPStatusError as exc:
-            # If contract is not deployed yet, allow caller to fall back to legacy.
-            if exc.response is not None and exc.response.status_code == 404:
-                raise RagContractNotSupportedError(
-                    f"RAG contract endpoint not found: {path}"
-                ) from exc
             raise
         except (httpx.RequestError, httpx.HTTPStatusError) as primary_exc:
             if selector.is_forced():
