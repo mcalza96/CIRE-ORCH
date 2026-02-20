@@ -1,15 +1,9 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from typing import Any
 
-from app.agent.error_codes import (
-    RETRIEVAL_CODE_CLAUSE_MISSING,
-    RETRIEVAL_CODE_SCOPE_MISMATCH,
-)
 from app.cartridges.models import AgentProfile
-from app.agent.policies import extract_requested_scopes
 
 
 _CLAUSE_RE = re.compile(r"\b\d+(?:\.\d+)+\b")
@@ -209,134 +203,6 @@ def _semantic_tail_for_standard(
 
     cleaned = re.sub(r"[()\[\],;:]+", " ", cleaned)
     return " ".join(part for part in cleaned.split() if part).strip()
-
-
-def _row_standard(row: dict[str, Any]) -> str | None:
-    meta = row.get("metadata")
-    if isinstance(meta, dict):
-        std = meta.get("source_standard") or meta.get("scope") or meta.get("standard")
-        if isinstance(std, str) and std.strip():
-            return std.strip()
-    std2 = row.get("source_standard")
-    if isinstance(std2, str) and std2.strip():
-        return std2.strip()
-    return None
-
-
-def _row_mentions_clause(row: dict[str, Any], clause: str) -> bool:
-    clause_norm = str(clause or "").strip()
-    if not clause_norm:
-        return False
-    content = str(row.get("content") or "")
-    clause_re = re.compile(rf"\b{re.escape(clause_norm)}(?:\.\d+)*\b")
-    if clause_re.search(content):
-        return True
-    meta = row.get("metadata")
-    if isinstance(meta, dict):
-        for key in ("clause_id", "clause_ref", "clause"):
-            value = meta.get(key)
-            if isinstance(value, str) and _clause_ref_matches(clause_norm, value):
-                return True
-        refs = meta.get("clause_refs")
-        if isinstance(refs, list) and any(
-            isinstance(item, str) and _clause_ref_matches(clause_norm, item) for item in refs
-        ):
-            return True
-    return False
-
-
-@dataclass(frozen=True)
-class CoverageDecision:
-    needs_fallback: bool
-    reason: str = ""
-    code: str = ""
-
-
-def decide_multihop_fallback(
-    *,
-    query: str,
-    requested_standards: tuple[str, ...],
-    items: list[dict[str, Any]],
-    hybrid_trace: dict[str, Any] | None,
-    top_k: int = 12,
-    profile: AgentProfile | None = None,
-) -> CoverageDecision:
-    """Decide whether to switch from hybrid to multi-query for better balanced evidence."""
-    clause_refs = extract_clause_refs(query, profile=profile)
-    top = items[: max(1, int(top_k))]
-
-    present_standards: set[str] = set()
-    for row in top:
-        std = _row_standard(row)
-        if std:
-            present_standards.add(std.upper())
-
-    req_upper = [s.upper() for s in requested_standards if s]
-    if len(req_upper) >= 2:
-        missing = [s for s in req_upper if s not in present_standards]
-        if missing:
-            planner_multihop = bool((hybrid_trace or {}).get("planner_multihop", False))
-            # If planner already did multihop, missing standards can still happen. Require fallback only
-            # when planner did not do multihop (or trace missing) to avoid redundant calls.
-            if not planner_multihop:
-                return CoverageDecision(
-                    needs_fallback=True,
-                    reason=f"missing_standards_in_topk: {', '.join(missing[:3])}",
-                    code=RETRIEVAL_CODE_SCOPE_MISMATCH,
-                )
-
-    if clause_refs:
-        missing_clauses: list[str] = []
-        for clause in clause_refs:
-            if not any(_row_mentions_clause(row, clause) for row in top):
-                missing_clauses.append(clause)
-        if missing_clauses:
-            planner_multihop = bool((hybrid_trace or {}).get("planner_multihop", False))
-            if not planner_multihop:
-                return CoverageDecision(
-                    needs_fallback=True,
-                    reason=f"missing_clause_refs_in_topk: {', '.join(missing_clauses[:3])}",
-                    code=RETRIEVAL_CODE_CLAUSE_MISSING,
-                )
-
-    return CoverageDecision(needs_fallback=False, reason="coverage_ok", code="")
-
-
-def build_initial_scope_filters(
-    *,
-    plan_requested: tuple[str, ...],
-    mode: str,
-    query: str,
-    profile: AgentProfile | None = None,
-    require_literal_evidence: bool | None = None,
-) -> dict[str, Any] | None:
-    raw_query = str(query or "").strip()
-    effective_query, _ = apply_search_hints(raw_query, profile=profile)
-    requested = tuple(plan_requested) or extract_requested_scopes(effective_query, profile=profile)
-    filters: dict[str, Any] = {}
-    if requested:
-        filters["source_standards"] = list(requested)
-
-    # Only narrow to clause_id for strict literal extraction AND explicit user references.
-    # CRITICAL DAY 2 FIX: Omit clause_id if multiple standards are requested to avoid cross-standard collision.
-    if len(requested) <= 1 and mode_requires_literal_evidence(
-        mode=mode,
-        profile=profile,
-        explicit_flag=require_literal_evidence,
-    ):
-        clause_refs = extract_clause_refs(raw_query, profile=profile)
-        # If the user asked multiple questions in one turn, avoid over-constraining
-        # retrieval to a single clause (e.g. "9.3 ..." + a second question).
-        split_parts = [
-            part
-            for part in re.split(r"\?+|\n+", raw_query)
-            if isinstance(part, str) and len(" ".join(part.split()).strip()) >= 18
-        ]
-        is_compound_query = len(split_parts) >= 2
-        if clause_refs and not is_compound_query:
-            filters["metadata"] = {"clause_id": clause_refs[0]}
-
-    return filters or None
 
 
 def build_deterministic_subqueries(

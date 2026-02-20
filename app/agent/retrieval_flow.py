@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import re
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, TypedDict
@@ -82,221 +81,6 @@ class RetrievalFlow:
             return None
         cfg = self.profile_context.query_modes.modes.get(str(mode or "").strip())
         return cfg if isinstance(cfg, QueryModeConfig) else None
-
-    @staticmethod
-    def _item_collection_id(item: dict[str, Any]) -> str:
-        if not isinstance(item, dict):
-            return ""
-        direct = str(item.get("collection_id") or "").strip()
-        if direct:
-            return direct
-        meta = item.get("metadata")
-        if isinstance(meta, dict):
-            meta_direct = str(meta.get("collection_id") or "").strip()
-            if meta_direct:
-                return meta_direct
-            row = meta.get("row")
-            if isinstance(row, dict):
-                row_direct = str(row.get("collection_id") or "").strip()
-                if row_direct:
-                    return row_direct
-                row_meta = row.get("metadata")
-                if isinstance(row_meta, dict):
-                    row_meta_direct = str(row_meta.get("collection_id") or "").strip()
-                    if row_meta_direct:
-                        return row_meta_direct
-        return ""
-
-    @staticmethod
-    def _item_scope_tokens(item: dict[str, Any]) -> list[str]:
-        if not isinstance(item, dict):
-            return []
-
-        tokens: list[str] = []
-
-        def _push(value: Any) -> None:
-            text = str(value or "").strip()
-            if text:
-                tokens.append(text.casefold())
-
-        def _push_from_meta(meta: dict[str, Any]) -> None:
-            _push(meta.get("source_standard"))
-            _push(meta.get("standard"))
-            standards = meta.get("source_standards")
-            if isinstance(standards, list):
-                for s in standards:
-                    _push(s)
-
-        meta = item.get("metadata")
-        if isinstance(meta, dict):
-            _push_from_meta(meta)
-            row = meta.get("row")
-            if isinstance(row, dict):
-                _push(row.get("source_standard"))
-                row_meta = row.get("metadata")
-                if isinstance(row_meta, dict):
-                    _push_from_meta(row_meta)
-
-        direct = item.get("source_standard")
-        _push(direct)
-        return tokens
-
-    @staticmethod
-    def _stable_item_key(item: dict[str, Any]) -> str:
-        source = str(item.get("source") or "")
-        meta_raw = item.get("metadata")
-        meta = meta_raw if isinstance(meta_raw, dict) else {}
-        row_raw = meta.get("row")
-        row = row_raw if isinstance(row_raw, dict) else {}
-        row_meta_raw = row.get("metadata")
-        row_meta = row_meta_raw if isinstance(row_meta_raw, dict) else {}
-        doc_id = str(row.get("doc_id") or row_meta.get("doc_id") or "")
-        chunk_id = str(
-            row.get("chunk_id")
-            or row.get("id")
-            or row_meta.get("chunk_id")
-            or row_meta.get("id")
-            or ""
-        )
-        composite = "::".join(part for part in [doc_id, chunk_id, source] if part)
-        return composite or source or str(hash(str(item)))
-
-    @staticmethod
-    def _scope_aliases(scope: str) -> tuple[str, ...]:
-        value = str(scope or "").strip().upper()
-        if not value:
-            return ()
-        aliases: list[str] = [value.casefold()]
-        digits = [m for m in re.findall(r"\b\d{3,6}\b", value)]
-        for digit in digits:
-            aliases.append(str(digit).casefold())
-        seen: set[str] = set()
-        ordered: list[str] = []
-        for alias in aliases:
-            if alias in seen:
-                continue
-            seen.add(alias)
-            ordered.append(alias)
-        return tuple(ordered)
-
-    @classmethod
-    def _item_matches_scope(cls, item: dict[str, Any], scope: str) -> bool:
-        aliases = cls._scope_aliases(scope)
-        if not aliases:
-            return False
-        tokens = cls._item_scope_tokens(item)
-        if not tokens:
-            return False
-        for token in tokens:
-            for alias in aliases:
-                if alias in token or token in alias:
-                    return True
-        return False
-
-    @classmethod
-    def _rebalance_scope_coverage(
-        cls,
-        *,
-        items: list[dict[str, Any]],
-        requested_standards: tuple[str, ...],
-        top_k: int,
-        trace_target: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        requested = [
-            str(scope or "").strip().upper() for scope in requested_standards if str(scope).strip()
-        ]
-        if len(requested) < 2:
-            return items
-
-        per_scope: dict[str, list[dict[str, Any]]] = {scope: [] for scope in requested}
-        leftovers: list[dict[str, Any]] = []
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            matched = False
-            for scope in requested:
-                if cls._item_matches_scope(item, scope):
-                    per_scope[scope].append(item)
-                    matched = True
-                    break
-            if not matched:
-                leftovers.append(item)
-
-        selected: list[dict[str, Any]] = []
-        seen_keys: set[str] = set()
-
-        def _append_unique(candidate: dict[str, Any]) -> None:
-            key = cls._stable_item_key(candidate)
-            if key in seen_keys:
-                return
-            seen_keys.add(key)
-            selected.append(candidate)
-
-        min_per_scope = 1
-        for scope in requested:
-            for candidate in per_scope.get(scope, [])[:min_per_scope]:
-                _append_unique(candidate)
-
-        cursor = {scope: min(len(per_scope.get(scope, [])), min_per_scope) for scope in requested}
-        while len(selected) < max(1, top_k):
-            progressed = False
-            for scope in requested:
-                bucket = per_scope.get(scope, [])
-                idx = cursor.get(scope, 0)
-                if idx >= len(bucket):
-                    continue
-                _append_unique(bucket[idx])
-                cursor[scope] = idx + 1
-                progressed = True
-                if len(selected) >= max(1, top_k):
-                    break
-            if not progressed:
-                break
-
-        for candidate in leftovers:
-            if len(selected) >= max(1, top_k):
-                break
-            _append_unique(candidate)
-
-        if len(selected) < max(1, top_k):
-            for candidate in items:
-                if len(selected) >= max(1, top_k):
-                    break
-                if isinstance(candidate, dict):
-                    _append_unique(candidate)
-
-        if isinstance(trace_target, dict):
-            trace_target["scope_balance"] = {
-                "enabled": True,
-                "requested_scopes": requested,
-                "per_scope_counts_before": {
-                    scope: len(per_scope.get(scope, [])) for scope in requested
-                },
-                "selected": len(selected),
-                "top_k": int(max(1, top_k)),
-            }
-
-        return selected[: max(1, top_k)]
-
-    @classmethod
-    def _enforce_collection_scope(
-        cls,
-        items: list[dict[str, Any]],
-        *,
-        collection_id: str | None,
-        requested_standards: tuple[str, ...] = (),
-        trace_target: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        if isinstance(trace_target, dict):
-            trace_target["collection_scope"] = {
-                "selected_collection_id": str(collection_id or "").strip(),
-                "enforced": False,
-                "reason": "collection_scope_filter_disabled",
-                "requested_standards": list(requested_standards),
-                "kept": len(items),
-                "dropped": 0,
-            }
-        return [it for it in items if isinstance(it, dict)]
 
     def _prepare_execution_context(
         self,
@@ -424,7 +208,6 @@ class RetrievalFlow:
     async def _execute_comprehensive_primary(
         self,
         *,
-        query: str,
         tenant_id: str,
         collection_id: str | None,
         user_id: str | None,
@@ -469,44 +252,7 @@ class RetrievalFlow:
             items = []
         if not isinstance(trace, dict):
             trace = {}
-        refined = self._refine_candidates(
-            raw_items=[it for it in items if isinstance(it, dict)],
-            trace_target=trace,
-            stage="comprehensive_primary",
-            query=query,
-            collection_id=collection_id,
-            requested_standards=plan.requested_standards,
-            top_k=max(12, context.k),
-            reduce_noise=True,
-        )
-        return refined, trace, error_code, error_detail
-
-    def _refine_candidates(
-        self,
-        *,
-        raw_items: list[dict[str, Any]],
-        trace_target: dict[str, Any] | None,
-        stage: str,
-        query: str,
-        collection_id: str | None,
-        requested_standards: tuple[str, ...],
-        top_k: int,
-        reduce_noise: bool,
-    ) -> list[dict[str, Any]]:
-        items = [it for it in raw_items if isinstance(it, dict)]
-        items = self._enforce_collection_scope(
-            items,
-            collection_id=collection_id,
-            requested_standards=requested_standards,
-            trace_target=trace_target,
-        )
-        items = self._rebalance_scope_coverage(
-            items=items,
-            requested_standards=requested_standards,
-            top_k=top_k,
-            trace_target=trace_target,
-        )
-        return items
+        return [it for it in items if isinstance(it, dict)], trace, error_code, error_detail
 
     async def execute(
         self,
@@ -545,7 +291,6 @@ class RetrievalFlow:
             comprehensive_error_code,
             comprehensive_error_detail,
         ) = await self._execute_comprehensive_primary(
-            query=query,
             tenant_id=tenant_id,
             collection_id=collection_id,
             user_id=user_id,

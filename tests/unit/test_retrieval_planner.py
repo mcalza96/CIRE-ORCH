@@ -1,26 +1,7 @@
 from app.agent.retrieval_planner import (
     build_deterministic_subqueries,
-    decide_multihop_fallback,
     normalize_query_filters,
 )
-
-
-def test_decide_multihop_fallback_when_missing_standard_and_planner_not_multihop() -> None:
-    query = "ISO 45001 8.1.2 vs ISO 14001 8.1 impacto documental ISO 9001 8.5.1"
-    requested = ("ISO 45001", "ISO 14001", "ISO 9001")
-    # Only one standard appears in top rows.
-    rows = [
-        {"content": "texto 8.1.2", "metadata": {"source_standard": "ISO 45001"}},
-        {"content": "texto 8.1.2", "metadata": {"source_standard": "ISO 45001"}},
-    ]
-    decision = decide_multihop_fallback(
-        query=query,
-        requested_standards=requested,
-        items=rows,
-        hybrid_trace={"planner_multihop": False},
-        top_k=12,
-    )
-    assert decision.needs_fallback is True
 
 
 def test_build_deterministic_subqueries_bounded() -> None:

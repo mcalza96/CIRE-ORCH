@@ -40,7 +40,9 @@ def test_hybrid_decomposer_merges_llm_for_complex_queries() -> None:
         llm=_StaticPlanner(items=[{"id": "l1", "query": "llm"}]),
     )
     out = asyncio.run(hybrid.plan(_ctx(enabled=True)))
-    assert {item["id"] for item in out} == {"d1", "l1"}
+    ids = {item["id"] for item in out}
+    assert {"d1", "l1"}.issubset(ids)
+    assert any(item_id.startswith("scope_") for item_id in ids)
 
 
 def test_llm_decomposer_fails_safe_on_provider_error() -> None:

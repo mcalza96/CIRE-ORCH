@@ -51,7 +51,7 @@ async def test_execute_uses_comprehensive_only(monkeypatch: pytest.MonkeyPatch) 
     assert kwargs["query"] == "compara iso 9001 vs iso 14001"
     policy = kwargs.get("retrieval_policy")
     assert isinstance(policy, dict)
-    assert "min_score" in policy
+    assert "min_score" not in policy
     assert policy.get("noise_reduction") is True
 
 
