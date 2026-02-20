@@ -122,6 +122,7 @@ class RagRetrievalContractClient:
         rerank: dict[str, Any] | None = None,
         graph: dict[str, Any] | None = None,
         coverage_requirements: dict[str, Any] | None = None,
+        retrieval_policy: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         retrieval_metrics_store.record_request("comprehensive")
         payload: dict[str, Any] = {
@@ -134,6 +135,7 @@ class RagRetrievalContractClient:
             "rerank": rerank,
             "graph": graph,
             "coverage_requirements": coverage_requirements,
+            "retrieval_policy": retrieval_policy,
         }
         try:
             data = await self._post_json(

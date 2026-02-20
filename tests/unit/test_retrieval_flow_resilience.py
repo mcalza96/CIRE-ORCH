@@ -47,6 +47,12 @@ async def test_execute_uses_comprehensive_only(monkeypatch: pytest.MonkeyPatch) 
     assert flow.last_diagnostics is not None
     assert flow.last_diagnostics.strategy == "comprehensive"
     contract_client.comprehensive.assert_awaited_once()
+    kwargs = contract_client.comprehensive.await_args.kwargs
+    assert kwargs["query"] == "compara iso 9001 vs iso 14001"
+    policy = kwargs.get("retrieval_policy")
+    assert isinstance(policy, dict)
+    assert "min_score" in policy
+    assert policy.get("noise_reduction") is True
 
 
 @pytest.mark.asyncio

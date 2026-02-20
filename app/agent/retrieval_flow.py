@@ -14,7 +14,6 @@ from app.agent.error_codes import (
     RETRIEVAL_CODE_TIMEOUT,
     RETRIEVAL_CODE_UPSTREAM_UNAVAILABLE,
 )
-from app.agent.retrieval_filters import filter_items_by_min_score
 from app.agent.interfaces import (
     EmbeddingProvider,
     RerankingProvider,
@@ -23,8 +22,6 @@ from app.agent.interfaces import (
 from app.agent.models import EvidenceItem, RetrievalDiagnostics, RetrievalPlan
 from app.cartridges.models import AgentProfile, QueryModeConfig
 from app.agent.retrieval_planner import (
-    apply_search_hints,
-    extract_clause_refs,
     mode_requires_literal_evidence,
     normalize_query_filters,
 )
@@ -33,7 +30,6 @@ from app.core.rag_retrieval_contract_client import RagRetrievalContractClient
 from app.agent.retrieval_strategies import (
     calculate_layer_stats,
     features_from_hybrid_trace,
-    reduce_structural_noise,
 )
 
 logger = structlog.get_logger(__name__)
@@ -42,8 +38,7 @@ logger = structlog.get_logger(__name__)
 @dataclass(frozen=True)
 class RetrievalExecutionContext:
     filters: dict[str, Any] | None
-    expanded_query: str
-    hint_trace: dict[str, Any]
+    query: str
     require_all_scopes: bool
     min_clause_refs_required: int
     k: int
@@ -82,66 +77,11 @@ class RetrievalFlow:
         self.profile_resolution_context = profile_resolution_context
         self.last_diagnostics: RetrievalDiagnostics | None = None
 
-    def _profile_min_score(self) -> float | None:
-        if self.profile_context is None:
-            return None
-        try:
-            return float(self.profile_context.retrieval.min_score)
-        except Exception:
-            return None
-
     def _mode_config(self, mode: str) -> QueryModeConfig | None:
         if self.profile_context is None:
             return None
         cfg = self.profile_context.query_modes.modes.get(str(mode or "").strip())
         return cfg if isinstance(cfg, QueryModeConfig) else None
-
-    def _filter_items_by_min_score(
-        self,
-        items: list[dict[str, Any]],
-        *,
-        trace_target: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        return filter_items_by_min_score(
-            items,
-            threshold=self._profile_min_score(),
-            trace_target=trace_target,
-        )
-
-    @staticmethod
-    def _safe_score(item: dict[str, Any]) -> float:
-        if not isinstance(item, dict):
-            return -1.0
-        raw = item.get("score")
-        if raw is None:
-            raw = item.get("similarity")
-        if raw is None:
-            return -1.0
-        try:
-            return float(raw)
-        except (TypeError, ValueError):
-            return -1.0
-
-    def _ensure_non_empty_candidates(
-        self,
-        *,
-        raw_items: list[dict[str, Any]],
-        filtered_items: list[dict[str, Any]],
-        trace_target: dict[str, Any] | None,
-        stage: str,
-    ) -> list[dict[str, Any]]:
-        if filtered_items or not raw_items:
-            return filtered_items
-        top_n = max(1, int(getattr(settings, "ORCH_EMPTY_RESULT_BACKSTOP_TOP_N", 8) or 8))
-        rescued = sorted(raw_items, key=self._safe_score, reverse=True)[:top_n]
-        if isinstance(trace_target, dict):
-            trace_target["empty_result_backstop"] = {
-                "stage": stage,
-                "applied": True,
-                "kept": len(rescued),
-                "top_n": top_n,
-            }
-        return rescued
 
     @staticmethod
     def _item_collection_id(item: dict[str, Any]) -> str:
@@ -373,8 +313,7 @@ class RetrievalFlow:
                 else None
             )
 
-        expanded_query, hint_trace = apply_search_hints(query, profile=self.profile_context)
-        _ = extract_clause_refs(query, profile=self.profile_context)
+        resolved_query = str(query or "").strip()
         mode_cfg = self._mode_config(plan.mode)
         coverage_requirements = (
             dict(mode_cfg.coverage_requirements) if isinstance(mode_cfg, QueryModeConfig) else {}
@@ -414,14 +353,36 @@ class RetrievalFlow:
 
         return RetrievalExecutionContext(
             filters=filters,
-            expanded_query=expanded_query,
-            hint_trace=hint_trace,
+            query=resolved_query,
             require_all_scopes=require_all_scopes,
             min_clause_refs_required=min_clause_refs_required,
             k=k,
             fetch_k=fetch_k,
             timeout_comprehensive_ms=timeout_comprehensive_ms,
         )
+
+    def _build_retrieval_policy_payload(self) -> dict[str, Any]:
+        hints: list[dict[str, Any]] = []
+        min_score: float | None = None
+        if self.profile_context is not None:
+            for hint in self.profile_context.retrieval.search_hints:
+                term = str(hint.term or "").strip()
+                expands = [
+                    str(item or "").strip() for item in hint.expand_to if str(item or "").strip()
+                ]
+                if term and expands:
+                    hints.append({"term": term, "expand_to": expands})
+            try:
+                min_score = float(self.profile_context.retrieval.min_score)
+            except Exception:
+                min_score = None
+        payload: dict[str, Any] = {
+            "search_hints": hints,
+            "noise_reduction": True,
+        }
+        if min_score is not None:
+            payload["min_score"] = min_score
+        return payload
 
     @staticmethod
     def _build_budget_timeout_fn(
@@ -442,11 +403,8 @@ class RetrievalFlow:
         items: list[dict[str, Any]],
         trace: dict[str, Any],
         timings_ms: dict[str, float],
-        hint_trace: dict[str, Any],
         validated_scope_payload: dict[str, Any] | None,
     ) -> None:
-        if hint_trace.get("applied"):
-            trace["search_hint_expansions"] = hint_trace
         if isinstance(self.profile_resolution_context, dict):
             trace["agent_profile_resolution"] = dict(self.profile_resolution_context)
         trace.setdefault("strategy_path", "comprehensive")
@@ -481,7 +439,7 @@ class RetrievalFlow:
             op_name="comprehensive_primary",
             timeout_ms=budgeted_timeout_fn(context.timeout_comprehensive_ms),
             operation=self.contract_client.comprehensive(
-                query=context.expanded_query,
+                query=context.query,
                 tenant_id=tenant_id,
                 collection_id=collection_id,
                 user_id=user_id,
@@ -497,6 +455,7 @@ class RetrievalFlow:
                     "require_all_scopes": context.require_all_scopes,
                     "min_clause_refs": context.min_clause_refs_required,
                 },
+                retrieval_policy=self._build_retrieval_policy_payload(),
             ),
             timings_ms=timings_ms,
         )
@@ -534,21 +493,13 @@ class RetrievalFlow:
         top_k: int,
         reduce_noise: bool,
     ) -> list[dict[str, Any]]:
-        items = self._filter_items_by_min_score(raw_items, trace_target=trace_target)
-        items = self._ensure_non_empty_candidates(
-            raw_items=raw_items,
-            filtered_items=items,
-            trace_target=trace_target,
-            stage=stage,
-        )
+        items = [it for it in raw_items if isinstance(it, dict)]
         items = self._enforce_collection_scope(
             items,
             collection_id=collection_id,
             requested_standards=requested_standards,
             trace_target=trace_target,
         )
-        if reduce_noise:
-            items = reduce_structural_noise(items, query)
         items = self._rebalance_scope_coverage(
             items=items,
             requested_standards=requested_standards,
@@ -614,7 +565,6 @@ class RetrievalFlow:
             items=items,
             trace=trace,
             timings_ms=timings_ms,
-            hint_trace=context.hint_trace,
             validated_scope_payload=validated_scope_payload,
         )
         return self._to_evidence(items)
