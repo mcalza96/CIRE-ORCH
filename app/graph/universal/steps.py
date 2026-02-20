@@ -194,6 +194,7 @@ async def planner_node(
         "max_steps": max_steps,
         "max_reflections": max_reflections,
         "tool_cursor": 0,
+        "tool_results": [],
         "reasoning_steps": [*existing_steps, *trace_steps],
         "next_action": ("execute" if reasoning_plan.steps else "generate"),
         "interaction_level": interaction.level,
@@ -396,14 +397,19 @@ async def execute_tool_node(
         summaries = list(result.metadata.get("summaries") or [])
         subquery_groups = list(result.metadata.get("subquery_groups") or [])
         retrieval = result.metadata.get("retrieval")
+        
+        existing_chunks = state_get_list(state, "chunks")
+        existing_summaries = state_get_list(state, "summaries")
+        existing_docs = state_get_list(state, "retrieved_documents")
+        existing_subq = state_get_list(state, "subquery_groups")
+        
         if chunks or summaries:
-            updates["chunks"] = chunks
-            updates["summaries"] = summaries
-            updates["retrieved_documents"] = [*chunks, *summaries]
+            updates["chunks"] = [*existing_chunks, *chunks]
+            updates["summaries"] = [*existing_summaries, *summaries]
+            updates["retrieved_documents"] = [*existing_docs, *chunks, *summaries]
         if subquery_groups:
-            updates["subquery_groups"] = [
-                group for group in subquery_groups if isinstance(group, dict)
-            ]
+            valid_groups = [g for g in subquery_groups if isinstance(g, dict)]
+            updates["subquery_groups"] = [*existing_subq, *valid_groups]
         if isinstance(retrieval, RetrievalDiagnostics):
             updates["retrieval"] = retrieval
     elif result.ok:

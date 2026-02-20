@@ -338,10 +338,21 @@ def decide_interaction(
             "python_calculator": "Ejecutar calculos matematicos",
             "citation_validator": "Validar citas contra la fuente",
         }
-        plan_steps = [
-            f"{idx + 1}) {_TOOL_DISPLAY_NAMES.get(step.tool, step.tool)}"
-            for idx, step in enumerate(reasoning_plan.steps[:4])
-        ]
+        consolidated_steps = []
+        for step in reasoning_plan.steps:
+            name = _TOOL_DISPLAY_NAMES.get(step.tool, step.tool)
+            if consolidated_steps and consolidated_steps[-1]["name"] == name:
+                consolidated_steps[-1]["count"] += 1
+            else:
+                consolidated_steps.append({"name": name, "count": 1})
+        
+        plan_steps = []
+        for idx, item in enumerate(consolidated_steps[:4]):
+            if item["count"] > 1:
+                plan_steps.append(f"{idx + 1}) {item['name']} ({item['count']}x paralelizado)")
+            else:
+                plan_steps.append(f"{idx + 1}) {item['name']}")
+
         step_text = " -> ".join(plan_steps) if plan_steps else "1) Buscar contexto normativo"
         question = (
             "Entiendo que requieres un analisis profundo. "

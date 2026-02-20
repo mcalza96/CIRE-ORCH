@@ -209,6 +209,7 @@ query_modes:
         - "\\b\\d+(?:\\.\\d+)+\\b"
     - id: base_cross_scope
       mode: cross_scope_analysis
+      any_markers: ["__mode__=cross_scope_analysis"]
       any_keywords: [vs, entre, respecto, impacto]
       any_patterns:
         - "\\bcompar(?:a|ar|aci[oó]n|ativo|ativa|ativos|ativas)?\\b"

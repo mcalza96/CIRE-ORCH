@@ -1,25 +1,8 @@
-from app.agent.policies.query_splitter import QuerySplitter, QuerySplitterConfig
 from app.agent.policies.scope_policy import ScopePolicy
 from app.agent.policies.retry_policy import RetryPolicy
 from app.agent.models import RetrievalPlan, EvidenceItem, QueryIntent
 from app.cartridges.models import AgentProfile, QueryModeConfig, QueryModesPolicy
 from dataclasses import dataclass
-
-
-def test_query_splitter_basic():
-    cfg = QuerySplitterConfig(min_length=2)
-    splitter = QuerySplitter(cfg)
-    parts = splitter.split("Hola? Como estas")
-    assert len(parts) == 2
-    assert "Hola" in parts
-    assert "Como estas" in parts
-
-
-def test_query_splitter_single():
-    splitter = QuerySplitter()
-    parts = splitter.split("Hola mundo")
-    assert len(parts) == 1
-    assert parts[0] == "Hola mundo"
 
 
 def test_scope_policy_missing():

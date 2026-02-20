@@ -70,6 +70,18 @@ def _validate_v2_payload(path: Path, payload: dict) -> None:
         raise ValueError(f"Cartridge {path.name} missing required keys: {missing_csv}")
 
 
+def _deep_merge(base_dict: dict, override_dict: dict) -> dict:
+    """Recursively merges override_dict into base_dict. Returns a new dict."""
+    import copy
+    result = copy.deepcopy(base_dict)
+    for k, v in override_dict.items():
+        if isinstance(v, dict) and k in result and isinstance(result[k], dict):
+            result[k] = _deep_merge(result[k], v)
+        else:
+            result[k] = copy.deepcopy(v)
+    return result
+
+
 def _parse_json_map(raw: str | None) -> dict[str, str]:
     normalized = str(raw or "").strip()
     if not normalized:
@@ -171,9 +183,7 @@ class CartridgeLoader:
         if not path.exists():
             return False
         try:
-            payload = _safe_load_yaml(path)
-            _validate_v2_payload(path, payload)
-            AgentProfile.model_validate(payload)
+            self.load(profile_id)
         except Exception:
             return False
         return True
@@ -187,9 +197,7 @@ class CartridgeLoader:
             if not profile_id:
                 continue
             try:
-                payload = _safe_load_yaml(path)
-                _validate_v2_payload(path, payload)
-                parsed = AgentProfile.model_validate(payload)
+                parsed = self.load(profile_id)
             except Exception as exc:
                 logger.warning(
                     "cartridge_profile_discovery_skip_invalid",
@@ -309,7 +317,6 @@ class CartridgeLoader:
         if path.exists():
             try:
                 payload = _safe_load_yaml(path)
-                _validate_v2_payload(path, payload)
             except Exception as exc:
                 logger.warning(
                     "cartridge_yaml_load_failed",
@@ -323,6 +330,29 @@ class CartridgeLoader:
                 logger.warning("cartridge_not_found_fallback_base", profile_id=normalized)
                 return self.load("base")
             raise FileNotFoundError(f"Base cartridge not found: {path}")
+
+        extends = str(payload.get("extends") or "").strip()
+        if extends and extends != normalized:
+            try:
+                base_profile = self.load(extends)
+                base_payload = base_profile.model_dump(exclude={"profile_id", "extends"})
+                payload = _deep_merge(base_payload, payload)
+            except Exception as exc:
+                logger.warning(
+                    "cartridge_inheritance_failed",
+                    profile_id=normalized,
+                    extends=extends,
+                    error=str(exc),
+                )
+
+        try:
+            _validate_v2_payload(path, payload)
+        except Exception as exc:
+            logger.warning(
+                "cartridge_validation_failed",
+                profile_id=normalized,
+                error=str(exc),
+            )
 
         payload.setdefault("profile_id", normalized)
         profile = AgentProfile.model_validate(payload)
@@ -341,9 +371,7 @@ class CartridgeLoader:
             raise RuntimeError(f"No cartridge YAML files found in {self._cartridges_dir}")
 
         for path in yaml_paths:
-            payload = _safe_load_yaml(path)
-            _validate_v2_payload(path, payload)
-            AgentProfile.model_validate(payload)
+            self.load(path.stem)
 
     async def load_for_tenant_async(
         self,

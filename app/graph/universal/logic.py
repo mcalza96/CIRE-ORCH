@@ -65,24 +65,28 @@ def _extract_retry_signal_from_retrieval(state: UniversalState, last: ToolResult
     if not isinstance(retrieval, RetrievalDiagnostics):
         return ""
 
+    intent = state.get("intent")
+    mode = getattr(intent, "mode", "default")
+    is_cross_scope = str(mode).strip() == "cross_scope_analysis"
+
     scope_validation = dict(retrieval.scope_validation or {})
-    if scope_validation.get("valid") is False:
+    if not is_cross_scope and scope_validation.get("valid") is False:
         return RETRIEVAL_CODE_SCOPE_MISMATCH
 
     trace = dict(retrieval.trace or {})
     missing_scopes = trace.get("missing_scopes")
-    if isinstance(missing_scopes, list) and missing_scopes:
+    if not is_cross_scope and isinstance(missing_scopes, list) and missing_scopes:
         return RETRIEVAL_CODE_SCOPE_MISMATCH
 
     missing_clause_refs = trace.get("missing_clause_refs")
-    if isinstance(missing_clause_refs, list) and missing_clause_refs:
+    if not is_cross_scope and isinstance(missing_clause_refs, list) and missing_clause_refs:
         return RETRIEVAL_CODE_CLAUSE_MISSING
 
     error_codes_raw = trace.get("error_codes")
     error_codes = error_codes_raw if isinstance(error_codes_raw, list) else []
     for code in (
-        RETRIEVAL_CODE_SCOPE_MISMATCH,
-        RETRIEVAL_CODE_CLAUSE_MISSING,
+        RETRIEVAL_CODE_SCOPE_MISMATCH if not is_cross_scope else "",
+        RETRIEVAL_CODE_CLAUSE_MISSING if not is_cross_scope else "",
         RETRIEVAL_CODE_LOW_SCORE,
         RETRIEVAL_CODE_GRAPH_FALLBACK_NO_MULTIHOP,
         RETRIEVAL_CODE_TIMEOUT,

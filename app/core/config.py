@@ -88,7 +88,7 @@ class Settings(BaseSettings):
     ORCH_TIMEOUT_EXECUTE_TOOL_MS: int = 30000  # Retrieval: simple=4s, cross-standard=18s
     ORCH_TIMEOUT_GENERATE_MS: int = 15000  # LLM generation: simple=5s, complex=10s
     ORCH_TIMEOUT_VALIDATE_MS: int = 5000  # Citation validation: typically <1s
-    ORCH_TIMEOUT_TOTAL_MS: int = 60000  # Full pipeline: worst case ~40s + 20s headroom
+    ORCH_TIMEOUT_TOTAL_MS: int = 150000  # Full pipeline: worst case ~40s + 20s headroom
 
     # Retrieval-stage budgets for advanced contract orchestration.
     # These are INNER timeouts within EXECUTE_TOOL, must be < ORCH_TIMEOUT_EXECUTE_TOOL_MS.

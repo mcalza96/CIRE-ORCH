@@ -110,6 +110,19 @@ def build_universal_plan(
     def _append_unique_step(tool: str, rationale: str) -> None:
         if tool not in allowed_tool_set:
             return
+        if tool == "semantic_retrieval":
+            if any(item.tool == "semantic_retrieval" for item in steps):
+                return
+            scopes = tuple(retrieval_plan.requested_standards or ())
+            mode_cfg = profile.query_modes.modes.get(str(intent.mode)) if profile else None
+            policy = dict(mode_cfg.decomposition_policy) if isinstance(mode_cfg, QueryModeConfig) else {}
+            if len(scopes) >= 2 and str(policy.get("mode", "auto")) != "disabled":
+                for scope in scopes:
+                    base_in = default_tool_input(tool, query, str(intent.mode))
+                    base_in["scope_filter"] = scope
+                    steps.append(ToolCall(tool=tool, input=base_in, rationale=f"{rationale}_{scope[:15].replace(' ', '_').lower()}"))
+                return
+
         if any(item.tool == tool for item in steps):
             return
         steps.append(

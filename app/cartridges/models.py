@@ -212,7 +212,7 @@ class ExpectationRule(BaseModel):
 
 
 class ReasoningBudget(BaseModel):
-    max_steps: int = Field(default=4, ge=1, le=12)
+    max_steps: int = Field(default=10, ge=1, le=12)
     max_reflections: int = Field(default=2, ge=0, le=6)
 
 
@@ -244,6 +244,7 @@ class ProfileResolution(BaseModel):
 
 class AgentProfile(BaseModel):
     profile_id: str
+    extends: str | None = None
     version: str = "1.0.0"
     status: Literal["draft", "active"] = "active"
     meta: ProfileMeta = Field(default_factory=ProfileMeta)

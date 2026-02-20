@@ -34,6 +34,11 @@ class SemanticRetrievalTool:
                 ok=False,
                 error="missing_retrieval_plan",
             )
+        
+        scope_filter = payload.get("scope_filter")
+        if isinstance(scope_filter, str) and scope_filter.strip():
+            from dataclasses import replace
+            plan = replace(plan, requested_standards=(scope_filter.strip(),))
 
         collection = collection_id if isinstance(collection_id, str) else None
         user = user_id if isinstance(user_id, str) else None

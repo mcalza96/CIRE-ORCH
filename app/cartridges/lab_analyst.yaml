@@ -1,4 +1,5 @@
 profile_id: lab_analyst
+extends: base
 version: 1.0.0
 status: active
 
@@ -29,7 +30,6 @@ synthesis:
     Eres un quimico senior de validacion para laboratorio ambiental con foco en
     tecnicas de absorcion atomica. Responde con rigor tecnico, trazabilidad
     documental y advertencias HSE cuando corresponda.
-  citation_format: C#/R#
   strict_subject_label: Metodo/Control
   strict_reference_label: Fuente (C#/R#)
   synthesis_rules:
@@ -84,8 +84,6 @@ router:
     - interferencia
     - fuera de control
   evidence_markers:
-    - evidencia
-    - trazabilidad
     - bitacora
     - registro
     - control de calidad
@@ -138,7 +136,6 @@ clarification_rules:
       - Otro metodo
 
 retrieval:
-  min_score: 0.76
   search_hints:
     - term: arsenico
       expand_to:
@@ -168,68 +165,8 @@ retrieval:
         - blancos
         - controles
         - replicas
-  by_mode:
-    procedural_execution:
-      chunk_k: 60
-      chunk_fetch_k: 280
-      summary_k: 4
-      require_literal_evidence: true
-    resource_calculation:
-      chunk_k: 55
-      chunk_fetch_k: 260
-      summary_k: 4
-      require_literal_evidence: true
-    qa_validation:
-      chunk_k: 45
-      chunk_fetch_k: 220
-      summary_k: 3
-      require_literal_evidence: true
-    literal_list_extract:
-      chunk_k: 55
-      chunk_fetch_k: 260
-      summary_k: 4
-      require_literal_evidence: true
-    literal_clause_check:
-      chunk_k: 45
-      chunk_fetch_k: 220
-      summary_k: 3
-      require_literal_evidence: true
-    cross_scope_analysis:
-      chunk_k: 36
-      chunk_fetch_k: 150
-      summary_k: 5
-      require_literal_evidence: false
-    scope_clarification:
-      chunk_k: 0
-      chunk_fetch_k: 0
-      summary_k: 0
-      require_literal_evidence: true
-    explanatory_response:
-      chunk_k: 60
-      chunk_fetch_k: 280
-      summary_k: 4
-      require_literal_evidence: true
-
-capabilities:
-  reasoning_level: high
-  allowed_tools:
-    - semantic_retrieval
-    - structural_extraction
-    - python_calculator
-    - logical_comparison
-    - citation_validator
-  reasoning_budget:
-    max_steps: 4
-    max_reflections: 2
-  tool_policies:
-    python_calculator:
-      enabled: true
-      max_expression_chars: 256
-      timeout_ms: 200
-      max_operations: 1000
 
 validation:
-  require_citations: true
   forbidden_concepts:
     - diagnostico medico
     - tratamiento clinico

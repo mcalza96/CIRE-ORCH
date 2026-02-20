@@ -1,4 +1,5 @@
 profile_id: legal_cl
+extends: base
 version: 1.0.0
 status: draft
 
@@ -33,12 +34,6 @@ synthesis:
     - No inventes articulos ni interpretaciones sin soporte.
 
 router:
-  literal_list_hints: [lista, enumera, listado]
-  literal_normative_hints: [articulo, inciso, literal, exacto, texto]
-  comparative_hints: [compar, difer, versus, conflicto]
-  interpretive_hints: [aplica, interpreta, impacto, efectos]
-  conflict_markers: [conflicto, contradiccion, colision]
-  evidence_markers: [evidencia, fuente, jurisprudencia]
   scope_hints:
     codigo civil: [civil, contrato, obligaciones]
     codigo del trabajo: [laboral, trabajador, empleador]
@@ -50,10 +45,7 @@ router:
   reference_patterns:
     - "\\bart(?:iculo)?\\s*\\d+(?:\\s*letra\\s*[a-z])?\\b"
 
-clarification_rules: []
-
 retrieval:
-  min_score: 0.8
   search_hints:
     - term: despido
       expand_to:
@@ -67,47 +59,17 @@ retrieval:
       expand_to:
         - obligaciones contractuales
         - clausulas del contrato
-  by_mode:
-    literal_list_extract:
-      chunk_k: 40
-      chunk_fetch_k: 180
-      summary_k: 3
-      require_literal_evidence: true
-    literal_clause_check:
-      chunk_k: 40
-      chunk_fetch_k: 180
-      summary_k: 3
-      require_literal_evidence: true
-    cross_scope_analysis:
-      chunk_k: 32
-      chunk_fetch_k: 130
-      summary_k: 5
-      require_literal_evidence: false
-    scope_clarification:
-      chunk_k: 0
-      chunk_fetch_k: 0
-      summary_k: 0
-      require_literal_evidence: true
-    explanatory_response:
-      chunk_k: 28
-      chunk_fetch_k: 110
-      summary_k: 5
-      require_literal_evidence: false
 
 capabilities:
   reasoning_level: low
   allowed_tools:
     - semantic_retrieval
     - citation_validator
-  reasoning_budget:
-    max_steps: 4
-    max_reflections: 2
   tool_policies:
     python_calculator:
       enabled: false
 
 validation:
-  require_citations: true
   forbidden_concepts:
     - recomendacion de inversion
     - consejo medico

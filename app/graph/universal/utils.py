@@ -120,7 +120,7 @@ def get_adaptive_timeout_ms(
     if start_pc is None:
         return stage_default_ms
 
-    total_budget_ms = int(getattr(settings, "ORCH_TIMEOUT_TOTAL_MS", 15000) or 15000)
+    total_budget_ms = int(getattr(settings, "ORCH_TIMEOUT_TOTAL_MS", 150000) or 150000)
     elapsed_ms = (time.perf_counter() - start_pc) * 1000.0
     remaining_ms = total_budget_ms - elapsed_ms - headroom_ms
 

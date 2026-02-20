@@ -15,7 +15,7 @@ from app.agent.models import (
 from app.cartridges.models import AgentProfile
 
 # Constants moved from universal_flow.py
-DEFAULT_MAX_STEPS = 4
+DEFAULT_MAX_STEPS = 10
 DEFAULT_MAX_REFLECTIONS = 2
 MAX_PLAN_ATTEMPTS = 3
 ANSWER_PREVIEW_LIMIT = 180
