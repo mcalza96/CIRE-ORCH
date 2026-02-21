@@ -61,6 +61,9 @@ async def run_selected_operation(*, client: AsyncCireRagClient, runtime: Ingesti
     if runtime.operation == "replay":
         await _run_replay_operation(client=client, runtime=runtime)
         return
+    if runtime.operation == "delete":
+        await _run_delete_operation(client=client, runtime=runtime)
+        return
     await _run_ingest_operation(client=client, runtime=runtime)
 
 
@@ -214,3 +217,118 @@ async def _run_ingest_operation(*, client: AsyncCireRagClient, runtime: Ingestio
     print("✅ Batch sellado.")
     if not runtime.args.no_wait:
         await run_batch_monitoring(client, batch_id, poll_seconds=runtime.args.job_poll_seconds)
+
+
+async def _run_delete_operation(*, client: AsyncCireRagClient, runtime: IngestionRuntime) -> None:
+    """Interactive delete: choose collection or document, confirm, deep-delete."""
+    from app.ui.ingestion_selection import (
+        doc_label,
+        extract_documents,
+        prompt,
+    )
+    from app.infrastructure.clients.discovery_client import list_authorized_collections
+
+    print("\n🗑️  Modo eliminación")
+    print("  1) Eliminar colección completa (con todos sus docs, chunks, grafos, RAPTOR)")
+    print("  2) Eliminar documento individual")
+    while True:
+        mode = prompt("📝 Elige opción [1-2]: ")
+        if mode in {"1", "2"}:
+            break
+        print("Opción inválida.")
+
+    if mode == "1":
+        await _delete_collection_flow(client=client, runtime=runtime)
+    else:
+        await _delete_document_flow(client=client, runtime=runtime)
+
+
+async def _delete_collection_flow(*, client: AsyncCireRagClient, runtime: IngestionRuntime) -> None:
+    from app.ui.ingestion_selection import prompt
+    from app.infrastructure.clients.discovery_client import list_authorized_collections
+
+    try:
+        cols = await list_authorized_collections(
+            runtime.args.orchestrator_url, runtime.access_token, runtime.tenant_id
+        )
+    except Exception as exc:
+        print(f"❌ No se pudieron listar colecciones: {exc}")
+        return
+
+    if not cols:
+        print("📁 No hay colecciones en este tenant.")
+        return
+
+    print("📁 Colecciones disponibles:")
+    for idx, col in enumerate(cols, start=1):
+        key = str(col.collection_key or "").strip()
+        suffix = f" | key={key}" if key else ""
+        print(f"  {idx}) {col.name}{suffix} | id={col.id}")
+
+    while True:
+        raw = prompt(f"📝 Elige colección a eliminar [1-{len(cols)}] o 'cancelar': ")
+        if raw.lower() in {"cancelar", "cancel", "c"}:
+            print("🚫 Cancelado.")
+            return
+        if raw.isdigit() and 1 <= int(raw) <= len(cols):
+            picked = cols[int(raw) - 1]
+            break
+        print("Opción inválida.")
+
+    print(f"\n⚠️  Vas a ELIMINAR PERMANENTEMENTE la colección '{picked.name}' ({picked.id})")
+    print("   Esto borrará: documentos, chunks, entidades del grafo, RAPTOR y batches.")
+    confirm = prompt("📝 Escribe 'ELIMINAR' para confirmar: ")
+    if confirm.strip() != "ELIMINAR":
+        print("🚫 Cancelado.")
+        return
+
+    print("🗑️  Eliminando colección...")
+    try:
+        result = await client.delete_collection(str(picked.id))
+        docs = result.get("documents_deleted", 0)
+        chunks = result.get("chunks_deleted", 0)
+        graph = result.get("graph_artifacts_deleted", 0)
+        raptor = result.get("raptor_nodes_deleted", 0)
+        print(f"✅ Colección eliminada: {docs} docs, {chunks} chunks, {graph} graph links, {raptor} RAPTOR nodes")
+    except Exception as e:
+        print(f"❌ Error al eliminar colección: {e}")
+
+
+async def _delete_document_flow(*, client: AsyncCireRagClient, runtime: IngestionRuntime) -> None:
+    from app.ui.ingestion_selection import doc_label, extract_documents, prompt
+
+    docs_payload = await client.list_documents(limit=500)
+    all_docs = extract_documents(docs_payload)
+    if not all_docs:
+        print("📄 No hay documentos disponibles.")
+        return
+
+    print("📄 Documentos disponibles:")
+    for idx, doc in enumerate(all_docs, start=1):
+        doc_id = str(doc.get("id") or "").strip()
+        status = str(doc.get("status") or "unknown").strip()
+        print(f"  {idx}) {doc_label(doc)} [{status}] ({doc_id})")
+
+    while True:
+        raw = prompt(f"📝 Elige documento a eliminar [1-{len(all_docs)}] o 'cancelar': ")
+        if raw.lower() in {"cancelar", "cancel", "c"}:
+            print("🚫 Cancelado.")
+            return
+        if raw.isdigit() and 1 <= int(raw) <= len(all_docs):
+            picked = all_docs[int(raw) - 1]
+            break
+        print("Opción inválida.")
+
+    doc_id = str(picked.get("id") or "").strip()
+    print(f"\n⚠️  Vas a ELIMINAR PERMANENTEMENTE '{doc_label(picked)}' ({doc_id})")
+    confirm = prompt("📝 Escribe 'ELIMINAR' para confirmar: ")
+    if confirm.strip() != "ELIMINAR":
+        print("🚫 Cancelado.")
+        return
+
+    print("🗑️  Eliminando documento...")
+    try:
+        result = await client.delete_document(doc_id, purge_chunks=True)
+        print(f"✅ Documento eliminado: {result.get('status', 'ok')}")
+    except Exception as e:
+        print(f"❌ Error al eliminar documento: {e}")

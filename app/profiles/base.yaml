@@ -21,73 +21,18 @@ domain_entities:
 
 synthesis:
   system_persona: >-
-    Eres un asistente forense. Tu objetivo es responder ESTRICTAMENTE basandote en los
-    fragmentos de texto provistos. Cada afirmacion de tu respuesta DEBE terminar con la cita
-    exacta del fragmento utilizando su ID entre corchetes ASCII estandar, ejemplo: [b61b3913-16be-4e52-9e82-cc82918b6b25].
-    IMPORTANTE: Usa SOLO corchetes estandar [ ] y NO uses corchetes especiales como 【 】.
-    Si la respuesta no esta en el contexto, declara explicitamente falta de evidencia.
+    Eres un asistente forense. Tu objetivo es responder ESTRICTAMENTE basándote en los fragmentos de texto provistos. 
+    REGLA 1: Cada afirmación de tu respuesta DEBE terminar con la cita exacta del fragmento utilizando su ID completo en el formato [UUID] (incluyendo prefijos como "graph:" si están presentes).
+    REGLA 2: Si los fragmentos provistos no contienen la respuesta, tu respuesta DEBE ser ÚNICAMENTE el siguiente texto literal, sin agregar NADA más: "No hay evidencia para responder esta pregunta."
+    REGLA 3: BAJO NINGUNA CIRCUNSTANCIA crees secciones llamadas "Referencias revisadas", "Fuentes", o hagas listas de UUIDs sueltos al final de tu respuesta. Los UUIDs solo pueden existir dentro de corchetes [UUID] al final de una afirmación.
   citation_format: bracket_id
   citation_schema_version: v2
   citation_required_fields: [id]
   citation_render_template: "[{id}]"
-  citation_sort_policy: completeness_then_score
-  citation_noise_filters: [indice, prologo, "traduccion oficial", "official translation"]
+  citation_sort_policy: score_only
+  citation_noise_filters: []
   citation_repair_enabled: true
   min_structured_citation_ratio: 0.5
-  strict_subject_label: Afirmacion
-  strict_reference_label: Referencia
-  identity_role_prefix: Rol operativo
-  identity_tone_prefix: Tono
-  strict_system_prompt_template: >-
-    Responde SOLO con evidencia del CONTEXTO. Cada afirmacion clave debe incluir
-    al menos una cita con marcadores exactos con el formato '{citation_format}'
-    tal como aparecen en el CONTEXTO. PROHIBIDO GENERAR HIPOTESIS O INFERENCIAS.
-    SI LA EVIDENCIA NO ES LITERAL, DEJA LA SECCION VACIA. Si no hay evidencia suficiente,
-    dilo explicitamente e indica la brecha.
-  interpretive_system_prompt_template: >-
-    Responde solo con evidencia del CONTEXTO. Puedes conectar evidencias entre
-    fuentes, pero cada afirmacion relevante debe incluir al menos una referencia
-    con formato '{citation_format}' y no debes inventar contenido.
-  strict_style_template: |-
-    FORMATO:
-    1) Para cada afirmacion clave: {strict_subject_label} | Cita literal breve | {strict_reference_label}.
-    2) No inventes referencias ni texto fuente.
-  interpretive_style_template: |-
-    Estructura recomendada:
-    - Hallazgo principal respaldado por evidencia.
-    - Implicaciones operativas y tecnicas.
-    - Riesgos o vacios de evidencia detectados.
-    - Integracion entre fuentes y conclusion.
-    Incluye referencias ({citation_format}) al final de cada punto.
-  user_prompt_template: |-
-    PREGUNTA:
-    {query}
-
-    CONTEXTO:
-    {context}
-
-    {style}
-  synthesis_rules:
-    - Cada afirmacion relevante debe tener soporte en el contexto recuperado.
-    - Si no existe evidencia suficiente, dilo explicitamente.
-    - No inventes fuentes ni requisitos.
-  strict_style:
-    - "Para cada afirmacion: requisito | cita breve | fuente."
-    - "Si falta evidencia: No encontrado explicitamente en el contexto recuperado."
-  interpretive_style:
-    - Puedes conectar evidencias separadas, pero marca cuando sea inferencia.
-    - Incluye referencias al final de cada punto.
-  response_contracts:
-    study_guide:
-      - Resumen de Alto Nivel
-      - Conceptos Clave (Glosario)
-      - Conexiones y Temas Principales
-      - Preguntas Frecuentes (FAQ) inferidas
-    structured_summary:
-      - Sintesis Ejecutiva
-      - Puntos Principales en Vinetas
-      - Conclusiones
-
 router:
   literal_list_hints: [entradas, salidas, lista, enumera, listado]
   literal_normative_hints: [clausula, obligatorio, exacto, literal, "que exige"]
@@ -102,7 +47,7 @@ router:
   complexity_patterns:
     - "\\b(?:analiza|relacion|relación|impact|compara|calcula|calcular|extrae|extraer|formula)\\b"
   extraction_patterns:
-    - "\\b(?:extrae|extraer|estructura|json|tabla|reactivo|insumo|cantidad|bom)\\b"
+    - "\\b(extrae|extraer|estructura|json|tabla|introduccion|capítulo|cláusula|objeto|campo de aplicación)\\b"
   calculation_patterns:
     - "\\b(?:calcula|calcular|cuanto|cuánto|formula|lote|muestras)\\b"
 

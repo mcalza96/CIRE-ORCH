@@ -35,14 +35,17 @@ def choose_menu_option() -> str:
     print("  1) Nueva ingesta")
     print("  2) Monitorear batch existente")
     print("  3) Replay de enrichment (sin re-ingesta)")
+    print("  4) Eliminar documentos/colección")
     while True:
-        choice = prompt("📝 Elige opción [1-3]: ")
+        choice = prompt("📝 Elige opción [1-4]: ")
         if choice == "1":
             return "ingest"
         if choice == "2":
             return "resume"
         if choice == "3":
             return "replay"
+        if choice == "4":
+            return "delete"
         print("Opción inválida.")
 
 

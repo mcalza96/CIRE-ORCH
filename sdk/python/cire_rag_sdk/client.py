@@ -812,6 +812,14 @@ class AsyncCireRagClient:
             enforce_tenant=True,
         )
 
+    async def delete_collection(self, collection_id: str) -> Dict[str, Any]:
+        """Deep-delete a collection and all derived artifacts."""
+        return await self._request(
+            "DELETE",
+            f"/collections/{collection_id}",
+            enforce_tenant=True,
+        )
+
     async def create_chat_completion(
         self,
         message: str,

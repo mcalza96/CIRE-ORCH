@@ -77,12 +77,27 @@ def _merge_metadata(item_metadata: Any) -> dict[str, Any]:
 
 
 def _is_noise(content: str, row_meta: dict[str, Any], filters: list[str]) -> bool:
+    # Si tiene una cláusula asignada, es un fragmento normativo y no debe ser ruido
+    if row_meta.get("clause_id") and str(row_meta.get("clause_id")).strip():
+        return False
+    # Si es explícitamente TOC o frontmatter, sigue siendo ruido por defecto
     if row_meta.get("is_toc") is True or row_meta.get("is_frontmatter") is True:
         return True
+    
     lowered = content.lower()
     for token in filters:
         value = str(token or "").strip().lower()
-        if value and value in lowered:
+        if not value:
+            continue
+        # Si el filtro es una regex (empieza con \b), usar re.search
+        if value.startswith("\\b"):
+            try:
+                if re.search(value, lowered):
+                    return True
+            except re.error:
+                if value in lowered:
+                    return True
+        elif value in lowered:
             return True
     return False
 
