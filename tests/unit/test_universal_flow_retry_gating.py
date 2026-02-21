@@ -8,8 +8,8 @@ from app.agent.types.models import (
     ToolCall,
     ToolResult,
 )
-from app.graph.universal.flow import UniversalReasoningOrchestrator
-from app.graph.universal.steps import reflect_node
+from app.graph.flow import UniversalReasoningOrchestrator
+from app.graph.nodes.reflection import reflect_node
 
 
 class _DummyRetriever:

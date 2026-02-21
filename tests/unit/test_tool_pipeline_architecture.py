@@ -14,8 +14,8 @@ from app.agent.types.models import (
     ReasoningPlan,
     ToolCall,
 )
-from app.graph.universal.steps import aggregate_subqueries_node, generator_node, execute_tool_node
-from app.graph.universal import steps as steps_module
+from app.graph.nodes.generation import aggregate_subqueries_node, generator_node
+from app.graph.nodes.execution import execute_tool_node
 from app.agent.tools.base import AgentTool, ToolRuntimeContext
 
 

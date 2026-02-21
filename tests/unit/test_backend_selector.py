@@ -2,8 +2,8 @@ import asyncio
 
 import httpx
 
-from app.clients import backend_selector as selector_module
-from app.clients.backend_selector import RagBackendSelector
+from app.infrastructure.clients import backend_selector as selector_module
+from app.infrastructure.clients.backend_selector import RagBackendSelector
 
 
 class _Response:

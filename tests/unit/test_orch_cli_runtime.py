@@ -1,6 +1,6 @@
 import asyncio
 
-from app import orch_cli_runtime
+from app.ui.cli import orch_cli_runtime
 
 
 def test_dispatch_chat_command(monkeypatch):

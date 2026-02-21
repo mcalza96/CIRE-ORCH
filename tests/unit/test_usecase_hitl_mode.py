@@ -53,7 +53,7 @@ class _EmptyRetriever:
 
 
 class _NoopAnswerGen:
-    async def generate(self, query, scope_label, plan, chunks, summaries, agent_profile=None):
+    async def generate(self, query, scope_label, plan, chunks, summaries, agent_profile=None, **kwargs):
         return AnswerDraft(
             text="No tengo informacion suficiente en el contexto para responder.",
             mode=plan.mode,

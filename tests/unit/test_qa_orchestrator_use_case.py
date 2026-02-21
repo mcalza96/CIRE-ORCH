@@ -53,6 +53,7 @@ class _FakeAnswerGenerator:
         chunks: list[EvidenceItem],
         summaries: list[EvidenceItem],
         agent_profile=None,
+        **kwargs,
     ):
         del query, scope_label, summaries, agent_profile
         return AnswerDraft(text="respuesta", mode=plan.mode, evidence=chunks)

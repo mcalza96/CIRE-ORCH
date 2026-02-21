@@ -236,7 +236,7 @@ class RetrievalToolsAdapter:
 
         return [
             EvidenceItem(
-                source=f"C{i + 1}",
+                source=str(row.get("id") or f"chunk-{i}"),
                 content=str(row.get("content") or "").strip(),
                 score=float(row.get("similarity") or 0.0),
                 metadata={"row": row},
@@ -300,7 +300,7 @@ class RetrievalToolsAdapter:
 
         return [
             EvidenceItem(
-                source=f"R{i + 1}",
+                source=str(row.get("id") or f"summary-{i}"),
                 content=str(row.get("content") or "").strip(),
                 score=float(row.get("similarity") or 0.0),
                 metadata={"row": row},
@@ -331,61 +331,16 @@ class GroqAnswerGeneratorAdapter:
                 evidence=[],
             )
 
-        chunk_block = "\n\n".join(f"[{item.source}] {item.content}" for item in chunks)
-        summary_block = "\n\n".join(f"[{item.source}] {item.content}" for item in summaries)
-        context_parts: list[str] = []
-        if summary_block:
-            context_parts.append("=== RESUMENES (RAPTOR) ===\n" + summary_block)
-        if chunk_block:
-            context_parts.append("=== CHUNKS (DETALLE) ===\n" + chunk_block)
-        context = "\n\n".join(context_parts)
+        all_evidence = [*chunks, *summaries]
+        evidence_block = "\n\n".join(f"[{item.source}] {item.content}" for item in all_evidence)
+        context = f"=== FRAGMENTOS DE EVIDENCIA ===\n{evidence_block}"
 
-        strict_literal = bool(plan.require_literal_evidence) or len(plan.requested_standards) >= 2
-        persona = (
-            agent_profile.synthesis.system_persona
-            if agent_profile is not None
-            else "Eres un analista tecnico."
-        )
-        citation_format = (
-            agent_profile.synthesis.citation_format
-            if agent_profile is not None and agent_profile.synthesis.citation_format
-            else "C#/R#"
-        )
-        subject_label = (
-            agent_profile.synthesis.strict_subject_label
-            if agent_profile is not None and agent_profile.synthesis.strict_subject_label
-            else "Afirmacion"
-        )
-        reference_label = (
-            agent_profile.synthesis.strict_reference_label
-            if agent_profile is not None and agent_profile.synthesis.strict_reference_label
-            else "Referencia"
-        )
-        if strict_literal:
-            prompt = f"""
-{persona} Contexto: {scope_label}
-
-REGLAS:
-1) Usa solo evidencia del contexto.
-2) No inventes items ni sinonimos normativos.
-3) Para cada afirmacion clave da: {subject_label} | Cita literal breve | {reference_label}.
-4) Si falta evidencia: "No encontrado explicitamente en el contexto recuperado".
-5) Prioriza precision sobre fluidez.
-6) Formato de cita requerido: {citation_format}.
-
-CONTEXTO:
-{context}
-
-PREGUNTA:
-{query}
-
-RESPUESTA:
-"""
-        else:
-            prompt = f"""
-{persona} Contexto: {scope_label}
-
-Usa solo informacion del contexto recuperado. Si no hay evidencia, dilo explicitamente.
+        prompt = f"""
+Eres un experto respondiendo consultas con precisión forense.
+Basarás tu respuesta ESTRICTAMENTE en los fragmentos de texto provistos.
+No uses conocimiento externo.
+Cada afirmación clave debe terminar con la cita del ID del fragmento de origen en formato [chunk_id].
+Si los fragmentos no contienen la respuesta, di explícitamente que no hay información suficiente.
 
 CONTEXTO:
 {context}
@@ -398,9 +353,9 @@ RESPUESTA:
 
         completion = await asyncio.to_thread(
             self.client.chat.completions.create,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": prompt.strip()}],
             model=self.model_name,
-            temperature=0.05 if strict_literal else 0.3,
+            temperature=0.05,
         )
         text = str(completion.choices[0].message.content or "").strip()
         if not text:
@@ -448,51 +403,24 @@ class LiteralEvidenceValidator:
             match = pattern.search(text or "")
             return str(match.group("body") if match else "").strip()
 
-        def _count_citation_markers(text: str) -> int:
-            return len(re.findall(r"\b[CR]\d+\b", text or ""))
+        def _extract_citation_ids(text: str) -> set[str]:
+            # Extracción estricta formato [chunk_id]
+            matches = re.findall(r"\[([a-f0-9\-]+)\]", text or "", re.IGNORECASE)
+            return {m.strip() for m in matches if m.strip()}
 
         if plan.require_literal_evidence and not draft.evidence:
             _add_issue("No retrieval evidence available for literal answer mode.")
 
-        if plan.require_literal_evidence:
-            # Require explicit markers like "C1" / "R2", not just any "C" character.
-            has_citation_marker = bool(re.search(r"\b[CR]\d+\b", draft.text or ""))
-            if not has_citation_marker:
-                _add_issue("Answer does not include explicit source markers (C#/R#).")
-
-        required_sections = [
-            "Hechos citados",
-            "Inferencias",
-            "Brechas",
-            "Recomendaciones",
-            "Confianza y supuestos",
-        ]
-        text_lower = str(draft.text or "").lower()
-        if all(section.lower() in text_lower for section in required_sections[:3]):
-            for section in required_sections:
-                if section.lower() not in text_lower:
-                    _add_issue(f"Structured response missing section: {section}.")
-
-            inference_body = _extract_section_block(draft.text, "Inferencias")
-            if inference_body:
-                min_citations = 1
-                if _count_citation_markers(inference_body) < min_citations:
-                    _add_issue(
-                        "Grounded inference requires at least 1 citation in Inferencias section."
-                    )
-
-            strong_markers = [
-                "riesgo critico",
-                "incumplimiento",
-                "no conformidad mayor",
-                "sancion",
-                "multa",
-            ]
-            if (
-                any(marker in text_lower for marker in strong_markers)
-                and _count_citation_markers(draft.text) == 0
-            ):
-                _add_issue("Strong risk claim without explicit evidence markers.")
+        # GUILLOTINA DE CITAS
+        cited_ids = _extract_citation_ids(draft.text)
+        evidence_ids = {str(ev.source).strip() for ev in draft.evidence}
+        
+        if not cited_ids and draft.evidence and not re.search(r"no hay informaci[oó]n", str(draft.text or "").lower()):
+            _add_issue("Answer does not include explicit source markers in [chunk_id] format.")
+            
+        hallucinated_ids = cited_ids - evidence_ids
+        if hallucinated_ids:
+            _add_issue(f"Hallucinated citations detected: {', '.join(hallucinated_ids)} are not valid evidence IDs.")
 
         requested = plan.requested_standards or extract_requested_scopes(query)
         mentioned_in_answer = {item.upper() for item in extract_requested_scopes(draft.text)}

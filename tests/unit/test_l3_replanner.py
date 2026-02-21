@@ -1,5 +1,5 @@
 import pytest
-from app.graph.universal.clarification_llm import rewrite_plan_with_feedback_llm
+from app.graph.logic.clarification_llm import rewrite_plan_with_feedback_llm
 
 @pytest.mark.asyncio
 async def test_replan_with_feedback_llm(monkeypatch):

@@ -4,7 +4,7 @@ import httpx
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1.routes import observability as obs_routes
+from app.api.v1.routers import observability as obs_routes
 from app.infrastructure.config import settings
 
 

@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from app.chat_cli_runtime import _post_answer
+from app.ui.chat_query_flow import _post_answer
 from sdk.python.cire_rag_sdk.client import (
     TENANT_MISMATCH_CODE,
     TenantContext,

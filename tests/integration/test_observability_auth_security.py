@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.api.v1.deps import UserContext, get_current_user
 from app.api.server import app
-from app.api.v1.routes import observability as obs_routes
+from app.api.v1.routers import observability as obs_routes
 from app.infrastructure.config import settings
 
 

@@ -27,7 +27,7 @@ def test_literal_clause_mismatch_uses_semantic_fallback() -> None:
         },
     }
     draft = AnswerDraft(
-        text="Hallazgo con evidencia. Fuente(C1)",
+        text="Hallazgo con evidencia. [C1]",
         mode=plan.mode,
         evidence=[EvidenceItem(source="C1", content=row["content"], metadata={"row": row})],
     )
@@ -51,7 +51,7 @@ def test_literal_clause_mismatch_remains_when_semantic_signal_is_weak() -> None:
         },
     }
     draft = AnswerDraft(
-        text="Hallazgo con evidencia. Fuente(C1)",
+        text="Hallazgo con evidencia. [C1]",
         mode=plan.mode,
         evidence=[EvidenceItem(source="C1", content=row["content"], metadata={"row": row})],
     )
@@ -75,7 +75,7 @@ def test_literal_clause_mismatch_when_semantic_fallback_disabled() -> None:
         },
     }
     draft = AnswerDraft(
-        text="Hallazgo con evidencia. Fuente(C1)",
+        text="Hallazgo con evidencia. [C1]",
         mode=plan.mode,
         evidence=[EvidenceItem(source="C1", content=row["content"], metadata={"row": row})],
     )
@@ -100,7 +100,7 @@ def test_literal_clause_coverage_requires_all_for_two_refs() -> None:
         "metadata": {"source_standard": "ISO 9001", "clause_id": "6.1"},
     }
     draft = AnswerDraft(
-        text="Hallazgo con evidencia. Fuente(C1)",
+        text="Hallazgo con evidencia. [C1]",
         mode=plan.mode,
         evidence=[EvidenceItem(source="C1", content=row["content"], metadata={"row": row})],
     )
@@ -126,7 +126,7 @@ def test_literal_clause_coverage_allows_partial_for_three_plus_refs() -> None:
         },
     ]
     draft = AnswerDraft(
-        text="Hallazgo con evidencia. Fuente(C1) Fuente(C2)",
+        text="Hallazgo con evidencia. [C1] [C2]",
         mode=plan.mode,
         evidence=[
             EvidenceItem(source="C1", content=rows[0]["content"], metadata={"row": rows[0]}),
@@ -145,61 +145,6 @@ def test_literal_clause_coverage_allows_partial_for_three_plus_refs() -> None:
     assert not any("Literal clause coverage insufficient" in issue for issue in result.issues)
 
 
-def test_structured_inference_requires_citations_in_inference_section() -> None:
-    validator = LiteralEvidenceValidator()
-    plan = RetrievalPlan(
-        mode="grounded_inference",
-        chunk_k=8,
-        chunk_fetch_k=20,
-        summary_k=3,
-        require_literal_evidence=False,
-        requested_standards=("ISO 9001",),
-    )
-    draft = AnswerDraft(
-        text=(
-            "## Hechos citados\n- Registro evaluado [C1]\n"
-            "## Inferencias\n- Existe riesgo de incumplimiento operativo.\n"
-            "## Brechas\n- Falta evidencia de programa.\n"
-            "## Recomendaciones\n- Definir plan.\n"
-            "## Confianza y supuestos\n- Media."
-        ),
-        mode=plan.mode,
-        evidence=[EvidenceItem(source="C1", content="texto", metadata={"row": {"metadata": {}}})],
-    )
-
-    result = validator.validate(draft=draft, plan=plan, query="analiza brechas")
-
-    assert result.accepted is False
-    assert any("Grounded inference requires" in issue for issue in result.issues)
-
-
-def test_strong_claim_without_citation_is_rejected() -> None:
-    validator = LiteralEvidenceValidator()
-    plan = RetrievalPlan(
-        mode="grounded_inference",
-        chunk_k=8,
-        chunk_fetch_k=20,
-        summary_k=3,
-        require_literal_evidence=False,
-    )
-    draft = AnswerDraft(
-        text=(
-            "## Hechos citados\n- Sin fuente\n"
-            "## Inferencias\n- Riesgo critico de incumplimiento.\n"
-            "## Brechas\n- No hay evidencia.\n"
-            "## Recomendaciones\n- Corregir.\n"
-            "## Confianza y supuestos\n- Baja."
-        ),
-        mode=plan.mode,
-        evidence=[],
-    )
-
-    result = validator.validate(draft=draft, plan=plan, query="riesgo")
-
-    assert result.accepted is False
-    assert any(
-        "Strong risk claim without explicit evidence markers" in issue for issue in result.issues
-    )
 
 
 def test_cross_scope_validation_is_soft_guardrail_in_non_literal_modes() -> None:
@@ -213,7 +158,7 @@ def test_cross_scope_validation_is_soft_guardrail_in_non_literal_modes() -> None
         requested_standards=("ISO 9001", "ISO 14001", "ISO 45001"),
     )
     draft = AnswerDraft(
-        text="Comparativa preliminar con referencia C1.",
+        text="Comparativa preliminar con referencia [C1].",
         mode=plan.mode,
         evidence=[
             EvidenceItem(

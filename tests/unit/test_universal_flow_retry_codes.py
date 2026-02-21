@@ -1,8 +1,8 @@
 from app.agent.errors import RETRIEVAL_CODE_CLAUSE_MISSING
 from app.agent.types.models import RetrievalDiagnostics, ToolResult
 from app.infrastructure.config import settings
-from app.graph.universal.logic import _extract_retry_signal_from_retrieval
-from app.graph.universal.utils import _effective_execute_tool_timeout_ms
+from app.graph.logic.logic import _extract_retry_signal_from_retrieval
+from app.graph.logic.utils import _effective_execute_tool_timeout_ms
 
 
 def test_extract_retry_signal_prefers_structured_error_codes() -> None:

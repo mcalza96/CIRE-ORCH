@@ -2,7 +2,7 @@ import argparse
 import asyncio
 from dataclasses import dataclass
 
-from app import chat_cli_runtime
+from app.ui.cli import chat_cli_runtime
 from sdk.python.cire_rag_sdk import TenantContext
 
 

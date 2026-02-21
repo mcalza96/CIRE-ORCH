@@ -1,7 +1,7 @@
 import asyncio
 import pytest
 import httpx
-from app.agent import http_adapters as adapters_module
+from app.agent.formatters import adapters as adapters_module
 from app.infrastructure.clients.http_adapters import RagEngineRetrieverAdapter
 from app.agent.types.models import RetrievalPlan
 from app.infrastructure.config import settings

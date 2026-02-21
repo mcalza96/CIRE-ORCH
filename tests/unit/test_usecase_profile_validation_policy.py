@@ -40,7 +40,7 @@ class _Retriever:
 
 
 class _AnswerGen:
-    async def generate(self, query, scope_label, plan, chunks, summaries, agent_profile=None):
+    async def generate(self, query, scope_label, plan, chunks, summaries, agent_profile=None, **kwargs):
         return AnswerDraft(text="Respuesta con sueldos. Fuente(C1)", mode=plan.mode, evidence=[*chunks, *summaries])
 
 

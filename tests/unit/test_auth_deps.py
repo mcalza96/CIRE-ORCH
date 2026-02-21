@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from starlette.requests import Request
 
-from app.api import deps
+from app.api.v1 import deps
 from app.infrastructure.config import settings
 
 

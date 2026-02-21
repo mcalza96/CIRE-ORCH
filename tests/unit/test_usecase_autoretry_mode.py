@@ -70,7 +70,7 @@ class _FakeRetriever:
 
 
 class _FakeAnswerGen:
-    async def generate(self, query, scope_label, plan, chunks, summaries, agent_profile=None):
+    async def generate(self, query, scope_label, plan, chunks, summaries, agent_profile=None, **kwargs):
         if not chunks and not summaries:
             return AnswerDraft(
                 text="No tengo informacion suficiente en el contexto para responder.",
