@@ -363,7 +363,8 @@ class GroundedAnswerAdapter:
                 text = f"{note}\n\n{text}" if (text or "").strip() else note
 
         if plan.require_literal_evidence:
-            text = _append_missing_sources(text, ordered_items)
+            if "no hay evidencia" not in (text or "").lower():
+                text = _append_missing_sources(text, ordered_items)
             markers = set(_UUID_CITE_RE.findall(text or ""))
             if literal_min_items > 1 and len(markers) < 2 and len(clause_items) >= 2:
                 text = _render_literal_rows(clause_items, max_rows=2)
@@ -385,7 +386,8 @@ class GroundedAnswerAdapter:
 
         if ordered_items and not plan.require_literal_evidence:
             # Transversal citation contract
-            text = _append_missing_sources(text, ordered_items)
+            if "no hay evidencia" not in (text or "").lower():
+                text = _append_missing_sources(text, ordered_items)
 
         return text
 

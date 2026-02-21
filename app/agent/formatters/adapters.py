@@ -416,12 +416,15 @@ class LiteralEvidenceValidator:
         cited_ids = _extract_citation_ids(draft.text)
         evidence_ids = {str(ev.source).strip() for ev in draft.evidence}
         
-        if not cited_ids and draft.evidence and not re.search(r"no hay informaci[oó]n", str(draft.text or "").lower()):
-            _add_issue("Answer does not include explicit source markers in [chunk_id] format.")
-            
-        hallucinated_ids = cited_ids - evidence_ids
-        if hallucinated_ids:
-            _add_issue(f"Hallucinated citations detected: {', '.join(hallucinated_ids)} are not valid evidence IDs.")
+        fallback_detected = re.search(r"no hay (?:evidencia|informaci[oó]n)", str(draft.text or "").lower())
+        
+        if not fallback_detected:
+            if not cited_ids and draft.evidence:
+                _add_issue("Answer does not include explicit source markers in [chunk_id] format.")
+                
+            hallucinated_ids = cited_ids - evidence_ids
+            if hallucinated_ids:
+                _add_issue(f"Hallucinated citations detected: {', '.join(hallucinated_ids)} are not valid evidence IDs.")
 
         requested = plan.requested_standards or extract_requested_scopes(query)
         mentioned_in_answer = {item.upper() for item in extract_requested_scopes(draft.text)}
