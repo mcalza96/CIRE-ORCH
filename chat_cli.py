@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-
-from app.chat_cli_runtime import main
+from app.ui.cli.chat_cli_runtime import main
 
 
 if __name__ == "__main__":
