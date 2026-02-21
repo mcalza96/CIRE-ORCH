@@ -339,7 +339,8 @@ class GroqAnswerGeneratorAdapter:
 Eres un experto respondiendo consultas con precisión forense.
 Basarás tu respuesta ESTRICTAMENTE en los fragmentos de texto provistos.
 No uses conocimiento externo.
-Cada afirmación clave debe terminar con la cita del ID del fragmento de origen en formato [chunk_id].
+Cada afirmación clave debe terminar con la cita del ID del fragmento de origen entre corchetes ASCII estándar, ejemplo: [b61b3913-16be-4e52-9e82-cc82918b6b25].
+IMPORTANTE: Usa SOLO corchetes estándar [ ] y NO uses corchetes especiales como 【 】.
 Si los fragmentos no contienen la respuesta, di explícitamente que no hay información suficiente.
 
 CONTEXTO:
@@ -404,8 +405,8 @@ class LiteralEvidenceValidator:
             return str(match.group("body") if match else "").strip()
 
         def _extract_citation_ids(text: str) -> set[str]:
-            # Extracción estricta formato [chunk_id]
-            matches = re.findall(r"\[([a-f0-9\-]+)\]", text or "", re.IGNORECASE)
+            # Extracción estricta formato [chunk_id] — acepta [] y full-width 【】
+            matches = re.findall(r"[\[\uff3b\u3010]([a-f0-9\-]{8,})[\]\uff3d\u3011]", text or "", re.IGNORECASE)
             return {m.strip() for m in matches if m.strip()}
 
         if plan.require_literal_evidence and not draft.evidence:

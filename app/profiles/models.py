@@ -107,7 +107,7 @@ class RetrievalPolicy(BaseModel):
 
 class SynthesisPolicy(BaseModel):
     system_persona: str = ""
-    citation_format: str = "C#/R#"
+    citation_format: str = "[chunk_id]"
     strict_reference_label: str = "Reference"
     strict_subject_label: str = "Claim"
     strict_system_prompt_template: str = ""

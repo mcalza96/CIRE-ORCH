@@ -11,10 +11,11 @@ logger = structlog.get_logger(__name__)
 
 _DEFAULT_FALLBACK_MESSAGE = "Insufficient context evidence to answer."
 _DEFAULT_EMPTY_QUERY_MESSAGE = "No question provided."
-_DEFAULT_CITATION_FORMAT = "C#/R#"
+_DEFAULT_CITATION_FORMAT = "[chunk_id]"
 _DEFAULT_STRICT_SYSTEM_TEMPLATE = (
     "Answer only with evidence from CONTEXT. Every key claim must include at least one "
-    "exact citation using '{citation_format}'. If evidence is missing, state that clearly."
+    "exact citation using standard ASCII square brackets '{citation_format}'. "
+    "NEVER use full-width brackets like 【 】. If evidence is missing, state that clearly."
 )
 _DEFAULT_INTERPRETIVE_SYSTEM_TEMPLATE = (
     "Answer only with evidence from CONTEXT. You may connect evidence across sources, "

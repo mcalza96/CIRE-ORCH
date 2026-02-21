@@ -103,9 +103,16 @@ def build_citation_bundle(
     profile: AgentProfile | None,
     requested_scopes: tuple[str, ...] = (),
 ) -> tuple[list[str], list[dict[str, Any]], dict[str, Any]]:
+    # Matches both standard [] and full-width 【】 brackets around UUIDs, plus legacy C#/R# format
     used_markers = {
-        marker.upper()
-        for marker in re.findall(r"\b[CR]\d+\b", str(answer_text or ""), flags=re.IGNORECASE)
+        m.upper()
+        for matches in re.findall(
+            r"[\[\uff3b\u3010]([a-f0-9\-]{8,})[\]\uff3d\u3011]|\b([CR]\d+)\b",
+            str(answer_text or ""),
+            flags=re.IGNORECASE,
+        )
+        for m in matches
+        if m
     }
     synthesis = profile.synthesis if profile is not None else None
     required_fields = (

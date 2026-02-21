@@ -138,7 +138,7 @@ def _render_literal_rows(items: list[EvidenceItem], *, max_rows: int) -> str:
         seen.add(src)
         clause = _row_clause_label(item)
         label = f"Clausula {clause}" if clause else "Afirmacion"
-        rows.append(f'{len(rows) + 1}) {label} | "{_snippet(item.content)}" | Fuente ({src})')
+        rows.append(f'{len(rows) + 1}) {label} | "{_snippet(item.content)}" [{src}]')
         if len(rows) >= max_rows:
             break
     return "\n".join(rows)
@@ -166,8 +166,12 @@ def _recency_key(item: EvidenceItem) -> float:
     return float(ts or 0.0)
 
 
+# Pattern that matches both standard [] and full-width 【】 brackets around UUIDs
+_UUID_CITE_RE = re.compile(r"[\[\uff3b\u3010]([a-f0-9\-]{8,})[\]\uff3d\u3011]", re.IGNORECASE)
+
+
 def _append_missing_sources(text: str, items: list[EvidenceItem]) -> str:
-    if re.search(r"\b[CR]\d+\b", text or ""):
+    if _UUID_CITE_RE.search(text or ""):
         return text or ""
     sources: list[str] = []
     seen: set[str] = set()
@@ -302,7 +306,7 @@ class GroundedAnswerAdapter:
             return (
                 query
                 + "\n\n[INSTRUCCION INTERNA] Si hay evidencia suficiente, responde con al menos 2 "
-                "afirmaciones literales distintas de la misma clausula, cada una con su fuente C#/R#."
+                "afirmaciones literales distintas de la misma clausula, cada una citando la fuente como [chunk_id]."
             )
         elif not plan.require_literal_evidence:
             subquestions = _extract_subquestions(query)
@@ -360,7 +364,7 @@ class GroundedAnswerAdapter:
 
         if plan.require_literal_evidence:
             text = _append_missing_sources(text, ordered_items)
-            markers = set(re.findall(r"\b[CR]\d+\b", text or ""))
+            markers = set(_UUID_CITE_RE.findall(text or ""))
             if literal_min_items > 1 and len(markers) < 2 and len(clause_items) >= 2:
                 text = _render_literal_rows(clause_items, max_rows=2)
 
@@ -417,7 +421,7 @@ class GroundedAnswerAdapter:
         for item in generation_items:
             content = (item.content or "").strip()
             if content:
-                source = (item.source or "").strip() or "C1"
+                source = (item.source or "").strip() or "unknown-source"
                 labeled.append(f"[{source}] {_clip(content, 900)}")
 
         clause_refs = _extract_clause_refs(query)

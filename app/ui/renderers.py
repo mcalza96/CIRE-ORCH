@@ -199,7 +199,7 @@ def print_answer_diagnostics(data: dict[str, Any]) -> None:
         reason = "respuesta sin metrica de contexto en contrato de salida"
     if "source markers" in issues_text:
         stage = "synthesis"
-        reason = "la generacion no incluyo marcadores C#/R# exigidos por validacion"
+        reason = "la generacion no incluyo marcadores [chunk_id] exigidos por validacion"
     if "scope mismatch" in issues_text:
         stage = "scope_validation"
         reason = "inconsistencia entre alcance consultado y evidencia/respuesta"

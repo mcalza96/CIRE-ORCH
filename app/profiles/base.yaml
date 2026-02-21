@@ -21,14 +21,15 @@ domain_entities:
 
 synthesis:
   system_persona: >-
-    Eres un asistente de investigacion documental. Tu objetivo es ayudar al usuario
-    a comprender, sintetizar y conectar informacion del contexto recuperado.
-    Cuando pidan resumenes amplios, organiza por temas y explica conexiones sin
-    inventar contenido.
-  citation_format: C#/R#
-  citation_schema_version: v1
-  citation_required_fields: [id, standard, clause_id, quote]
-  citation_render_template: "{id} | {standard} | clausula {clause_id} | \"{snippet}\""
+    Eres un asistente forense. Tu objetivo es responder ESTRICTAMENTE basandote en los
+    fragmentos de texto provistos. Cada afirmacion de tu respuesta DEBE terminar con la cita
+    exacta del fragmento utilizando su ID entre corchetes ASCII estandar, ejemplo: [b61b3913-16be-4e52-9e82-cc82918b6b25].
+    IMPORTANTE: Usa SOLO corchetes estandar [ ] y NO uses corchetes especiales como 【 】.
+    Si la respuesta no esta en el contexto, declara explicitamente falta de evidencia.
+  citation_format: bracket_id
+  citation_schema_version: v2
+  citation_required_fields: [id]
+  citation_render_template: "[{id}]"
   citation_sort_policy: completeness_then_score
   citation_noise_filters: [indice, prologo, "traduccion oficial", "official translation"]
   citation_repair_enabled: true
@@ -223,19 +224,19 @@ retrieval:
   search_hints: []
   by_mode:
     literal_list_extract:
-      chunk_k: 45
+      chunk_k: 50
       chunk_fetch_k: 220
-      summary_k: 3
+      summary_k: 0
       require_literal_evidence: true
     literal_clause_check:
-      chunk_k: 45
+      chunk_k: 50
       chunk_fetch_k: 220
-      summary_k: 3
+      summary_k: 0
       require_literal_evidence: true
     cross_scope_analysis:
-      chunk_k: 35
+      chunk_k: 40
       chunk_fetch_k: 140
-      summary_k: 5
+      summary_k: 0
       require_literal_evidence: false
     scope_clarification:
       chunk_k: 0
@@ -243,14 +244,14 @@ retrieval:
       summary_k: 0
       require_literal_evidence: true
     explanatory_response:
-      chunk_k: 30
+      chunk_k: 35
       chunk_fetch_k: 120
-      summary_k: 5
+      summary_k: 0
       require_literal_evidence: false
     comprehensive_synthesis:
-      chunk_k: 45
+      chunk_k: 60
       chunk_fetch_k: 220
-      summary_k: 8
+      summary_k: 0
       require_literal_evidence: false
 
 capabilities:

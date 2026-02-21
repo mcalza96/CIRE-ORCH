@@ -48,6 +48,29 @@ def filter_evidence_by_standards(
 def split_evidence_by_source_prefix(
     evidence: list[EvidenceItem],
 ) -> tuple[list[EvidenceItem], list[EvidenceItem]]:
-    chunks = [it for it in evidence if str(it.source or "").startswith("C")]
-    summaries = [it for it in evidence if str(it.source or "").startswith("R")]
+    chunks: list[EvidenceItem] = []
+    summaries: list[EvidenceItem] = []
+    
+    for it in evidence:
+        # 1. Try metadata inspection (Modern UUID mode)
+        meta = it.metadata.get("row", {}) if isinstance(it.metadata, dict) else {}
+        row_meta = meta.get("metadata", {}) if isinstance(meta, dict) else {}
+        f_source = str(row_meta.get("fusion_source") or "").lower()
+        
+        if f_source == "raptor":
+            summaries.append(it)
+            continue
+        if f_source in ("chunks", "graph"):
+            chunks.append(it)
+            continue
+            
+        # 2. Fallback to legacy prefix check
+        src = str(it.source or "").upper()
+        if src.startswith("C"):
+            chunks.append(it)
+        elif src.startswith("R"):
+            summaries.append(it)
+        else:
+            chunks.append(it) # default
+            
     return chunks, summaries
