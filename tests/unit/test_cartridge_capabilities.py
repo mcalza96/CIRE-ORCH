@@ -1,6 +1,6 @@
 import pytest
 
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 
 
 def test_capabilities_defaults_are_safe() -> None:

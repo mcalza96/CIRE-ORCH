@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 from typing import Any, cast
 
-from app.cartridges.deps import resolve_agent_profile
+from app.profiles.deps import resolve_agent_profile
 
 
 def test_resolve_agent_profile_blocks_unauthorized_header_profile(monkeypatch) -> None:

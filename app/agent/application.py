@@ -15,7 +15,7 @@ from app.agent.models import (
     RetrievalPlan,
     ValidationResult,
 )
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 from app.agent.policies import (  # compatibility exports for existing tests/imports
     build_retrieval_plan,
     classify_intent,

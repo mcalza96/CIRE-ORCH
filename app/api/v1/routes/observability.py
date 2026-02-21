@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import UserContext, get_current_user
-from app.clients.backend_selector import RagBackendSelector
+from app.infrastructure.clients.backend_selector import RagBackendSelector
 from app.infrastructure.config import settings
 from app.infrastructure.clients.rag_client import build_rag_http_client
 from app.security.tenant_authorizer import authorize_requested_tenant

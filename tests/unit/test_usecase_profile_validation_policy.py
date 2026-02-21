@@ -8,7 +8,7 @@ from app.agent.models import (
     RetrievalPlan,
     ValidationResult,
 )
-from app.cartridges.models import AgentProfile, ValidationPolicy
+from app.profiles.models import AgentProfile, ValidationPolicy
 
 
 class _Retriever:

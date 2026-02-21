@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 from app.agent.models import QueryIntent, RetrievalPlan
 
 

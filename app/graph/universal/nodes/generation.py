@@ -15,7 +15,7 @@ from app.agent.models import (
     ValidationResult,
 )
 from app.agent.tools import get_tool
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 from app.infrastructure.config import settings
 from app.graph.universal.logic import _query_mode_aggregation_mode
 from app.graph.universal.state import ANSWER_PREVIEW_LIMIT, UniversalState

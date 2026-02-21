@@ -20,13 +20,13 @@ from app.agent.interfaces import (
     SubqueryPlanner,
 )
 from app.agent.models import EvidenceItem, RetrievalDiagnostics, RetrievalPlan
-from app.cartridges.models import AgentProfile, QueryModeConfig
+from app.profiles.models import AgentProfile, QueryModeConfig
 from app.agent.retrieval_planner import (
     mode_requires_literal_evidence,
     normalize_query_filters,
 )
 from app.infrastructure.config import settings
-from app.domain.rag_schemas import RetrievalPlanPayload
+from .rag_schemas import RetrievalPlanPayload
 from app.infrastructure.clients.rag_client import RagRetrievalContractClient
 from app.agent.retrieval_strategies import (
     calculate_layer_stats,

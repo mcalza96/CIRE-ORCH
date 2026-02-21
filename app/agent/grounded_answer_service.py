@@ -3,7 +3,7 @@ from __future__ import annotations
 from openai import AsyncOpenAI
 import structlog
 
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 from app.infrastructure.config import settings
 
 logger = structlog.get_logger(__name__)

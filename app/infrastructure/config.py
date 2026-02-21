@@ -130,8 +130,8 @@ class Settings(BaseSettings):
     # Human-in-the-loop fallback when confidence low and internal retry not enough.
     ORCH_MODE_HITL_ENABLED: bool = False
 
-    # Cartridge system (Level 4 dynamic profile injection)
-    ORCH_CARTRIDGES_DIR: str | None = None
+    # Profile system (Level 4 dynamic profile injection)
+    ORCH_PROFILES_DIR: str | None = None
     ORCH_DEFAULT_PROFILE_ID: str = "base"
     ORCH_TENANT_PROFILE_MAP: str | None = None
     ORCH_TENANT_PROFILE_WHITELIST: str | None = None
@@ -139,17 +139,17 @@ class Settings(BaseSettings):
     ORCH_DEV_PROFILE_ASSIGNMENTS_ENABLED: bool = True
     ORCH_DEV_PROFILE_ASSIGNMENTS_FILE: str = ".state/tenant_profile_assignments.json"
 
-    # Optional DB-backed cartridge override (tenant private profiles)
-    ORCH_CARTRIDGE_DB_ENABLED: bool = False
-    ORCH_CARTRIDGE_DB_TABLE: str = "tenant_configs"
-    ORCH_CARTRIDGE_DB_TENANT_COLUMN: str = "tenant_id"
-    ORCH_CARTRIDGE_DB_PROFILE_COLUMN: str = "agent_profile"
-    ORCH_CARTRIDGE_DB_PROFILE_ID_COLUMN: str = "profile_id"
-    ORCH_CARTRIDGE_DB_VERSION_COLUMN: str = "profile_version"
-    ORCH_CARTRIDGE_DB_STATUS_COLUMN: str = "status"
-    ORCH_CARTRIDGE_DB_UPDATED_COLUMN: str = "updated_at"
-    ORCH_CARTRIDGE_DB_TIMEOUT_SECONDS: float = 1.8
-    ORCH_CARTRIDGE_DB_CACHE_TTL_SECONDS: int = 60
+    # Optional DB-backed profile override (tenant private profiles)
+    ORCH_PROFILE_DB_ENABLED: bool = False
+    ORCH_PROFILE_DB_TABLE: str = "tenant_configs"
+    ORCH_PROFILE_DB_TENANT_COLUMN: str = "tenant_id"
+    ORCH_PROFILE_DB_PROFILE_COLUMN: str = "agent_profile"
+    ORCH_PROFILE_DB_PROFILE_ID_COLUMN: str = "profile_id"
+    ORCH_PROFILE_DB_VERSION_COLUMN: str = "profile_version"
+    ORCH_PROFILE_DB_STATUS_COLUMN: str = "status"
+    ORCH_PROFILE_DB_UPDATED_COLUMN: str = "updated_at"
+    ORCH_PROFILE_DB_TIMEOUT_SECONDS: float = 1.8
+    ORCH_PROFILE_DB_CACHE_TTL_SECONDS: int = 60
 
     QA_LITERAL_SEMANTIC_FALLBACK_ENABLED: bool = True
     QA_LITERAL_SEMANTIC_MIN_KEYWORD_OVERLAP: int = 2

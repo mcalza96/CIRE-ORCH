@@ -64,8 +64,8 @@ def print_chat_banner(
     print(f"📁 Scope: {scope}")
     print(f"🌐 Orchestrator URL: {runtime.args.orchestrator_url}")
     print(f"🔐 Auth: {'Bearer token' if runtime.access_token else 'sin token'}")
-    print(f"🧩 Cartucho: {state.agent_profile_id or 'automatico por tenant'}")
+    print(f"🧩 Perfil: {state.agent_profile_id or 'automatico por tenant'}")
     print("💡 Escribe tu pregunta (o 'salir')")
     print(
-        "🔭 Comandos: /ingestion , /watch <batch_id> , /trace , /citations , /explain , /profile , /cartridge , /mode"
+        "🔭 Comandos: /ingestion , /watch <batch_id> , /trace , /snapshot , /citations , /explain , /profile , /mode"
     )

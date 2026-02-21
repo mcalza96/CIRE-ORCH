@@ -1,7 +1,7 @@
 import json
 import threading
 
-from app.cartridges.dev_assignments import DevProfileAssignmentsStore, get_dev_profile_assignments_store
+from app.profiles.dev_assignments import DevProfileAssignmentsStore, get_dev_profile_assignments_store
 from app.infrastructure.config import settings
 
 

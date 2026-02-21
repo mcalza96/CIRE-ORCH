@@ -1,5 +1,5 @@
 from app.agent.policies import extract_requested_scopes, suggest_scope_candidates
-from app.cartridges.models import AgentProfile, RouterHeuristics, ScopePattern
+from app.profiles.models import AgentProfile, RouterHeuristics, ScopePattern
 
 
 def test_suggest_scope_candidates_uses_profile_scope_hints() -> None:

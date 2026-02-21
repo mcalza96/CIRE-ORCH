@@ -7,7 +7,7 @@ from typing import Any
 
 from app.agent.grounded_answer_service import GroundedAnswerService
 from app.agent.models import AnswerDraft, EvidenceItem, RetrievalPlan
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 from app.infrastructure.config import settings
 
 

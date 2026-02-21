@@ -1,4 +1,4 @@
-# Implementacion Chasis/Cartuchos (Ejecucion por fases)
+# Implementacion Chasis/Perfiles (Ejecucion por fases)
 
 ## Fase 0 - Baseline y guardrails
 
@@ -20,7 +20,7 @@
 
 1. Contrato de cartucho (`AgentProfile`) y validaciones.
 2. Loader cacheado + resolucion por tenant/header.
-3. Migracion inicial de ISO a `app/cartridges/iso_auditor.yaml`.
+3. Migracion inicial de ISO a `app/profiles/iso_auditor.yaml`.
 4. Inyeccion de perfil en sintesis.
 5. Refactor progresivo de router/planner para consumir perfil.
 6. Observabilidad por cartucho y gates de despliegue.
@@ -36,16 +36,16 @@
 
 ## Resolucion en cascada (implementado)
 
-El `CartridgeLoader` usa resolucion hibrida para evitar acoplamiento y soportar overrides privados:
+El `ProfileLoader` usa resolucion hibrida para evitar acoplamiento y soportar overrides privados:
 
 1. Buscar cartucho privado en BD (`tenant_configs`) usando `tenant_id`.
 2. Si no hay override valido, usar perfil explicito/header autorizado o mapping `tenant -> profile_id`.
-3. Si no hay perfil resuelto, intentar `app/cartridges/{tenant_id}.yaml`.
-4. Fallback final a `app/cartridges/base.yaml`.
+3. Si no hay perfil resuelto, intentar `app/profiles/{tenant_id}.yaml`.
+4. Fallback final a `app/profiles/base.yaml`.
 
 Notas operativas:
 
-- El lookup de BD se cachea por tenant (`ORCH_CARTRIDGE_DB_CACHE_TTL_SECONDS`).
+- El lookup de BD se cachea por tenant (`ORCH_PROFILE_DB_CACHE_TTL_SECONDS`).
 - La fila de BD debe validar contra `AgentProfile`; si falla, el request continua con fallback.
 - Header de perfil se controla por whitelist (`ORCH_TENANT_PROFILE_WHITELIST`).
 

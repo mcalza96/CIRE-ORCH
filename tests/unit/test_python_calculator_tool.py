@@ -2,7 +2,7 @@ import pytest
 
 from app.agent.tools.base import ToolRuntimeContext
 from app.agent.tools.python_calculator import PythonCalculatorTool
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 
 
 class _DummyRetriever:

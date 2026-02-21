@@ -12,7 +12,7 @@ from app.agent.models import (
     ToolResult,
     ValidationResult,
 )
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 
 # Constants moved from universal_flow.py
 DEFAULT_MAX_STEPS = 10

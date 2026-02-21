@@ -20,9 +20,9 @@ from app.agent.grounded_answer_service import GroundedAnswerService
 from app.agent.http_adapters import RagEngineRetrieverAdapter
 from app.agent.answer_adapter import GroundedAnswerAdapter
 from app.api.deps import UserContext, get_current_user
-from app.cartridges.deps import resolve_agent_profile
-from app.cartridges.loader import get_cartridge_loader
-from app.clients.backend_selector import RagBackendSelector
+from app.profiles.deps import resolve_agent_profile
+from app.profiles.loader import get_profile_loader
+from app.infrastructure.clients.backend_selector import RagBackendSelector
 from app.infrastructure.config import settings
 from app.infrastructure.observability.logging_utils import compact_error, emit_event
 from app.infrastructure.clients.rag_client import build_rag_http_client
@@ -884,7 +884,7 @@ async def list_agent_profiles(
     current_user: UserContext = Depends(get_current_user),
 ) -> AgentProfileListResponse:
     del current_user
-    loader = get_cartridge_loader()
+    loader = get_profile_loader()
     rows = loader.list_available_profile_entries()
     items = [AgentProfileItem.model_validate(row) for row in rows]
     return AgentProfileListResponse(items=items)
@@ -897,7 +897,7 @@ async def get_tenant_profile_override(
     current_user: UserContext = Depends(get_current_user),
 ) -> Dict[str, Any]:
     authorized_tenant = await authorize_requested_tenant(http_request, current_user, tenant_id)
-    loader = get_cartridge_loader()
+    loader = get_profile_loader()
     resolved = await loader.resolve_for_tenant_async(tenant_id=authorized_tenant)
     return {
         "tenant_id": authorized_tenant,
@@ -921,7 +921,7 @@ async def put_tenant_profile_override(
     authorized_tenant = await authorize_requested_tenant(
         http_request, current_user, request.tenant_id
     )
-    loader = get_cartridge_loader()
+    loader = get_profile_loader()
     if not loader.dev_profile_assignments_enabled():
         logger.warning(
             "profile_dev_override_denied",

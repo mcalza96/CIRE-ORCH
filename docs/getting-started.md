@@ -156,7 +156,7 @@ Optional: HTTP ingestion smoke test (portable client):
 ```
 
 Note: `./ing.sh` uses `RAG_URL` when defined; otherwise it applies hybrid resolution from `RAG_ENGINE_*`.
-It also supports per-tenant dev cartridge overrides from the CLI (`--agent-profile` / `--clear-agent-profile`).
+It also supports per-tenant dev profile overrides from the CLI (`--agent-profile` / `--clear-agent-profile`).
 
 or via HTTP:
 

@@ -37,7 +37,7 @@ Implementacion vigente en `/Users/mcalzadilla/cire/orch`:
   - Clasificacion de intencion y planificacion guiadas por `query_modes` del cartucho.
   - Core sin ramas `if mode == literal_*`.
 - Carga fail-fast al startup:
-  - Si un YAML de `app/cartridges/*.yaml` no cumple esquema v2, la API no levanta.
+  - Si un YAML de `app/profiles/*.yaml` no cumple esquema v2, la API no levanta.
   - `base.yaml` es fallback obligatorio de cartucho.
 - Resolucion de perfil auditable por request:
   - `source`: `db | header | dev_map | tenant_map | tenant_yaml | base`
@@ -47,8 +47,8 @@ Implementacion vigente en `/Users/mcalzadilla/cire/orch`:
 - Cascada obligatoria de cartucho:
   1) DB (`tenant_configs`)
   2) Header autorizado o tenant->profile map/dev map
-  3) `app/cartridges/{tenant_id}.yaml`
-  4) `app/cartridges/base.yaml`
+  3) `app/profiles/{tenant_id}.yaml`
+  4) `app/profiles/base.yaml`
 - Seguridad de override por header:
   - whitelist por tenant
   - log explicito cuando override es denegado

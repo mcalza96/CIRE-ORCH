@@ -7,7 +7,7 @@ from typing import Any
 
 from app.agent.models import ToolResult
 from app.agent.tools.base import ToolRuntimeContext
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 
 
 _ALLOWED_BIN_OPS = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow)

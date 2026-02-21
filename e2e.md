@@ -2,8 +2,8 @@ Módulo 1: Enrutamiento y Definición de Perfiles (Cartuchos)
 Antes de procesar la consulta, el sistema configura el "chasis" de razonamiento. La calidad de la respuesta dependerá de qué tan bien estén definidas las reglas de negocio del perfil seleccionado.
 Flujo: Petición HTTP → Autenticación/Tenant → Carga de Cartucho (ISO, Legal, Analista de Laboratorio) → Inyección de Prompts y Reglas de Comportamiento.
 Archivos clave a revisar:
-app/cartridges/loader.py y app/cartridges/models.py (Lógica de carga y parseo).
-app/cartridges/iso_auditor.yaml, app/cartridges/legal_cl.yaml (Definición estática de las reglas).
+app/profiles/loader.py y app/profiles/models.py (Lógica de carga y parseo).
+app/profiles/iso_auditor.yaml, app/profiles/legal_cl.yaml (Definición estática de las reglas).
 app/security/tenant_authorizer.py (Aislamiento de la data por cliente).
 ¿Qué analizar para mejorar?
 Caché de perfiles: Si la carga de los YAML desde disco o base de datos ocurre en cada petición, estarás sumando milisegundos valiosos. Revisa el loader.py para asegurar que los perfiles activos residan en memoria.

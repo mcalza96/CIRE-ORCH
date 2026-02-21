@@ -1,5 +1,5 @@
 from app.agent.policies import classify_intent_with_trace
-from app.cartridges.models import AgentProfile, IntentRule, QueryModeConfig, QueryModesPolicy
+from app.profiles.models import AgentProfile, IntentRule, QueryModeConfig, QueryModesPolicy
 
 
 def test_classify_intent_with_trace_uses_profile_rule_mode() -> None:

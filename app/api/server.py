@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.responses import JSONResponse
 
 from app.api.v1.api_router import v1_router
-from app.cartridges.loader import get_cartridge_loader
+from app.profiles.loader import get_profile_loader
 from app.infrastructure.config import settings
 from app.infrastructure.clients.rag_client import build_rag_http_client
 
@@ -26,7 +26,7 @@ logger = structlog.get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    get_cartridge_loader().validate_cartridge_files_strict()
+    get_profile_loader().validate_profile_files_strict()
     app.state.rag_http_client = build_rag_http_client()
     try:
         yield

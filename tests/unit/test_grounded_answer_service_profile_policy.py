@@ -1,7 +1,7 @@
 import pytest
 
 from app.agent.grounded_answer_service import GroundedAnswerService
-from app.cartridges.models import AgentProfile, ValidationPolicy
+from app.profiles.models import AgentProfile, ValidationPolicy
 
 
 @pytest.mark.asyncio

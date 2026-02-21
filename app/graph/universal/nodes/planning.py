@@ -4,7 +4,7 @@ import asyncio
 
 from app.agent.models import ReasoningPlan, ReasoningStep
 from app.agent.tools import resolve_allowed_tools
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 from app.infrastructure.config import settings
 from app.graph.universal.clarification_llm import build_clarification_with_llm
 from app.graph.universal.interaction import decide_interaction

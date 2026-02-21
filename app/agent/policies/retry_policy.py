@@ -1,5 +1,5 @@
 from app.agent.models import RetrievalPlan, QueryIntent, QueryMode
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 
 
 class RetryPolicy:

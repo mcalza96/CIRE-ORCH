@@ -6,7 +6,7 @@ from typing import Any
 
 from app.agent.models import QueryIntent, ReasoningPlan, RetrievalPlan
 from app.agent.policies import detect_scope_candidates
-from app.cartridges.models import AgentProfile, ModeInteractionPolicy
+from app.profiles.models import AgentProfile, ModeInteractionPolicy
 
 
 @dataclass(frozen=True)

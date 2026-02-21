@@ -9,7 +9,7 @@ from app.agent.tools.logical_comparison import LogicalComparisonTool
 from app.agent.tools.python_calculator import PythonCalculatorTool
 from app.agent.tools.semantic_retrieval import SemanticRetrievalTool
 from app.agent.tools.structural_extraction import StructuralExtractionTool
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 
 
 DEFAULT_ALLOWED_TOOLS = ("semantic_retrieval", "citation_validator")

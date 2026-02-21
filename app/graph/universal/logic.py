@@ -13,7 +13,7 @@ from app.agent.error_codes import (
     RETRIEVAL_CODE_UPSTREAM_UNAVAILABLE,
 )
 from app.agent.models import RetrievalDiagnostics, ToolResult, EvidenceItem, RetrievalPlan
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 from app.graph.universal.state import UniversalState
 from app.graph.universal.utils import _non_negative_int
 

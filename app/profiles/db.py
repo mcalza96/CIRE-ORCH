@@ -6,7 +6,7 @@ from urllib.parse import quote
 import httpx
 import structlog
 
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 from app.infrastructure.config import settings
 
 logger = structlog.get_logger(__name__)
@@ -17,7 +17,7 @@ async def fetch_db_profile_async(tenant_id: str) -> tuple[AgentProfile | None, s
     Fetches the tenant profile from the configured Supabase connection.
     Returns a tuple of (AgentProfile or None, resolution_reason).
     """
-    if not bool(settings.ORCH_CARTRIDGE_DB_ENABLED):
+    if not bool(settings.ORCH_PROFILE_DB_ENABLED):
         return None, "db_override_disabled"
 
     tenant = str(tenant_id or "").strip()
@@ -29,13 +29,13 @@ async def fetch_db_profile_async(tenant_id: str) -> tuple[AgentProfile | None, s
     if not rest_url or not service_role:
         return None, "db_credentials_missing"
 
-    table = str(settings.ORCH_CARTRIDGE_DB_TABLE or "tenant_configs").strip()
-    tenant_col = str(settings.ORCH_CARTRIDGE_DB_TENANT_COLUMN or "tenant_id").strip()
-    profile_col = str(settings.ORCH_CARTRIDGE_DB_PROFILE_COLUMN or "agent_profile").strip()
-    profile_id_col = str(settings.ORCH_CARTRIDGE_DB_PROFILE_ID_COLUMN or "profile_id").strip()
-    version_col = str(settings.ORCH_CARTRIDGE_DB_VERSION_COLUMN or "profile_version").strip()
-    status_col = str(settings.ORCH_CARTRIDGE_DB_STATUS_COLUMN or "status").strip()
-    updated_col = str(settings.ORCH_CARTRIDGE_DB_UPDATED_COLUMN or "updated_at").strip()
+    table = str(settings.ORCH_PROFILE_DB_TABLE or "tenant_configs").strip()
+    tenant_col = str(settings.ORCH_PROFILE_DB_TENANT_COLUMN or "tenant_id").strip()
+    profile_col = str(settings.ORCH_PROFILE_DB_PROFILE_COLUMN or "agent_profile").strip()
+    profile_id_col = str(settings.ORCH_PROFILE_DB_PROFILE_ID_COLUMN or "profile_id").strip()
+    version_col = str(settings.ORCH_PROFILE_DB_VERSION_COLUMN or "profile_version").strip()
+    status_col = str(settings.ORCH_PROFILE_DB_STATUS_COLUMN or "status").strip()
+    updated_col = str(settings.ORCH_PROFILE_DB_UPDATED_COLUMN or "updated_at").strip()
 
     select_columns = ",".join([profile_col, profile_id_col, version_col, status_col])
     url = f"{rest_url.rstrip('/')}/{quote(table, safe='')}"
@@ -49,7 +49,7 @@ async def fetch_db_profile_async(tenant_id: str) -> tuple[AgentProfile | None, s
         "apikey": service_role,
         "Authorization": f"Bearer {service_role}",
     }
-    timeout = float(settings.ORCH_CARTRIDGE_DB_TIMEOUT_SECONDS or 1.8)
+    timeout = float(settings.ORCH_PROFILE_DB_TIMEOUT_SECONDS or 1.8)
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -57,7 +57,7 @@ async def fetch_db_profile_async(tenant_id: str) -> tuple[AgentProfile | None, s
             response.raise_for_status()
             payload = response.json()
     except Exception as exc:
-        logger.warning("cartridge_db_lookup_failed", tenant_id=tenant, error=str(exc))
+        logger.warning("profile_db_lookup_failed", tenant_id=tenant, error=str(exc))
         return None, "db_lookup_failed"
 
     if not isinstance(payload, list) or not payload:
@@ -96,7 +96,7 @@ async def fetch_db_profile_async(tenant_id: str) -> tuple[AgentProfile | None, s
     try:
         profile = AgentProfile.model_validate(profile_dict)
     except Exception as exc:
-        logger.warning("cartridge_db_invalid_profile", tenant_id=tenant, error=str(exc))
+        logger.warning("profile_db_invalid_profile", tenant_id=tenant, error=str(exc))
         return None, "db_profile_invalid"
 
     return profile, "db_profile_applied"

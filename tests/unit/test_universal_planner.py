@@ -1,4 +1,4 @@
-from app.cartridges.models import (
+from app.profiles.models import (
     AgentProfile,
     CapabilitiesPolicy,
     IntentRule,

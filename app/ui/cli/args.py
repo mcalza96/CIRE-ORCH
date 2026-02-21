@@ -23,7 +23,7 @@ def parse_chat_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--collection-name", help="Collection name (display only)")
     parser.add_argument(
         "--agent-profile",
-        help="Optional cartridge/profile id for this chat session",
+        help="Optional profile id for this chat session",
     )
     parser.add_argument(
         "--orchestrator-url",

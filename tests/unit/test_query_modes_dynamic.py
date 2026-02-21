@@ -1,6 +1,6 @@
 from app.agent.policies import build_retrieval_plan, classify_intent
 from app.agent.models import QueryIntent
-from app.cartridges.models import (
+from app.profiles.models import (
     AgentProfile,
     QueryModeConfig,
     QueryModesPolicy,

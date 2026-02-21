@@ -1,6 +1,6 @@
 from app.agent.components.citations import build_citation_bundle
 from app.agent.models import EvidenceItem
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 
 
 def test_citation_bundle_extracts_clause_id_from_content_marker() -> None:

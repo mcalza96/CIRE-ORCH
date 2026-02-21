@@ -10,7 +10,7 @@ from uuid import uuid4
 import httpx
 import structlog
 
-from app.clients.backend_selector import RagBackendSelector
+from .backend_selector import RagBackendSelector
 from app.infrastructure.config import settings
 from app.infrastructure.metrics.retrieval import retrieval_metrics_store
 

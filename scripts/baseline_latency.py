@@ -26,7 +26,7 @@ try:
     from app.agent.adapters import LiteralEvidenceValidator
     from app.infrastructure.config import settings
     from app.api.deps import UserContext
-    from app.cartridges.loader import get_cartridge_loader
+    from app.profiles.loader import get_profile_loader
 except ImportError as e:
     print(f"Error importing modules: {e}")
     sys.exit(1)
@@ -83,7 +83,7 @@ async def run_benchmark(queries, tenant_id="default-tenant", collection_id=None)
         validator=validator,
     )
     
-    loader = get_cartridge_loader()
+    loader = get_profile_loader()
     resolved = await loader.resolve_for_tenant_async(tenant_id=tenant_id)
     agent_profile = resolved.profile
 

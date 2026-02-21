@@ -1,6 +1,6 @@
 from app.agent.models import QueryIntent
 from app.agent.policies import build_retrieval_plan
-from app.cartridges.models import AgentProfile, QueryModeConfig, QueryModesPolicy, RetrievalPolicy
+from app.profiles.models import AgentProfile, QueryModeConfig, QueryModesPolicy, RetrievalPolicy
 
 
 def test_build_retrieval_plan_propagates_mode_inference_and_response_contract() -> None:

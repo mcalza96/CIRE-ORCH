@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 from app.agent.models import AnswerDraft, EvidenceItem, RetrievalPlan, ValidationResult
 from app.agent.policies import extract_requested_scopes
 from app.infrastructure.config import settings

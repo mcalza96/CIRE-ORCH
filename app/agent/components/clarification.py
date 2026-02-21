@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.agent.models import ClarificationRequest, QueryIntent
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 
 
 def has_user_clarification_marker(query: str) -> bool:

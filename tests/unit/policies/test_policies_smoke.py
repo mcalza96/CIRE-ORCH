@@ -1,7 +1,7 @@
 from app.agent.policies.scope_policy import ScopePolicy
 from app.agent.policies.retry_policy import RetryPolicy
 from app.agent.models import RetrievalPlan, EvidenceItem, QueryIntent
-from app.cartridges.models import AgentProfile, QueryModeConfig, QueryModesPolicy
+from app.profiles.models import AgentProfile, QueryModeConfig, QueryModesPolicy
 from dataclasses import dataclass
 
 

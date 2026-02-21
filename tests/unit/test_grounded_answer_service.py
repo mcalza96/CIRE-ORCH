@@ -1,7 +1,7 @@
 import asyncio
 
 from app.agent.grounded_answer_service import GroundedAnswerService
-from app.cartridges.models import AgentProfile, IdentityPolicy, SynthesisPolicy, ValidationPolicy
+from app.profiles.models import AgentProfile, IdentityPolicy, SynthesisPolicy, ValidationPolicy
 
 
 class _FakeCompletionMessage:

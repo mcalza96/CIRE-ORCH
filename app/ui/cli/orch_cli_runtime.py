@@ -11,7 +11,7 @@ from typing import Callable
 
 import httpx
 
-from app import chat_cli_runtime, ing_cli_runtime
+from . import chat_cli_runtime, ing_cli_runtime
 from app.infrastructure.clients.auth_client import AuthClientError, decode_jwt_exp, ensure_access_token
 from app.infrastructure.clients.discovery_client import OrchestratorDiscoveryError, Tenant, list_authorized_tenants
 

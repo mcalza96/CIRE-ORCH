@@ -3,7 +3,7 @@ from app.agent.retrieval_planner import (
     build_deterministic_subqueries,
     extract_clause_refs,
 )
-from app.cartridges.models import AgentProfile, RouterHeuristics, SearchHint
+from app.profiles.models import AgentProfile, RouterHeuristics, SearchHint
 
 
 def test_extract_clause_refs_uses_profile_reference_patterns() -> None:

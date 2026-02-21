@@ -20,7 +20,7 @@ async def dispatch_chat_command(
         "/ingestion": _handle_cmd_ingestion,
         "/trace": _handle_cmd_trace,
         "/citations": _handle_cmd_citations,
-        "/profile": _handle_cmd_profile,
+        "/snapshot": _handle_cmd_snapshot,
         "/explain": _handle_cmd_explain,
     }
     if normalized in exact_handlers:
@@ -29,7 +29,7 @@ async def dispatch_chat_command(
 
     prefix_handlers = {
         "/watch": _handle_cmd_watch,
-        "/cartridge": _handle_cmd_cartridge,
+        "/profile": _handle_cmd_set_profile,
         "/mode": _handle_cmd_mode,
     }
     for prefix, handler in prefix_handlers.items():
@@ -92,7 +92,7 @@ async def _handle_cmd_citations(
     print("ℹ️ No hay un resultado previo para mostrar citas.")
 
 
-async def _handle_cmd_profile(
+async def _handle_cmd_snapshot(
     *, query: str, runtime: ChatRuntimeContext, state: ChatSessionState
 ) -> None:
     _ = query, runtime
@@ -104,7 +104,7 @@ async def _handle_cmd_profile(
         print(f"   forced_mode={state.forced_mode}")
 
 
-async def _handle_cmd_cartridge(
+async def _handle_cmd_set_profile(
     *,
     query: str,
     runtime: ChatRuntimeContext,
@@ -114,15 +114,15 @@ async def _handle_cmd_cartridge(
     raw = query.split(" ", 1)
     arg = raw[1].strip() if len(raw) > 1 else ""
     if not arg:
-        print(f"ℹ️ cartridge={state.agent_profile_id or '(automatico por tenant)'}")
-        print("   Uso: /cartridge <profile_id> | /cartridge clear")
+        print(f"ℹ️ agent_profile_id={state.agent_profile_id or '(automatico por tenant)'}")
+        print("   Uso: /profile <profile_id> | /profile clear")
         return
     if arg.lower() in {"clear", "off", "none", "auto"}:
         state.agent_profile_id = None
-        print("✅ cartridge en modo automatico por tenant")
+        print("✅ perfil en modo automatico por tenant")
         return
     state.agent_profile_id = arg.lower()
-    print(f"✅ cartridge={state.agent_profile_id}")
+    print(f"✅ perfil={state.agent_profile_id}")
 
 
 async def _handle_cmd_mode(

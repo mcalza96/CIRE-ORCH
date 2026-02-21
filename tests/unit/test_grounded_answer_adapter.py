@@ -2,7 +2,7 @@ import asyncio
 
 from app.agent.answer_adapter import GroundedAnswerAdapter
 from app.agent.models import EvidenceItem, RetrievalPlan
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 
 
 class _FakeGroundedService:

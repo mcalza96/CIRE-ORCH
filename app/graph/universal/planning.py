@@ -11,7 +11,7 @@ from app.agent.models import (
     ToolCall,
 )
 from app.agent.policies import build_retrieval_plan, classify_intent
-from app.cartridges.models import AgentProfile, QueryModeConfig
+from app.profiles.models import AgentProfile, QueryModeConfig
 
 
 _ARITHMETIC_PATTERN = re.compile(r"\d+\s*[\+\-\*/]\s*\d+")

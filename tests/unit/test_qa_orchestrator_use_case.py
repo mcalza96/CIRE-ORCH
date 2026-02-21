@@ -4,7 +4,7 @@ import pytest
 
 from app.agent.application import HandleQuestionCommand, HandleQuestionUseCase
 from app.agent.models import AnswerDraft, EvidenceItem, RetrievalPlan, ValidationResult
-from app.cartridges.models import AgentProfile, CapabilitiesPolicy
+from app.profiles.models import AgentProfile, CapabilitiesPolicy
 
 
 @dataclass

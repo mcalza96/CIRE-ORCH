@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 
 
 @dataclass(frozen=True)

@@ -12,9 +12,9 @@ from urllib.parse import quote
 import httpx
 import structlog
 
-from app.cartridges.db import fetch_db_profile_async
-from app.cartridges.dev_assignments import get_dev_profile_assignments_store
-from app.cartridges.models import AgentProfile, ProfileResolution, ResolvedAgentProfile
+from app.profiles.db import fetch_db_profile_async
+from app.profiles.dev_assignments import get_dev_profile_assignments_store
+from app.profiles.models import AgentProfile, ProfileResolution, ResolvedAgentProfile
 from app.infrastructure.config import PROJECT_ROOT, settings
 
 
@@ -46,11 +46,11 @@ class ProfileChoice:
     requested_profile_id: str | None
 
 
-def _default_cartridges_dir() -> Path:
-    configured = str(settings.ORCH_CARTRIDGES_DIR or "").strip()
+def _default_profiles_dir() -> Path:
+    configured = str(settings.ORCH_PROFILES_DIR or "").strip()
     if configured:
         return Path(configured).expanduser().resolve()
-    return (PROJECT_ROOT / "app" / "cartridges").resolve()
+    return (PROJECT_ROOT / "app" / "profiles").resolve()
 
 
 def _safe_load_yaml(path: Path) -> dict:
@@ -67,7 +67,7 @@ def _validate_v2_payload(path: Path, payload: dict) -> None:
     missing = sorted(key for key in _REQUIRED_TOP_LEVEL_KEYS if key not in payload)
     if missing:
         missing_csv = ", ".join(missing)
-        raise ValueError(f"Cartridge {path.name} missing required keys: {missing_csv}")
+        raise ValueError(f"Profile {path.name} missing required keys: {missing_csv}")
 
 
 def _deep_merge(base_dict: dict, override_dict: dict) -> dict:
@@ -119,7 +119,7 @@ def _tenant_profile_map() -> dict[str, str]:
         return parsed
 
     if settings.ORCH_TENANT_PROFILE_MAP:
-        logger.warning("cartridge_map_invalid_json")
+        logger.warning("profile_map_invalid_json")
     return {}
 
 
@@ -131,7 +131,7 @@ def _tenant_profile_whitelist() -> dict[str, set[str]]:
     try:
         payload = json.loads(raw)
     except Exception:
-        logger.warning("cartridge_whitelist_invalid_json")
+        logger.warning("profile_whitelist_invalid_json")
         return {}
 
     if not isinstance(payload, dict):
@@ -149,26 +149,26 @@ def _tenant_profile_whitelist() -> dict[str, set[str]]:
     return out
 
 
-class CartridgeLoader:
-    """Resuelve cartuchos con estrategia en cascada:
-
+class ProfileLoader:
+    """Resuelve perfiles con estrategia en cascada:
+# ... (rest of docstring adapted)
     1) DB privada por tenant (si esta habilitada)
     2) Perfil explicito/header autorizado
     3) Override dev local (tenant->perfil)
     4) Mapeo tenant->perfil por env
-    5) Cartucho en filesystem (tenant_id.yaml)
+    5) Perfil en filesystem (tenant_id.yaml)
     6) Perfil por defecto (`base`)
     """
 
-    def __init__(self, cartridges_dir: Path | None = None) -> None:
-        self._cartridges_dir = cartridges_dir or _default_cartridges_dir()
+    def __init__(self, profiles_dir: Path | None = None) -> None:
+        self._profiles_dir = profiles_dir or _default_profiles_dir()
         self._profile_cache: dict[str, AgentProfile] = {}
         self._tenant_db_cache: dict[str, tuple[float, AgentProfile]] = {}
         self._last_db_resolution_reason: str = "db_not_checked"
 
     @property
-    def cartridges_dir(self) -> Path:
-        return self._cartridges_dir
+    def profiles_dir(self) -> Path:
+        return self._profiles_dir
 
     def _is_profile_allowed_for_tenant(self, *, tenant_id: str, profile_id: str) -> bool:
         allowed = _tenant_profile_whitelist().get(tenant_id)
@@ -181,7 +181,7 @@ class CartridgeLoader:
 
     def _profile_yaml_path(self, profile_id: str) -> Path:
         normalized = str(profile_id or "").strip() or "base"
-        return self._cartridges_dir / f"{normalized}.yaml"
+        return self._profiles_dir / f"{normalized}.yaml"
 
     def profile_exists(self, profile_id: str) -> bool:
         path = self._profile_yaml_path(profile_id)
@@ -195,9 +195,9 @@ class CartridgeLoader:
 
     def list_available_profile_entries(self) -> list[dict[str, str]]:
         entries: list[dict[str, str]] = []
-        if not self._cartridges_dir.exists():
+        if not self._profiles_dir.exists():
             return entries
-        for path in sorted(self._cartridges_dir.glob("*.yaml")):
+        for path in sorted(self._profiles_dir.glob("*.yaml")):
             profile_id = str(path.stem or "").strip()
             if not profile_id:
                 continue
@@ -205,7 +205,7 @@ class CartridgeLoader:
                 parsed = self.load(profile_id)
             except Exception as exc:
                 logger.warning(
-                    "cartridge_profile_discovery_skip_invalid",
+                    "profile_discovery_skip_invalid",
                     path=str(path),
                     error=str(exc),
                 )
@@ -251,7 +251,7 @@ class CartridgeLoader:
             self._last_db_resolution_reason = "empty_tenant_id"
             return None
 
-        ttl = int(settings.ORCH_CARTRIDGE_DB_CACHE_TTL_SECONDS or 60)
+        ttl = int(settings.ORCH_PROFILE_DB_CACHE_TTL_SECONDS or 60)
         now = time.time()
         cached = self._tenant_db_cache.get(tenant)
         if cached and (now - cached[0]) < max(1, ttl):
@@ -285,7 +285,7 @@ class CartridgeLoader:
             ("tenant_map", _tenant_profile_map().get(tenant), f"{fallback_prefix}tenant_profile_map_match"),
         ]
 
-        if tenant and (self._cartridges_dir / f"{tenant}.yaml").exists():
+        if tenant and (self._profiles_dir / f"{tenant}.yaml").exists():
             candidates.append(("tenant_yaml", tenant, f"{fallback_prefix}tenant_yaml_found"))
 
         default_base = str(settings.ORCH_DEFAULT_PROFILE_ID or "base").strip() or "base"
@@ -316,7 +316,7 @@ class CartridgeLoader:
         if normalized in self._profile_cache:
             return self._profile_cache[normalized]
 
-        path = self._cartridges_dir / f"{normalized}.yaml"
+        path = self._profiles_dir / f"{normalized}.yaml"
         payload: dict | None = None
 
         if path.exists():
@@ -324,7 +324,7 @@ class CartridgeLoader:
                 payload = _safe_load_yaml(path)
             except Exception as exc:
                 logger.warning(
-                    "cartridge_yaml_load_failed",
+                    "profile_yaml_load_failed",
                     profile_id=normalized,
                     path=str(path),
                     error=str(exc),
@@ -332,9 +332,9 @@ class CartridgeLoader:
 
         if payload is None:
             if normalized != "base":
-                logger.warning("cartridge_not_found_fallback_base", profile_id=normalized)
+                logger.warning("profile_not_found_fallback_base", profile_id=normalized)
                 return self.load("base")
-            raise FileNotFoundError(f"Base cartridge not found: {path}")
+            raise FileNotFoundError(f"Base profile not found: {path}")
 
         extends = str(payload.get("extends") or "").strip()
         if extends and extends != normalized:
@@ -344,7 +344,7 @@ class CartridgeLoader:
                 payload = _deep_merge(base_payload, payload)
             except Exception as exc:
                 logger.warning(
-                    "cartridge_inheritance_failed",
+                    "profile_inheritance_failed",
                     profile_id=normalized,
                     extends=extends,
                     error=str(exc),
@@ -354,7 +354,7 @@ class CartridgeLoader:
             _validate_v2_payload(path, payload)
         except Exception as exc:
             logger.warning(
-                "cartridge_validation_failed",
+                "profile_validation_failed",
                 profile_id=normalized,
                 error=str(exc),
             )
@@ -364,16 +364,16 @@ class CartridgeLoader:
         self._profile_cache[normalized] = profile
         return profile
 
-    def validate_cartridge_files_strict(self) -> None:
+    def validate_profile_files_strict(self) -> None:
         # Safety guard: env JSON map is dev-only and must never be active in production.
         _tenant_profile_map()
 
-        if not self._cartridges_dir.exists():
-            raise RuntimeError(f"Cartridges directory not found: {self._cartridges_dir}")
+        if not self._profiles_dir.exists():
+            raise RuntimeError(f"Profiles directory not found: {self._profiles_dir}")
 
-        yaml_paths = sorted(self._cartridges_dir.glob("*.yaml"))
+        yaml_paths = sorted(self._profiles_dir.glob("*.yaml"))
         if not yaml_paths:
-            raise RuntimeError(f"No cartridge YAML files found in {self._cartridges_dir}")
+            raise RuntimeError(f"No profile YAML files found in {self._profiles_dir}")
 
         for path in yaml_paths:
             payload = _safe_load_yaml(path)
@@ -469,5 +469,5 @@ class CartridgeLoader:
 
 
 @lru_cache(maxsize=1)
-def get_cartridge_loader() -> CartridgeLoader:
-    return CartridgeLoader()
+def get_profile_loader() -> ProfileLoader:
+    return ProfileLoader()

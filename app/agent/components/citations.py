@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 
 
 _ISO_RE = re.compile(r"\bISO\s*[-:]?\s*(\d{4,5})\b", re.IGNORECASE)

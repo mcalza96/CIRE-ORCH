@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 import structlog
-from app.clients.backend_selector import RagBackendSelector, RagProviderFactory
+from app.infrastructure.clients.backend_selector import RagBackendSelector, RagProviderFactory
 from app.infrastructure.config import settings
 from app.infrastructure.clients.rag_client import (
     RagRetrievalContractClient,
@@ -16,7 +16,7 @@ from app.agent.retrieval_flow import RetrievalFlow
 from app.agent.interfaces import EmbeddingProvider, RerankingProvider, SubqueryPlanner
 from app.agent.components.query_decomposer import HybridSubqueryPlanner
 from app.agent.models import EvidenceItem, RetrievalDiagnostics, RetrievalPlan
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 
 
 logger = structlog.get_logger(__name__)

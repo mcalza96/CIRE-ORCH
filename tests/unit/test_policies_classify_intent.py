@@ -1,5 +1,5 @@
 from app.agent.policies import classify_intent
-from app.cartridges.models import AgentProfile
+from app.profiles.models import AgentProfile
 from tests.fixtures.builtin_profiles import BUILTIN_PROFILES
 
 # Perfil para pruebas de dominio

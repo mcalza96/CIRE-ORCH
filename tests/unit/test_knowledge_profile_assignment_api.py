@@ -3,22 +3,22 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import UserContext, get_current_user
 from app.api.server import app
-from app.cartridges.dev_assignments import get_dev_profile_assignments_store
-from app.cartridges.loader import get_cartridge_loader
+from app.profiles.dev_assignments import get_dev_profile_assignments_store
+from app.profiles.loader import get_profile_loader
 from app.infrastructure.config import settings
 
 
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "ORCH_AUTH_REQUIRED", True)
-    monkeypatch.setattr(settings, "ORCH_CARTRIDGE_DB_ENABLED", False)
+    monkeypatch.setattr(settings, "ORCH_PROFILE_DB_ENABLED", False)
     monkeypatch.setattr(settings, "ORCH_DEV_PROFILE_ASSIGNMENTS_ENABLED", True)
     monkeypatch.setattr(
         settings,
         "ORCH_DEV_PROFILE_ASSIGNMENTS_FILE",
         str(tmp_path / "tenant_profile_assignments.json"),
     )
-    get_cartridge_loader.cache_clear()
+    get_profile_loader.cache_clear()
     get_dev_profile_assignments_store.cache_clear()
     app.dependency_overrides[get_current_user] = lambda: UserContext(
         user_id="user-1",
@@ -27,7 +27,7 @@ def client(monkeypatch, tmp_path):
     with TestClient(app) as api_client:
         yield api_client
     app.dependency_overrides.clear()
-    get_cartridge_loader.cache_clear()
+    get_profile_loader.cache_clear()
     get_dev_profile_assignments_store.cache_clear()
 
 

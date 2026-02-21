@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from app.agent.interfaces import SubqueryPlanningContext, SubqueryPlanner
 from app.agent.retrieval_planner import build_deterministic_subqueries, extract_clause_refs
 from app.infrastructure.config import settings
-from app.domain.rag_schemas import SubQueryRequest
+from ..rag_schemas import SubQueryRequest
 
 
 logger = structlog.get_logger(__name__)
