@@ -14,8 +14,8 @@ from app.agent.errors import (
 )
 from app.agent.types.models import RetrievalDiagnostics, ToolResult, EvidenceItem, RetrievalPlan
 from app.profiles.models import AgentProfile
-from app.graph.universal.state import UniversalState
-from app.graph.universal.utils import _non_negative_int
+from app.graph.state import UniversalState
+from app.graph.logic.utils import _non_negative_int
 
 def _query_mode_aggregation_mode(state: UniversalState) -> str:
     profile = state.get("agent_profile")

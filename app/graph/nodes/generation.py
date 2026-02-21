@@ -17,9 +17,9 @@ from app.agent.types.models import (
 from app.agent.tools import get_tool
 from app.profiles.models import AgentProfile
 from app.infrastructure.config import settings
-from app.graph.universal.logic import _query_mode_aggregation_mode
-from app.graph.universal.state import ANSWER_PREVIEW_LIMIT, UniversalState
-from app.graph.universal.utils import (
+from app.graph.logic.logic import _query_mode_aggregation_mode
+from app.graph.state import ANSWER_PREVIEW_LIMIT, UniversalState
+from app.graph.logic.utils import (
     _clip_text,
     _keyword_overlap_score,
     _timeout_ms_for_stage,

@@ -25,7 +25,7 @@ from app.agent.types.models import (
 from app.agent.policies import classify_intent
 from app.agent.tools import ToolRuntimeContext, create_default_tools
 from app.infrastructure.config import settings
-from app.graph.universal.nodes import (
+from app.graph.nodes import (
     aggregate_subqueries_node,
     citation_validate_node,
     execute_tool_node,
@@ -33,12 +33,12 @@ from app.graph.universal.nodes import (
     planner_node,
     reflect_node,
 )
-from app.graph.universal.routing import (
+from app.graph.logic.routing import (
     route_after_planner,
     route_after_reflect,
 )
-from app.graph.universal.state import UniversalState
-from app.graph.universal.trace import build_reasoning_trace
+from app.graph.state import UniversalState
+from app.graph.logic.trace import build_reasoning_trace
 
 logger = structlog.get_logger(__name__)
 

@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.deps import UserContext, get_current_user
+from app.api.v1.deps import UserContext, get_current_user
 from app.api.server import app
 from app.profiles.dev_assignments import get_dev_profile_assignments_store
 from app.profiles.loader import get_profile_loader

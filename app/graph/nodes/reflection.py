@@ -3,15 +3,15 @@ from __future__ import annotations
 import structlog
 
 from app.agent.types.models import ReasoningPlan, ReasoningStep, ToolResult
-from app.graph.universal.logic import _extract_retry_signal_from_retrieval, _is_retryable_reason
-from app.graph.universal.state import (
+from app.graph.logic.logic import _extract_retry_signal_from_retrieval, _is_retryable_reason
+from app.graph.state import (
     DEFAULT_MAX_REFLECTIONS,
     HARD_MAX_REFLECTIONS,
     MAX_PLAN_ATTEMPTS,
     RETRY_REASON_LIMIT,
     UniversalState,
 )
-from app.graph.universal.utils import (
+from app.graph.logic.utils import (
     state_get_int,
     state_get_list,
     state_get_str,

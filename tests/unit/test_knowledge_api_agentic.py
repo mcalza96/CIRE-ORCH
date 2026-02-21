@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
-from app.api.v1.routes.knowledge import router as knowledge_router
+from app.api.v1.routers.knowledge import router as knowledge_router
 from app.agent.engine import HandleQuestionResult
 from app.agent.types.models import (
     AnswerDraft,
@@ -20,7 +20,7 @@ def mock_use_case():
 
 @pytest.fixture
 def client(mock_use_case):
-    from app.api.v1.routes.knowledge import get_current_user, _build_use_case
+    from app.api.v1.routers.knowledge import get_current_user, _build_use_case
 
     app = FastAPI()
     app.include_router(knowledge_router, prefix="/api/v1/knowledge")
@@ -31,7 +31,7 @@ def client(mock_use_case):
 
     # Mock at the API route module level for authorize_requested_tenant
     with patch(
-        "app.api.v1.routes.knowledge.authorize_requested_tenant",
+        "app.api.v1.routers.knowledge.authorize_requested_tenant",
         AsyncMock(return_value="test-tenant"),
     ):
         yield TestClient(app)

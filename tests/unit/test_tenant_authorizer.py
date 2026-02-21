@@ -4,10 +4,10 @@ import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
-from app.api.deps import UserContext
+from app.api.v1.deps import UserContext
 from app.infrastructure.config import settings
-from app.security import tenant_authorizer
-
+from app.api.v1 import auth_guards as tenant_authorizer
+from app.infrastructure.security import membership_repository
 
 def _request() -> Request:
     return Request({"type": "http", "headers": []})
@@ -49,7 +49,7 @@ def test_authorize_queries_membership_when_claims_missing(monkeypatch):
     async def _fake_fetch(_: str) -> list[str]:
         return ["tenant-db"]
 
-    monkeypatch.setattr(tenant_authorizer, "_fetch_membership_tenants", _fake_fetch)
+    monkeypatch.setattr(tenant_authorizer, "fetch_membership_tenants", _fake_fetch)
     user = UserContext(user_id="u1", tenant_ids=[])
 
     tenant = asyncio.run(tenant_authorizer.authorize_requested_tenant(_request(), user, None))
@@ -79,6 +79,6 @@ def test_fetch_membership_tenants_fallbacks_to_institution_id(monkeypatch):
             return ["tenant-db"]
         return []
 
-    monkeypatch.setattr(tenant_authorizer, "_query_membership_tenants", _query_membership_tenants)
-    rows = asyncio.run(tenant_authorizer._fetch_membership_tenants("u1"))
+    monkeypatch.setattr(membership_repository, "_query_membership_tenants", _query_membership_tenants)
+    rows = asyncio.run(membership_repository._internal_fetch_membership_tenants("u1"))
     assert rows == ["tenant-db"]

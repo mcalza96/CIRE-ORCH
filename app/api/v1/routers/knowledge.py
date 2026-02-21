@@ -1,157 +1,54 @@
 import asyncio
-from contextlib import asynccontextmanager
-import json
-import re
-import time
 from typing import Any, Dict, Optional
-from uuid import uuid4
+import time
 
 import httpx
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 
 from app.agent.formatters.adapters import LiteralEvidenceValidator
 from app.agent.engine import HandleQuestionCommand, HandleQuestionUseCase
-from app.agent.components import build_citation_bundle
 from app.agent.errors import ScopeValidationError
 from app.agent.components.grounded_answer_service import GroundedAnswerService
 from app.infrastructure.clients.http_adapters import RagEngineRetrieverAdapter
 from app.agent.formatters.answer_adapter import GroundedAnswerAdapter
-from app.api.deps import UserContext, get_current_user
+from app.api.v1.deps import UserContext, get_current_user
 from app.profiles.deps import resolve_agent_profile
+from app.api.v1.schemas.knowledge_schemas import (
+    AgentProfileItem,
+    AgentProfileListResponse,
+    CollectionListResponse,
+    DevTenantCreateRequest,
+    DevTenantCreateResponse,
+    OrchestratorExplainRequest,
+    OrchestratorQuestionRequest,
+    OrchestratorValidateScopeRequest,
+    TenantItem,
+    TenantListResponse,
+    TenantProfileUpdateRequest,
+)
 from app.profiles.loader import get_profile_loader
-from app.infrastructure.clients.backend_selector import RagBackendSelector
 from app.infrastructure.config import settings
 from app.infrastructure.observability.logging_utils import compact_error, emit_event
-from app.infrastructure.clients.rag_client import build_rag_http_client
 from app.infrastructure.metrics.scope import scope_metrics_store
-from app.security.tenant_authorizer import (
+from app.api.v1.auth_guards import (
     authorize_requested_tenant,
-    fetch_tenant_names,
     resolve_allowed_tenants,
+)
+from app.infrastructure.security.membership_repository import fetch_tenant_names
+from app.infrastructure.clients.rag_client import RagRetrievalContractClient
+from app.infrastructure.supabase.tenant_client import create_dev_tenant as supabase_create_dev_tenant
+from app.api.v1.routers.helpers.knowledge_helpers import (
+    THINKING_PHASES,
+    classify_orchestrator_error,
+    format_sse_event,
+    map_collection_items,
+    map_orchestrator_result,
 )
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(tags=["knowledge"])
-
-
-def _classify_orchestrator_error(exc: Exception) -> str:
-    text = str(exc or "").strip().lower()
-    if "orch_answer_generation_failed" in text:
-        return "ORCH_ANSWER_GENERATION_FAILED"
-    if "rag retrieval failed" in text:
-        return "ORCH_RETRIEVAL_FAILED"
-    if isinstance(exc, TimeoutError):
-        return "ORCH_TIMEOUT"
-    if isinstance(exc, ValueError):
-        return "ORCH_INVALID_INPUT"
-    return "ORCH_UNHANDLED_ERROR"
-
-
-class OrchestratorQuestionRequest(BaseModel):
-    query: str
-    tenant_id: Optional[str] = None
-    collection_id: Optional[str] = None
-    clarification_context: Optional[Dict[str, Any]] = None
-
-
-def _sse(event: str, payload: dict[str, Any]) -> bytes:
-    return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=True)}\n\n".encode("utf-8")
-
-
-_THINKING_PHASES: list[dict[str, Any]] = [
-    {
-        "at_seconds": 0.4,
-        "phase": "intent_analysis",
-        "label": "Analizando intencion y alcance",
-    },
-    {
-        "at_seconds": 1.2,
-        "phase": "retrieval",
-        "label": "Recuperando clausulas y evidencia",
-    },
-    {
-        "at_seconds": 2.4,
-        "phase": "graph_reasoning",
-        "label": "Navegando relaciones semanticas",
-    },
-    {
-        "at_seconds": 3.6,
-        "phase": "coverage_validation",
-        "label": "Validando suficiencia de evidencia",
-    },
-    {
-        "at_seconds": 4.6,
-        "phase": "synthesis",
-        "label": "Generando respuesta final",
-    },
-]
-
-
-class OrchestratorValidateScopeRequest(BaseModel):
-    query: str
-    tenant_id: Optional[str] = None
-    collection_id: Optional[str] = None
-    filters: Optional[Dict[str, Any]] = None
-
-
-class OrchestratorExplainRequest(BaseModel):
-    query: str
-    tenant_id: Optional[str] = None
-    collection_id: Optional[str] = None
-    top_n: int = 10
-    k: int = 12
-    fetch_k: int = 60
-    filters: Optional[Dict[str, Any]] = None
-
-
-class TenantItem(BaseModel):
-    id: str
-    name: str
-
-
-class TenantListResponse(BaseModel):
-    items: list[TenantItem]
-
-
-class CollectionItem(BaseModel):
-    id: str
-    name: str
-    collection_key: str | None = None
-
-
-class CollectionListResponse(BaseModel):
-    items: list[CollectionItem]
-
-
-class AgentProfileItem(BaseModel):
-    id: str
-    declared_profile_id: str
-    version: str
-    status: str
-    description: str
-    owner: str
-
-
-class AgentProfileListResponse(BaseModel):
-    items: list[AgentProfileItem]
-
-
-class TenantProfileUpdateRequest(BaseModel):
-    tenant_id: str
-    profile_id: Optional[str] = None
-    clear: bool = False
-
-
-class DevTenantCreateRequest(BaseModel):
-    name: str
-
-
-class DevTenantCreateResponse(BaseModel):
-    tenant_id: str
-    name: str
 
 
 def _build_use_case(http_request: Request) -> HandleQuestionUseCase:
@@ -166,164 +63,10 @@ def _build_use_case(http_request: Request) -> HandleQuestionUseCase:
     )
 
 
-def _s2s_headers(
-    tenant_id: str,
-    *,
-    request_id: str | None = None,
-    correlation_id: str | None = None,
-) -> dict[str, str]:
-    headers = {
-        "X-Service-Secret": str(settings.RAG_SERVICE_SECRET or ""),
-        "X-Tenant-ID": tenant_id,
-    }
-    if request_id:
-        headers["X-Request-ID"] = request_id
-        headers["X-Trace-ID"] = request_id
-    if correlation_id:
-        headers["X-Correlation-ID"] = correlation_id
-    return headers
-
-
-async def _fetch_collections_from_rag(
-    tenant_id: str,
-    client: httpx.AsyncClient,
-    *,
-    request_id: str | None = None,
-    correlation_id: str | None = None,
-) -> list[CollectionItem]:
-    selector = RagBackendSelector(
-        local_url=str(settings.RAG_ENGINE_LOCAL_URL or "http://localhost:8000"),
-        docker_url=str(settings.RAG_ENGINE_DOCKER_URL or "http://localhost:8000"),
-        health_path=str(settings.RAG_ENGINE_HEALTH_PATH or "/health"),
-        probe_timeout_ms=int(settings.RAG_ENGINE_PROBE_TIMEOUT_MS or 300),
-        ttl_seconds=int(settings.RAG_ENGINE_BACKEND_TTL_SECONDS or 20),
-        force_backend=settings.RAG_ENGINE_FORCE_BACKEND,
-    )
-    base_url = await selector.resolve_base_url()
-
-    url = f"{base_url.rstrip('/')}/api/v1/ingestion/collections"
-    params = {"tenant_id": tenant_id}
-    response = await client.get(
-        url,
-        params=params,
-        headers=_s2s_headers(
-            tenant_id,
-            request_id=request_id,
-            correlation_id=correlation_id,
-        ),
-    )
-    response.raise_for_status()
-    payload = response.json()
-    raw_items = payload if isinstance(payload, list) else payload.get("items", [])
-    out: list[CollectionItem] = []
-    for item in raw_items:
-        if not isinstance(item, dict):
-            continue
-        cid = str(item.get("id") or "").strip()
-        if not cid:
-            continue
-        ckey = str(item.get("collection_key") or "").strip() or None
-        cname = str(item.get("name") or item.get("collection_name") or ckey or cid).strip()
-        out.append(CollectionItem(id=cid, name=cname or cid, collection_key=ckey))
-    return out
-
-
-@asynccontextmanager
-async def _rag_http_client_ctx(http_request: Request):
+def _get_rag_client(http_request: Request) -> RagRetrievalContractClient:
     shared_client = getattr(http_request.app.state, "rag_http_client", None)
-    if isinstance(shared_client, httpx.AsyncClient):
-        yield shared_client
-        return
+    return RagRetrievalContractClient(http_client=shared_client)
 
-    client = build_rag_http_client()
-    try:
-        yield client
-    finally:
-        await client.aclose()
-
-
-def _supabase_rest_headers() -> dict[str, str]:
-    service_role = str(settings.SUPABASE_SERVICE_ROLE_KEY or "").strip()
-    if not service_role:
-        raise RuntimeError("supabase_service_role_missing")
-    return {
-        "apikey": service_role,
-        "Authorization": f"Bearer {service_role}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",
-    }
-
-
-def _slugify_name(name: str) -> str:
-    base = re.sub(r"[^a-z0-9]+", "-", str(name or "").strip().lower()).strip("-")
-    if not base:
-        base = "tenant"
-    return base[:48]
-
-
-async def _create_dev_tenant_in_supabase(*, user_id: str, name: str) -> tuple[str, str]:
-    rest_url = str(settings.resolved_supabase_rest_url or "").strip()
-    if not rest_url:
-        raise RuntimeError("supabase_rest_url_missing")
-
-    tenant_id = str(uuid4())
-    tenant_name = str(name or "").strip()
-    if not tenant_name:
-        raise RuntimeError("tenant_name_required")
-
-    headers = _supabase_rest_headers()
-    institutions_url = f"{rest_url.rstrip('/')}/institutions"
-    memberships_url = f"{rest_url.rstrip('/')}/{settings.SUPABASE_MEMBERSHIPS_TABLE}"
-
-    institution_payload = {
-        "id": tenant_id,
-        "name": tenant_name,
-    }
-    membership_payload = {
-        str(settings.SUPABASE_MEMBERSHIP_USER_COLUMN): str(user_id),
-        str(settings.SUPABASE_MEMBERSHIP_TENANT_COLUMN): str(tenant_id),
-    }
-
-    async with httpx.AsyncClient(timeout=6.0) as client:
-        response = await client.post(institutions_url, json=institution_payload, headers=headers)
-        if response.status_code >= 400:
-            raise RuntimeError(f"institution_insert_failed:{response.text}")
-
-        membership_error: str | None = None
-        membership_response = await client.post(
-            memberships_url,
-            json=membership_payload,
-            headers=headers,
-        )
-        if membership_response.status_code >= 400:
-            fallback_payload = {
-                str(settings.SUPABASE_MEMBERSHIP_USER_COLUMN): str(user_id),
-                "institution_id": str(tenant_id),
-            }
-            fallback_response = await client.post(
-                memberships_url,
-                json=fallback_payload,
-                headers=headers,
-            )
-            if fallback_response.status_code >= 400:
-                membership_error = (
-                    "membership_insert_failed:"
-                    f"{membership_response.text} || fallback={fallback_response.text}"
-                )
-        if membership_error and bool(settings.ORCH_AUTH_REQUIRED):
-            raise RuntimeError(membership_error)
-        if membership_error:
-            emit_event(
-                logger,
-                "dev_tenant_membership_skipped",
-                level="warning",
-                reason="auth_disabled_or_non_uuid_user",
-                error=membership_error,
-                tenant_id=tenant_id,
-                user_id=user_id,
-            )
-
-    return tenant_id, tenant_name
 
 
 @router.post("/answer", response_model=Dict[str, Any])
@@ -378,16 +121,23 @@ async def answer_with_orchestrator(
             scope_metrics_store.record_mismatch_detected(authorized_tenant)
             scope_metrics_store.record_mismatch_blocked(authorized_tenant)
 
-        context_chunks = [item.content for item in result.answer.evidence]
-        citations, citations_detailed, citation_quality = build_citation_bundle(
-            answer_text=result.answer.text,
-            evidence=result.answer.evidence,
-            profile=agent_profile,
-            requested_scopes=tuple(result.plan.requested_standards or ()),
+        response_data = map_orchestrator_result(
+            result=result,
+            agent_profile=agent_profile,
+            profile_resolution=resolved_profile.resolution.model_dump(),
         )
-        validation_accepted = bool(result.validation.accepted)
-        clarification_present = bool(result.clarification)
-        interaction_metrics = dict((result.retrieval.trace or {}).get("interaction_metrics") or {})
+
+        # Inject kernel flags (settings dependent)
+        response_data["retrieval_plan"]["kernel_flags"] = {
+            "semantic_planner": bool(settings.ORCH_SEMANTIC_PLANNER),
+            "multi_query_primary": bool(settings.ORCH_MULTI_QUERY_PRIMARY),
+            "multi_query_refine": bool(settings.ORCH_MULTI_QUERY_REFINE),
+            "multi_query_evaluator": bool(settings.ORCH_MULTI_QUERY_EVALUATOR),
+        }
+
+        # Logging and Summary metrics
+        interaction_metrics = response_data.get("interaction") or {}
+        citation_quality = response_data.get("citation_quality") or {}
         emit_event(
             logger,
             "orchestrator_answer_summary",
@@ -395,10 +145,10 @@ async def answer_with_orchestrator(
             tenant_id=authorized_tenant,
             collection_id=request.collection_id,
             mode=result.plan.mode,
-            context_chunks_count=len(context_chunks),
-            citations_count=len(citations),
-            validation_accepted=validation_accepted,
-            clarification_present=clarification_present,
+            context_chunks_count=len(response_data.get("context_chunks", [])),
+            citations_count=len(response_data.get("citations", [])),
+            validation_accepted=bool(result.validation.accepted),
+            clarification_present=bool(result.clarification),
             citation_structured_ratio=citation_quality.get("structured_ratio"),
             citation_missing_standard_count=citation_quality.get("missing_standard_count"),
             citation_missing_clause_count=citation_quality.get("missing_clause_count"),
@@ -413,90 +163,8 @@ async def answer_with_orchestrator(
             agent_profile_resolution_reason=resolved_profile.resolution.decision_reason,
             duration_ms=round((time.perf_counter() - started) * 1000.0, 2),
         )
-        if len(context_chunks) == 0:
-            reason = "scope_validation_blocked" if blocked else "retrieval_empty"
-            emit_event(
-                logger,
-                "orchestrator_answer_empty_context",
-                user_id=current_user.user_id,
-                tenant_id=authorized_tenant,
-                collection_id=request.collection_id,
-                reason=reason,
-            )
 
-        return {
-            "answer": result.answer.text,
-            "mode": result.plan.mode,
-            "engine": str(result.engine or "universal_flow"),
-            "agent_profile": {
-                "profile_id": agent_profile.profile_id,
-                "version": agent_profile.version,
-                "status": agent_profile.status,
-                "resolution": resolved_profile.resolution.model_dump(),
-            },
-            "citations": citations,
-            "citations_detailed": citations_detailed,
-            "citation_quality": citation_quality,
-            "context_chunks": context_chunks,
-            "requested_scopes": list(result.plan.requested_standards),
-            "retrieval_plan": {
-                "promoted": bool((result.retrieval.trace or {}).get("promoted", False)),
-                "reason": str(
-                    (result.retrieval.trace or {}).get("reason")
-                    or (result.retrieval.trace or {}).get("fallback_reason")
-                    or ""
-                ),
-                "initial_mode": str((result.retrieval.trace or {}).get("initial_mode") or ""),
-                "final_mode": str((result.retrieval.trace or {}).get("final_mode") or ""),
-                "missing_scopes": list((result.retrieval.trace or {}).get("missing_scopes") or []),
-                "fallback_blocked_by_literal_lock": bool(
-                    (result.retrieval.trace or {}).get("fallback_blocked_by_literal_lock", False)
-                ),
-                "subqueries": list((result.retrieval.trace or {}).get("subqueries") or []),
-                "timings_ms": dict((result.retrieval.trace or {}).get("timings_ms") or {}),
-                "kernel_flags": {
-                    "semantic_planner": bool(settings.ORCH_SEMANTIC_PLANNER),
-                    "multi_query_primary": bool(settings.ORCH_MULTI_QUERY_PRIMARY),
-                    "multi_query_refine": bool(settings.ORCH_MULTI_QUERY_REFINE),
-                    "multi_query_evaluator": bool(settings.ORCH_MULTI_QUERY_EVALUATOR),
-                },
-            },
-            "retrieval": {
-                "contract": result.retrieval.contract,
-                "strategy": result.retrieval.strategy,
-                "partial": bool(result.retrieval.partial),
-                "trace": dict(result.retrieval.trace or {}),
-            },
-            "interaction": interaction_metrics,
-            "scope_validation": dict(result.retrieval.scope_validation or {}),
-            "clarification": (
-                {
-                    "question": result.clarification.question,
-                    "options": list(result.clarification.options),
-                    "kind": str(result.clarification.kind or "clarification"),
-                    "level": str(result.clarification.level or "L2"),
-                    "missing_slots": list(
-                        ((result.retrieval.trace or {}).get("clarification_request") or {}).get(
-                            "missing_slots"
-                        )
-                        or []
-                    ),
-                    "expected_answer": str(
-                        ((result.retrieval.trace or {}).get("clarification_request") or {}).get(
-                            "expected_answer"
-                        )
-                        or ""
-                    ),
-                }
-                if result.clarification
-                else None
-            ),
-            "validation": {
-                "accepted": result.validation.accepted,
-                "issues": list(result.validation.issues),
-            },
-            "reasoning_trace": dict(result.reasoning_trace or {}),
-        }
+        return response_data
     except ScopeValidationError as exc:
         raise HTTPException(
             status_code=400,
@@ -518,7 +186,7 @@ async def answer_with_orchestrator(
             http_request.headers.get("X-Request-ID") or http_request.headers.get("X-Trace-ID") or ""
         ).strip()
         corr_id = str(http_request.headers.get("X-Correlation-ID") or "").strip()
-        error_code = _classify_orchestrator_error(exc)
+        error_code = classify_orchestrator_error(exc)
         emit_event(
             logger,
             "orchestrator_answer_failed",
@@ -540,6 +208,7 @@ async def answer_with_orchestrator(
                 "correlation_id": corr_id or None,
             },
         )
+
 
 
 @router.post("/answer/stream")
@@ -580,8 +249,8 @@ async def answer_with_orchestrator_stream(
     )
 
     async def _event_stream():
-        started = time.perf_counter()
-        yield _sse(
+        streaming_started = time.perf_counter()
+        yield format_sse_event(
             "status",
             {
                 "type": "accepted",
@@ -595,26 +264,28 @@ async def answer_with_orchestrator_stream(
         emitted_phase_index = -1
         while not task.done():
             pulse += 1
-            elapsed_ms = round((time.perf_counter() - started) * 1000.0, 2)
+            elapsed_ms = round((time.perf_counter() - streaming_started) * 1000.0, 2)
             elapsed_seconds = elapsed_ms / 1000.0
-            while emitted_phase_index + 1 < len(_THINKING_PHASES) and elapsed_seconds >= float(
-                _THINKING_PHASES[emitted_phase_index + 1].get("at_seconds") or 0.0
+            
+            # Thinking phases
+            while emitted_phase_index + 1 < len(THINKING_PHASES) and elapsed_seconds >= float(
+                THINKING_PHASES[emitted_phase_index + 1].get("at_seconds") or 0.0
             ):
                 emitted_phase_index += 1
-                phase_item = _THINKING_PHASES[emitted_phase_index]
-                yield _sse(
+                phase_item = THINKING_PHASES[emitted_phase_index]
+                yield format_sse_event(
                     "status",
                     {
                         "type": "thinking",
                         "phase": phase_item.get("phase"),
                         "label": phase_item.get("label"),
                         "step": emitted_phase_index + 1,
-                        "total_steps": len(_THINKING_PHASES),
+                        "total_steps": len(THINKING_PHASES),
                         "elapsed_ms": elapsed_ms,
                     },
                 )
 
-            yield _sse(
+            yield format_sse_event(
                 "status",
                 {
                     "type": "working",
@@ -627,16 +298,20 @@ async def answer_with_orchestrator_stream(
 
         try:
             result = await task
-            context_chunks = [item.content for item in result.answer.evidence]
-            citations, citations_detailed, citation_quality = build_citation_bundle(
-                answer_text=result.answer.text,
-                evidence=result.answer.evidence,
-                profile=agent_profile,
-                requested_scopes=tuple(result.plan.requested_standards or ()),
+            response_data = map_orchestrator_result(
+                result=result,
+                agent_profile=agent_profile,
+                profile_resolution=resolved_profile.resolution.model_dump(),
             )
-            interaction_metrics = dict(
-                (result.retrieval.trace or {}).get("interaction_metrics") or {}
-            )
+            
+            # Injection for stream specific payload
+            response_data["type"] = "clarification_required" if result.clarification else "final_answer"
+            response_data["elapsed_ms"] = round((time.perf_counter() - streaming_started) * 1000.0, 2)
+            response_data["context_chunks_count"] = len(response_data.get("context_chunks", []))
+
+            # Logging
+            interaction_metrics = response_data.get("interaction") or {}
+            citation_quality = response_data.get("citation_quality") or {}
             emit_event(
                 logger,
                 "orchestrator_answer_stream_summary",
@@ -644,8 +319,8 @@ async def answer_with_orchestrator_stream(
                 tenant_id=authorized_tenant,
                 collection_id=request.collection_id,
                 mode=result.plan.mode,
-                context_chunks_count=len(context_chunks),
-                citations_count=len(citations),
+                context_chunks_count=response_data["context_chunks_count"],
+                citations_count=len(response_data.get("citations", [])),
                 validation_accepted=bool(result.validation.accepted),
                 clarification_present=bool(result.clarification),
                 citation_structured_ratio=citation_quality.get("structured_ratio"),
@@ -655,57 +330,13 @@ async def answer_with_orchestrator_stream(
                 clarification_confidence=interaction_metrics.get("clarification_confidence"),
                 slots_filled=interaction_metrics.get("slots_filled"),
                 loop_prevented=interaction_metrics.get("loop_prevented"),
-                duration_ms=round((time.perf_counter() - started) * 1000.0, 2),
+                duration_ms=response_data["elapsed_ms"],
             )
-            payload = {
-                "type": "clarification_required" if result.clarification else "final_answer",
-                "elapsed_ms": round((time.perf_counter() - started) * 1000.0, 2),
-                "answer": result.answer.text,
-                "mode": result.plan.mode,
-                "engine": str(result.engine or "universal_flow"),
-                "citations": citations,
-                "citations_detailed": citations_detailed,
-                "citation_quality": citation_quality,
-                "context_chunks": context_chunks,
-                "context_chunks_count": len(context_chunks),
-                "retrieval": {
-                    "contract": result.retrieval.contract,
-                    "strategy": result.retrieval.strategy,
-                    "partial": bool(result.retrieval.partial),
-                    "trace": dict(result.retrieval.trace or {}),
-                },
-                "validation": {
-                    "accepted": result.validation.accepted,
-                    "issues": list(result.validation.issues),
-                },
-                "interaction": interaction_metrics,
-                "clarification": (
-                    {
-                        "question": result.clarification.question,
-                        "options": list(result.clarification.options),
-                        "kind": str(result.clarification.kind or "clarification"),
-                        "level": str(result.clarification.level or "L2"),
-                        "missing_slots": list(
-                            ((result.retrieval.trace or {}).get("clarification_request") or {}).get(
-                                "missing_slots"
-                            )
-                            or []
-                        ),
-                        "expected_answer": str(
-                            ((result.retrieval.trace or {}).get("clarification_request") or {}).get(
-                                "expected_answer"
-                            )
-                            or ""
-                        ),
-                    }
-                    if result.clarification
-                    else None
-                ),
-            }
-            yield _sse("result", payload)
-            yield _sse("done", {"ok": True})
+
+            yield format_sse_event("result", response_data)
+            yield format_sse_event("done", {"ok": True})
         except Exception as exc:
-            error_code = _classify_orchestrator_error(exc)
+            error_code = classify_orchestrator_error(exc)
             emit_event(
                 logger,
                 "orchestrator_answer_stream_failed",
@@ -714,11 +345,11 @@ async def answer_with_orchestrator_stream(
                 error=compact_error(exc),
                 request_id=req_id or None,
                 correlation_id=corr_id or None,
-                duration_ms=round((time.perf_counter() - started) * 1000.0, 2),
+                duration_ms=round((time.perf_counter() - streaming_started) * 1000.0, 2),
             )
             if bool(settings.ORCH_LOG_EXC_INFO):
                 logger.error("orchestrator_answer_stream_failed_exc", exc_info=True)
-            yield _sse(
+            yield format_sse_event(
                 "error",
                 {
                     "code": error_code,
@@ -729,6 +360,7 @@ async def answer_with_orchestrator_stream(
             )
 
     return StreamingResponse(_event_stream(), media_type="text/event-stream")
+
 
 
 @router.get("/tenants", response_model=TenantListResponse)
@@ -767,7 +399,7 @@ async def create_dev_tenant(
         )
 
     try:
-        tenant_id, created_name = await _create_dev_tenant_in_supabase(
+        tenant_id, created_name = await supabase_create_dev_tenant(
             user_id=current_user.user_id,
             name=tenant_name,
         )
@@ -803,6 +435,7 @@ async def list_authorized_collections(
     http_request: Request,
     tenant_id: str = Query(..., min_length=1),
     current_user: UserContext = Depends(get_current_user),
+    rag_client: RagRetrievalContractClient = Depends(_get_rag_client),
 ) -> CollectionListResponse:
     started = time.perf_counter()
     authorized_tenant = await authorize_requested_tenant(http_request, current_user, tenant_id)
@@ -811,13 +444,15 @@ async def list_authorized_collections(
             http_request.headers.get("X-Request-ID") or http_request.headers.get("X-Trace-ID") or ""
         ).strip()
         corr_id = str(http_request.headers.get("X-Correlation-ID") or "").strip()
-        async with _rag_http_client_ctx(http_request) as client:
-            items = await _fetch_collections_from_rag(
-                authorized_tenant,
-                client,
-                request_id=req_id or None,
-                correlation_id=corr_id or None,
-            )
+        
+        raw_items = await rag_client.list_collections(
+            tenant_id=authorized_tenant,
+            user_id=current_user.user_id,
+            request_id=req_id or None,
+            correlation_id=corr_id or None,
+        )
+        items = map_collection_items(raw_items)
+        
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code if exc.response is not None else 502
         emit_event(
@@ -877,6 +512,7 @@ async def list_authorized_collections(
         duration_ms=round((time.perf_counter() - started) * 1000.0, 2),
     )
     return CollectionListResponse(items=items)
+
 
 
 @router.get("/agent-profiles", response_model=AgentProfileListResponse)
@@ -989,40 +625,25 @@ async def validate_scope_proxy(
     http_request: Request,
     request: OrchestratorValidateScopeRequest,
     current_user: UserContext = Depends(get_current_user),
+    rag_client: RagRetrievalContractClient = Depends(_get_rag_client),
 ) -> Dict[str, Any]:
     authorized_tenant = await authorize_requested_tenant(
         http_request, current_user, request.tenant_id
     )
-    selector = RagBackendSelector(
-        local_url=str(settings.RAG_ENGINE_LOCAL_URL or "http://localhost:8000"),
-        docker_url=str(settings.RAG_ENGINE_DOCKER_URL or "http://localhost:8000"),
-        health_path=str(settings.RAG_ENGINE_HEALTH_PATH or "/health"),
-        probe_timeout_ms=int(settings.RAG_ENGINE_PROBE_TIMEOUT_MS or 300),
-        ttl_seconds=int(settings.RAG_ENGINE_BACKEND_TTL_SECONDS or 20),
-        force_backend=settings.RAG_ENGINE_FORCE_BACKEND,
-    )
-    base_url = await selector.resolve_base_url()
-    url = f"{base_url.rstrip('/')}/api/v1/retrieval/validate-scope"
-    payload: Dict[str, Any] = {
-        "query": request.query,
-        "tenant_id": authorized_tenant,
-        "collection_id": request.collection_id,
-        "filters": request.filters,
-    }
     req_id = str(
         http_request.headers.get("X-Request-ID") or http_request.headers.get("X-Trace-ID") or ""
     ).strip()
     corr_id = str(http_request.headers.get("X-Correlation-ID") or "").strip()
-    headers = _s2s_headers(
-        authorized_tenant,
+
+    data = await rag_client.validate_scope(
+        query=request.query,
+        tenant_id=authorized_tenant,
+        user_id=current_user.user_id,
         request_id=req_id or None,
         correlation_id=corr_id or None,
+        collection_id=request.collection_id,
+        filters=request.filters,
     )
-    headers["X-User-ID"] = current_user.user_id
-    async with _rag_http_client_ctx(http_request) as client:
-        resp = await client.post(url, json=payload, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
     return data if isinstance(data, dict) else {"items": data}
 
 
@@ -1031,46 +652,32 @@ async def explain_retrieval_proxy(
     http_request: Request,
     request: OrchestratorExplainRequest,
     current_user: UserContext = Depends(get_current_user),
+    rag_client: RagRetrievalContractClient = Depends(_get_rag_client),
 ) -> Dict[str, Any]:
     authorized_tenant = await authorize_requested_tenant(
         http_request, current_user, request.tenant_id
     )
-    selector = RagBackendSelector(
-        local_url=str(settings.RAG_ENGINE_LOCAL_URL or "http://localhost:8000"),
-        docker_url=str(settings.RAG_ENGINE_DOCKER_URL or "http://localhost:8000"),
-        health_path=str(settings.RAG_ENGINE_HEALTH_PATH or "/health"),
-        probe_timeout_ms=int(settings.RAG_ENGINE_PROBE_TIMEOUT_MS or 300),
-        ttl_seconds=int(settings.RAG_ENGINE_BACKEND_TTL_SECONDS or 20),
-        force_backend=settings.RAG_ENGINE_FORCE_BACKEND,
-    )
-    base_url = await selector.resolve_base_url()
-    url = f"{base_url.rstrip('/')}/api/v1/retrieval/explain"
-    payload: Dict[str, Any] = {
-        "query": request.query,
-        "tenant_id": authorized_tenant,
-        "collection_id": request.collection_id,
-        "top_n": int(request.top_n),
-        "k": int(request.k),
-        "fetch_k": int(request.fetch_k),
-        "filters": request.filters,
-    }
     req_id = str(
         http_request.headers.get("X-Request-ID") or http_request.headers.get("X-Trace-ID") or ""
     ).strip()
     corr_id = str(http_request.headers.get("X-Correlation-ID") or "").strip()
-    headers = _s2s_headers(
-        authorized_tenant,
+
+    data = await rag_client.explain(
+        query=request.query,
+        tenant_id=authorized_tenant,
+        user_id=current_user.user_id,
         request_id=req_id or None,
         correlation_id=corr_id or None,
+        collection_id=request.collection_id,
+        top_n=int(request.top_n),
+        k=int(request.k),
+        fetch_k=int(request.fetch_k),
+        filters=request.filters,
     )
-    headers["X-User-ID"] = current_user.user_id
-    async with _rag_http_client_ctx(http_request) as client:
-        resp = await client.post(url, json=payload, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
     return data if isinstance(data, dict) else {"items": data}
 
 
 @router.get("/scope-health", response_model=Dict[str, Any])
 async def scope_health(tenant_id: Optional[str] = Query(default=None)):
     return scope_metrics_store.snapshot(tenant_id=tenant_id)
+

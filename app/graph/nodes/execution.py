@@ -8,13 +8,13 @@ import structlog
 from app.agent.types.models import ReasoningPlan, ReasoningStep, RetrievalDiagnostics, ToolResult
 from app.agent.tools import get_tool
 from app.profiles.models import AgentProfile
-from app.graph.universal.logic import _infer_expression_from_query
-from app.graph.universal.state import (
+from app.graph.logic.logic import _infer_expression_from_query
+from app.graph.state import (
     DEFAULT_MAX_STEPS,
     HARD_MAX_STEPS,
     UniversalState,
 )
-from app.graph.universal.utils import (
+from app.graph.logic.utils import (
     _append_tool_timing,
     _effective_execute_tool_timeout_ms,
     _sanitize_payload,

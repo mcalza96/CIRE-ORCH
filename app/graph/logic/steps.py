@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.graph.universal.nodes import (
+from app.graph.nodes import (
     aggregate_subqueries_node,
     citation_validate_node,
     execute_tool_node,
@@ -8,7 +8,7 @@ from app.graph.universal.nodes import (
     planner_node,
     reflect_node,
 )
-from app.graph.universal.routing import route_after_planner, route_after_reflect
+from app.graph.logic.routing import route_after_planner, route_after_reflect
 
 __all__ = [
     "aggregate_subqueries_node",

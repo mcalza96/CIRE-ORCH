@@ -5,7 +5,7 @@ import time
 from typing import Any
 
 from app.infrastructure.config import settings
-from app.graph.universal.state import UniversalState
+from app.graph.state import UniversalState
 
 
 def _non_negative_int(value: object, *, default: int = 0) -> int:

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from unittest.mock import AsyncMock
 from typing import Any
 
 import httpx
@@ -6,10 +7,10 @@ from fastapi.testclient import TestClient
 
 from app.agent.engine import HandleQuestionResult
 from app.agent.types.models import AnswerDraft, QueryIntent, RetrievalDiagnostics, RetrievalPlan, ValidationResult
-from app.api.deps import UserContext, get_current_user
+from app.api.v1.deps import UserContext, get_current_user
 from app.api.server import app
-from app.api.v1.routes import knowledge as knowledge_routes
-from app.api.v1.routes.knowledge import _build_use_case
+from app.api.v1.routers import knowledge as knowledge_routes
+from app.api.v1.schemas.knowledge_schemas import CollectionItem
 from app.infrastructure.config import settings
 
 
@@ -32,7 +33,7 @@ class _FakeUseCase:
 def test_answer_requires_authentication(monkeypatch):
     fake_use_case = _FakeUseCase()
     monkeypatch.setattr(settings, "ORCH_AUTH_REQUIRED", True)
-    app.dependency_overrides[_build_use_case] = lambda: fake_use_case
+    app.dependency_overrides[knowledge_routes._build_use_case] = lambda: fake_use_case
 
     client = TestClient(app)
     response = client.post(
@@ -49,7 +50,7 @@ def test_answer_requires_authentication(monkeypatch):
 def test_answer_denies_cross_tenant_request(monkeypatch):
     fake_use_case = _FakeUseCase()
     monkeypatch.setattr(settings, "ORCH_AUTH_REQUIRED", True)
-    app.dependency_overrides[_build_use_case] = lambda: fake_use_case
+    app.dependency_overrides[knowledge_routes._build_use_case] = lambda: fake_use_case
     app.dependency_overrides[get_current_user] = lambda: UserContext(
         user_id="user-1",
         tenant_ids=["tenant-a"],
@@ -71,7 +72,7 @@ def test_answer_denies_cross_tenant_request(monkeypatch):
 def test_answer_uses_authorized_tenant_and_user_context(monkeypatch):
     fake_use_case = _FakeUseCase()
     monkeypatch.setattr(settings, "ORCH_AUTH_REQUIRED", True)
-    app.dependency_overrides[_build_use_case] = lambda: fake_use_case
+    app.dependency_overrides[knowledge_routes._build_use_case] = lambda: fake_use_case
     app.dependency_overrides[get_current_user] = lambda: UserContext(
         user_id="user-1",
         tenant_ids=["tenant-a"],
@@ -111,7 +112,9 @@ def test_tenants_endpoint_returns_authorized_tenants(monkeypatch):
 
     app.dependency_overrides.clear()
     assert response.status_code == 200
-    assert response.json()["items"] == [
+    # Sort to avoid flaky order issues
+    items = sorted(response.json()["items"], key=lambda x: x["id"])
+    assert items == [
         {"id": "tenant-a", "name": "Tenant A"},
         {"id": "tenant-b", "name": "Tenant B"},
     ]
@@ -139,14 +142,12 @@ def test_collections_endpoint_returns_items_for_authorized_tenant(monkeypatch):
         tenant_ids=["tenant-a"],
     )
 
-    async def _fake_fetch_collections(_tenant_id, **kwargs):
-        del kwargs
-        return [
-            knowledge_routes.CollectionItem(id="c1", name="ISO", collection_key="iso"),
-            knowledge_routes.CollectionItem(id="c2", name="45001", collection_key="iso45001"),
-        ]
-
-    monkeypatch.setattr(knowledge_routes, "_fetch_collections_from_rag", _fake_fetch_collections)
+    mock_rag_client = AsyncMock()
+    mock_rag_client.list_collections.return_value = [
+        {"id": "c1", "collection_key": "iso", "name": "ISO"},
+        {"id": "c2", "collection_key": "iso45001", "name": "45001"},
+    ]
+    app.dependency_overrides[knowledge_routes._get_rag_client] = lambda: mock_rag_client
 
     client = TestClient(app)
     response = client.get("/api/v1/knowledge/collections?tenant_id=tenant-a")
@@ -166,13 +167,13 @@ def test_collections_endpoint_surfaces_upstream_auth_failure(monkeypatch):
         tenant_ids=["tenant-a"],
     )
 
-    async def _fake_fetch_collections(_tenant_id, **kwargs):
-        del kwargs
-        request = httpx.Request("GET", "http://rag:8000/api/v1/ingestion/collections")
-        response = httpx.Response(401, request=request)
-        raise httpx.HTTPStatusError("unauthorized", request=request, response=response)
-
-    monkeypatch.setattr(knowledge_routes, "_fetch_collections_from_rag", _fake_fetch_collections)
+    mock_rag_client = AsyncMock()
+    request = httpx.Request("GET", "http://rag:8000/api/v1/ingestion/collections")
+    response_obj = httpx.Response(401, request=request)
+    mock_rag_client.list_collections.side_effect = httpx.HTTPStatusError(
+        "unauthorized", request=request, response=response_obj
+    )
+    app.dependency_overrides[knowledge_routes._get_rag_client] = lambda: mock_rag_client
 
     client = TestClient(app)
     response = client.get("/api/v1/knowledge/collections?tenant_id=tenant-a")

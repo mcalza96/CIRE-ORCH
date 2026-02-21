@@ -6,17 +6,17 @@ from app.agent.types.models import ReasoningPlan, ReasoningStep
 from app.agent.tools import resolve_allowed_tools
 from app.profiles.models import AgentProfile
 from app.infrastructure.config import settings
-from app.graph.universal.clarification_llm import build_clarification_with_llm
-from app.graph.universal.interaction import decide_interaction
-from app.graph.universal.planning import build_universal_plan, default_tool_input
-from app.graph.universal.state import (
+from app.graph.logic.clarification_llm import build_clarification_with_llm
+from app.graph.logic.interaction import decide_interaction
+from app.graph.logic.planner_logic import build_universal_plan, default_tool_input
+from app.graph.state import (
     DEFAULT_MAX_REFLECTIONS,
     DEFAULT_MAX_STEPS,
     HARD_MAX_REFLECTIONS,
     HARD_MAX_STEPS,
     UniversalState,
 )
-from app.graph.universal.utils import (
+from app.graph.logic.utils import (
     get_adaptive_timeout_ms,
     state_get_int,
     state_get_list,
@@ -78,7 +78,7 @@ async def planner_node(
         ans_text = str(clarification_context.get("answer_text") or "").strip()
         missing_slots = clarification_context.get("missing_slots")
         if ans_text and isinstance(missing_slots, list) and missing_slots:
-            from app.graph.universal.clarification_llm import extract_clarification_slots_with_llm
+            from app.graph.logic.clarification_llm import extract_clarification_slots_with_llm
 
             extracted_slots = await extract_clarification_slots_with_llm(
                 clarification_text=ans_text,
@@ -116,7 +116,7 @@ async def planner_node(
         plan_feedback = clarification_context.get("plan_feedback")
         if isinstance(plan_feedback, str) and plan_feedback.strip() and prior_interruptions > 0:
             from app.agent.types.models import ToolCall
-            from app.graph.universal.clarification_llm import rewrite_plan_with_feedback_llm
+            from app.graph.logic.clarification_llm import rewrite_plan_with_feedback_llm
             from dataclasses import replace
             import json
 

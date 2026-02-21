@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.graph.universal.state import MAX_PLAN_ATTEMPTS, UniversalState
-from app.graph.universal.utils import state_get_str
+from app.graph.state import MAX_PLAN_ATTEMPTS, UniversalState
+from app.graph.logic.utils import state_get_str
 
 
 def route_after_planner(state: UniversalState) -> str:

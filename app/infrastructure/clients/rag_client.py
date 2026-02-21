@@ -195,6 +195,32 @@ class RagRetrievalContractClient:
                 correlation_id=correlation_id,
             )
 
+    async def list_collections(
+        self,
+        *,
+        tenant_id: str,
+        user_id: str | None = None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        selector = self.backend_selector
+        assert selector is not None
+        base_url = await selector.resolve_base_url()
+        path = "/api/v1/ingestion/collections"
+        params = {"tenant_id": tenant_id}
+
+        async with self._record_metrics("list_collections"):
+            payload = await self._get_once(
+                base_url=base_url,
+                path=path,
+                params=params,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                request_id=request_id,
+                correlation_id=correlation_id,
+            )
+            return payload if isinstance(payload, list) else payload.get("items", [])
+
     async def _dispatch(
         self,
         path: str,
@@ -344,6 +370,38 @@ class RagRetrievalContractClient:
             response.raise_for_status()
             data = response.json()
             return data if isinstance(data, dict) else {"items": data}
+        except httpx.TimeoutException:
+            self._log_timeout(path, base_url, started_at, client)
+            raise
+
+    async def _get_once(
+        self,
+        *,
+        base_url: str,
+        path: str,
+        params: dict[str, Any],
+        tenant_id: str,
+        user_id: str | None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
+    ) -> Any:
+        url = base_url.rstrip("/") + path
+        trace_id = str(request_id or correlation_id or uuid4())
+        corr_id = str(correlation_id or request_id or trace_id)
+        
+        headers = self._build_headers(tenant_id, user_id, request_id, trace_id, corr_id)
+        
+        client = self.http_client
+        if client is None:
+            client = build_rag_http_client(timeout_seconds=self.timeout_seconds)
+            self.http_client = client
+            self._owns_http_client = True
+
+        started_at = time.perf_counter()
+        try:
+            response = await client.get(url, params=params, headers=headers)
+            response.raise_for_status()
+            return response.json()
         except httpx.TimeoutException:
             self._log_timeout(path, base_url, started_at, client)
             raise

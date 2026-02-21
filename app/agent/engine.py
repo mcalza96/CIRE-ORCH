@@ -131,7 +131,7 @@ class HandleQuestionUseCase:
 
     def _get_orchestrator(self) -> Any:
         if self._orchestrator is None:
-            from app.graph.universal.flow import UniversalReasoningOrchestrator
+            from app.graph.flow import UniversalReasoningOrchestrator
 
             self._orchestrator = UniversalReasoningOrchestrator(
                 retriever=self._retriever,

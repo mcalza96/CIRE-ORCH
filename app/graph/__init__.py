@@ -1,3 +1,3 @@
-from app.graph.universal.flow import UniversalReasoningOrchestrator
+from app.graph.flow import UniversalReasoningOrchestrator
 
 __all__ = ["UniversalReasoningOrchestrator"]

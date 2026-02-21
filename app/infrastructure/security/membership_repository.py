@@ -1,40 +1,22 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 from urllib.parse import quote
-from uuid import uuid4
-import time
 
 import httpx
 import structlog
-from fastapi import HTTPException, Request, status
 
-from app.api.deps import UserContext
 from app.infrastructure.config import settings
-
 
 logger = structlog.get_logger(__name__)
 
-
-def _request_id(request: Request) -> str:
-    return str(request.headers.get("X-Request-ID") or request.headers.get("X-Correlation-ID") or uuid4())
-
-
-def _http_error(request: Request, status_code: int, code: str, message: str) -> HTTPException:
-    return HTTPException(
-        status_code=status_code,
-        detail={
-            "code": code,
-            "message": message,
-            "request_id": _request_id(request),
-        },
-    )
-
+_MEMBERSHIP_CACHE: dict[str, tuple[float, list[str]]] = {}
+_MEMBERSHIP_CACHE_TTL = 300  # 5 minutes
 
 def _normalize_tenant(value: str | None) -> str | None:
     normalized = str(value or "").strip()
     return normalized or None
-
 
 def _normalize_tenants(values: list[str]) -> list[str]:
     out: set[str] = set()
@@ -43,7 +25,6 @@ def _normalize_tenants(values: list[str]) -> list[str]:
         if normalized:
             out.add(normalized)
     return sorted(out)
-
 
 async def _query_membership_tenants(user_id: str, table: str, user_col: str, tenant_col: str) -> list[str]:
     rest_url = settings.resolved_supabase_rest_url
@@ -81,11 +62,6 @@ async def _query_membership_tenants(user_id: str, table: str, user_col: str, ten
             out.append(value.strip())
     return _normalize_tenants(out)
 
-
-_MEMBERSHIP_CACHE: dict[str, tuple[float, list[str]]] = {}
-_MEMBERSHIP_CACHE_TTL = 300  # 5 minutes
-
-
 async def _internal_fetch_membership_tenants(user_id: str) -> list[str]:
     table = settings.SUPABASE_MEMBERSHIPS_TABLE
     user_col = settings.SUPABASE_MEMBERSHIP_USER_COLUMN
@@ -100,7 +76,6 @@ async def _internal_fetch_membership_tenants(user_id: str) -> list[str]:
     if rows:
         return rows
 
-    # Backward-compatible fallback for schemas that model tenant as institution_id.
     if tenant_col != "institution_id":
         institution_rows = await _query_membership_tenants(
             user_id=user_id,
@@ -109,12 +84,6 @@ async def _internal_fetch_membership_tenants(user_id: str) -> list[str]:
             tenant_col="institution_id",
         )
         if institution_rows:
-            logger.info(
-                "tenant_membership_lookup_column_fallback",
-                configured_column=tenant_col,
-                fallback_column="institution_id",
-                count=len(institution_rows),
-            )
             return institution_rows
 
     if table == "tenant_memberships":
@@ -125,12 +94,6 @@ async def _internal_fetch_membership_tenants(user_id: str) -> list[str]:
             tenant_col=tenant_col,
         )
         if fallback_rows:
-            logger.info(
-                "tenant_membership_lookup_fallback",
-                configured_table=table,
-                fallback_table="memberships",
-                count=len(fallback_rows),
-            )
             return fallback_rows
         if tenant_col != "institution_id":
             fallback_institution_rows = await _query_membership_tenants(
@@ -140,18 +103,10 @@ async def _internal_fetch_membership_tenants(user_id: str) -> list[str]:
                 tenant_col="institution_id",
             )
             if fallback_institution_rows:
-                logger.info(
-                    "tenant_membership_lookup_fallback",
-                    configured_table=table,
-                    fallback_table="memberships",
-                    fallback_column="institution_id",
-                    count=len(fallback_institution_rows),
-                )
                 return fallback_institution_rows
     return []
 
-
-async def _fetch_membership_tenants(user_id: str) -> list[str]:
+async def fetch_membership_tenants(user_id: str) -> list[str]:
     now = time.time()
     if user_id in _MEMBERSHIP_CACHE:
         timestamp, cached_tenants = _MEMBERSHIP_CACHE[user_id]
@@ -161,18 +116,6 @@ async def _fetch_membership_tenants(user_id: str) -> list[str]:
     tenants = await _internal_fetch_membership_tenants(user_id)
     _MEMBERSHIP_CACHE[user_id] = (time.time(), tenants)
     return tenants
-
-
-async def _resolve_allowed_tenants(user: UserContext) -> list[str]:
-    claim_tenants = _normalize_tenants(list(user.tenant_ids))
-    if claim_tenants:
-        return claim_tenants
-    return await _fetch_membership_tenants(user.user_id)
-
-
-async def resolve_allowed_tenants(user: UserContext) -> list[str]:
-    return await _resolve_allowed_tenants(user)
-
 
 async def fetch_tenant_names(tenant_ids: list[str]) -> dict[str, str]:
     scoped = _normalize_tenants(tenant_ids)
@@ -207,90 +150,8 @@ async def fetch_tenant_names(tenant_ids: list[str]) -> dict[str, str]:
     for item in payload:
         if not isinstance(item, dict):
             continue
-        tid = _normalize_tenant(item.get("id")) if isinstance(item.get("id"), str) else None
+        tid = _normalize_tenant(item.get("id"))
         tname = str(item.get("name") or "").strip()
         if tid and tname:
             names[tid] = tname
     return names
-
-
-async def authorize_requested_tenant(
-    request: Request,
-    current_user: UserContext,
-    requested_tenant: str | None,
-) -> str:
-    requested = _normalize_tenant(requested_tenant)
-
-    if not settings.ORCH_AUTH_REQUIRED:
-        if not requested:
-            raise _http_error(
-                request,
-                status.HTTP_400_BAD_REQUEST,
-                "TENANT_REQUIRED",
-                "tenant_id is required when ORCH_AUTH_REQUIRED is disabled",
-            )
-        logger.info(
-            "tenant_allowed",
-            decision="tenant_allowed",
-            user_id=current_user.user_id,
-            tenant_id=requested,
-            source="auth_bypass",
-        )
-        return requested
-
-    allowed_tenants = await _resolve_allowed_tenants(current_user)
-    if not allowed_tenants:
-        logger.warning(
-            "tenant_denied",
-            decision="tenant_denied",
-            user_id=current_user.user_id,
-            reason="no_membership",
-        )
-        raise _http_error(
-            request,
-            status.HTTP_403_FORBIDDEN,
-            "TENANT_ACCESS_DENIED",
-            "User has no tenant membership",
-        )
-
-    if requested:
-        if requested not in allowed_tenants:
-            logger.warning(
-                "tenant_denied",
-                decision="tenant_denied",
-                user_id=current_user.user_id,
-                tenant_id=requested,
-                reason="not_allowed",
-            )
-            raise _http_error(
-                request,
-                status.HTTP_403_FORBIDDEN,
-                "TENANT_ACCESS_DENIED",
-                "User is not authorized for requested tenant",
-            )
-        logger.info(
-            "tenant_allowed",
-            decision="tenant_allowed",
-            user_id=current_user.user_id,
-            tenant_id=requested,
-            source="request",
-        )
-        return requested
-
-    if len(allowed_tenants) == 1:
-        selected = allowed_tenants[0]
-        logger.info(
-            "tenant_allowed",
-            decision="tenant_allowed",
-            user_id=current_user.user_id,
-            tenant_id=selected,
-            source="single_membership",
-        )
-        return selected
-
-    raise _http_error(
-        request,
-        status.HTTP_400_BAD_REQUEST,
-        "TENANT_REQUIRED",
-        "tenant_id is required for multi-tenant users",
-    )

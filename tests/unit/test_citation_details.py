@@ -1,5 +1,5 @@
 from app.agent.types.models import EvidenceItem
-from app.api.v1.routes.knowledge import _build_citation_details
+from app.api.v1.routers.knowledge import _build_citation_details
 
 
 def test_build_citation_details_includes_metadata_and_snippet():
