@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import structlog
 
-from app.agent.models import ReasoningPlan, ReasoningStep, ToolResult
+from app.agent.types.models import ReasoningPlan, ReasoningStep, ToolResult
 from app.graph.universal.logic import _extract_retry_signal_from_retrieval, _is_retryable_reason
 from app.graph.universal.state import (
     DEFAULT_MAX_REFLECTIONS,

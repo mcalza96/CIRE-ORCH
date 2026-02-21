@@ -1,7 +1,7 @@
 import pytest
 
-from app.agent.application import HandleQuestionCommand, HandleQuestionUseCase
-from app.agent.models import (
+from app.agent.engine import HandleQuestionCommand, HandleQuestionUseCase
+from app.agent.types.models import (
     AnswerDraft,
     EvidenceItem,
     RetrievalDiagnostics,

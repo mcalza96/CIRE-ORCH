@@ -1,6 +1,6 @@
 import pytest
 
-from app.agent.models import EvidenceItem, RetrievalPlan
+from app.agent.types.models import EvidenceItem, RetrievalPlan
 from app.agent.tools.base import ToolRuntimeContext
 from app.agent.tools.expectation_coverage import ExpectationCoverageTool
 from app.profiles.models import AgentProfile, ExpectationRule

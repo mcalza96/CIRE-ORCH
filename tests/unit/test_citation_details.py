@@ -1,4 +1,4 @@
-from app.agent.models import EvidenceItem
+from app.agent.types.models import EvidenceItem
 from app.api.v1.routes.knowledge import _build_citation_details
 
 

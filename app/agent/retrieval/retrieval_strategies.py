@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
-from app.agent.error_codes import (
+from app.agent.errors import (
     RETRIEVAL_CODE_CLAUSE_MISSING,
     RETRIEVAL_CODE_SCOPE_MISMATCH,
 )

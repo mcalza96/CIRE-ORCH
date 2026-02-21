@@ -12,10 +12,10 @@ from app.infrastructure.clients.rag_client import (
 )
 
 # New Strategy Imports
-from app.agent.retrieval_flow import RetrievalFlow
-from app.agent.interfaces import EmbeddingProvider, RerankingProvider, SubqueryPlanner
+from app.agent.retrieval.retrieval_flow import RetrievalFlow
+from app.agent.types.interfaces import EmbeddingProvider, RerankingProvider, SubqueryPlanner
 from app.agent.components.query_decomposer import HybridSubqueryPlanner
-from app.agent.models import EvidenceItem, RetrievalDiagnostics, RetrievalPlan
+from app.agent.types.models import EvidenceItem, RetrievalDiagnostics, RetrievalPlan
 from app.profiles.models import AgentProfile
 
 

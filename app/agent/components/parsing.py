@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from app.agent.models import EvidenceItem, RetrievalPlan
+from app.agent.types.models import EvidenceItem, RetrievalPlan
 
 
 def extract_row_standard(item: EvidenceItem) -> str:

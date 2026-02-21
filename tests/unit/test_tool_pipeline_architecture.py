@@ -5,7 +5,7 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from app.agent.models import (
+from app.agent.types.models import (
     AnswerDraft,
     EvidenceItem,
     RetrievalPlan,

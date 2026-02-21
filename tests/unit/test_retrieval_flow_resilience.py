@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.agent.models import RetrievalPlan
-from app.agent.retrieval_flow import RetrievalFlow
+from app.agent.types.models import RetrievalPlan
+from app.agent.retrieval.retrieval_flow import RetrievalFlow
 
 
 def _plan() -> RetrievalPlan:
@@ -22,7 +22,7 @@ def _plan() -> RetrievalPlan:
 @pytest.mark.asyncio
 async def test_execute_uses_comprehensive_only(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "app.agent.retrieval_flow.settings.ORCH_RETRIEVAL_COMPREHENSIVE_ENABLED", True
+        "app.agent.retrieval.retrieval_flow.settings.ORCH_RETRIEVAL_COMPREHENSIVE_ENABLED", True
     )
 
     contract_client = AsyncMock()
@@ -61,7 +61,7 @@ async def test_execute_fails_when_comprehensive_endpoint_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "app.agent.retrieval_flow.settings.ORCH_RETRIEVAL_COMPREHENSIVE_ENABLED", True
+        "app.agent.retrieval.retrieval_flow.settings.ORCH_RETRIEVAL_COMPREHENSIVE_ENABLED", True
     )
 
     contract_client = AsyncMock()

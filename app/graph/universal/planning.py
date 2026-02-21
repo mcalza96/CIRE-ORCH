@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 
-from app.agent.models import (
+from app.agent.types.models import (
     QueryIntent,
     ReasoningPlan,
     ReasoningStep,

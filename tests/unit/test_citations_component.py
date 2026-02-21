@@ -1,5 +1,5 @@
 from app.agent.components.citations import build_citation_bundle
-from app.agent.models import EvidenceItem
+from app.agent.types.models import EvidenceItem
 from app.profiles.models import AgentProfile
 
 

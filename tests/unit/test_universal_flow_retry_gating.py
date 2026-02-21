@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.agent.models import (
+from app.agent.types.models import (
     ReasoningPlan,
     RetrievalDiagnostics,
     ToolCall,

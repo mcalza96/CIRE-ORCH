@@ -1,7 +1,7 @@
 import asyncio
 
-from app.agent.answer_adapter import GroundedAnswerAdapter
-from app.agent.models import EvidenceItem, RetrievalPlan
+from app.agent.formatters.answer_adapter import GroundedAnswerAdapter
+from app.agent.types.models import EvidenceItem, RetrievalPlan
 from app.profiles.models import AgentProfile
 
 

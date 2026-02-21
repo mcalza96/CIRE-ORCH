@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.agent.models import EvidenceItem, RetrievalPlan
+from app.agent.types.models import EvidenceItem, RetrievalPlan
 from app.agent.tools.base import ToolRuntimeContext
 from app.agent.tools.semantic_retrieval import SemanticRetrievalTool
 

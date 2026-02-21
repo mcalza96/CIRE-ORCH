@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from app.agent.http_adapters import RagEngineRetrieverAdapter
-from app.agent.models import RetrievalPlan, EvidenceItem
+from app.infrastructure.clients.http_adapters import RagEngineRetrieverAdapter
+from app.agent.types.models import RetrievalPlan, EvidenceItem
 
 
 @pytest.fixture
@@ -29,7 +29,7 @@ def create_retrieval_plan(mode="comparativa", standards=()):
 
 @pytest.mark.asyncio
 async def test_retrieve_advanced_multi_query_primary_success(retriever, mock_contract_client):
-    with patch("app.agent.http_adapters.settings") as mock_settings:
+    with patch("app.infrastructure.clients.http_adapters.settings") as mock_settings:
         mock_settings.ORCH_RETRIEVAL_CONTRACT = "advanced"
         mock_settings.ORCH_MULTI_QUERY_PRIMARY = True
         mock_settings.ORCH_MULTI_QUERY_MIN_ITEMS = 3
@@ -66,7 +66,7 @@ async def test_retrieve_advanced_multi_query_primary_success(retriever, mock_con
 async def test_retrieve_advanced_passes_semantic_tail_flag_to_planner(
     retriever, mock_contract_client
 ):
-    with patch("app.agent.http_adapters.settings") as mock_settings:
+    with patch("app.infrastructure.clients.http_adapters.settings") as mock_settings:
         mock_settings.ORCH_RETRIEVAL_CONTRACT = "advanced"
         mock_settings.ORCH_MULTI_QUERY_PRIMARY = True
         mock_settings.ORCH_MULTI_QUERY_MIN_ITEMS = 1
@@ -84,7 +84,7 @@ async def test_retrieve_advanced_passes_semantic_tail_flag_to_planner(
         )
 
         with patch(
-            "app.agent.http_adapters.build_deterministic_subqueries",
+            "app.infrastructure.clients.http_adapters.build_deterministic_subqueries",
             return_value=[{"id": "s1", "query": "sub1"}],
         ) as mock_builder:
             results = await retriever.retrieve_chunks(
@@ -104,7 +104,7 @@ async def test_retrieve_advanced_passes_semantic_tail_flag_to_planner(
 
 @pytest.mark.asyncio
 async def test_retrieve_advanced_evaluator_override(retriever, mock_contract_client):
-    with patch("app.agent.http_adapters.settings") as mock_settings:
+    with patch("app.infrastructure.clients.http_adapters.settings") as mock_settings:
         mock_settings.ORCH_RETRIEVAL_CONTRACT = "advanced"
         mock_settings.ORCH_MULTI_QUERY_PRIMARY = True
         mock_settings.ORCH_MULTI_QUERY_MIN_ITEMS = 5
@@ -119,7 +119,7 @@ async def test_retrieve_advanced_evaluator_override(retriever, mock_contract_cli
             return_value={"items": [{"content": "c1"}, {"content": "c2"}]}
         )
 
-        with patch("app.agent.http_adapters.RetrievalSufficiencyEvaluator") as mock_eval_class:
+        with patch("app.infrastructure.clients.http_adapters.RetrievalSufficiencyEvaluator") as mock_eval_class:
             mock_evaluator = MagicMock()
             mock_eval_class.return_value = mock_evaluator
             mock_evaluator.evaluate = AsyncMock(
@@ -137,7 +137,7 @@ async def test_retrieve_advanced_evaluator_override(retriever, mock_contract_cli
 
 @pytest.mark.asyncio
 async def test_retrieve_advanced_refinement_cycle(retriever, mock_contract_client):
-    with patch("app.agent.http_adapters.settings") as mock_settings:
+    with patch("app.infrastructure.clients.http_adapters.settings") as mock_settings:
         mock_settings.ORCH_RETRIEVAL_CONTRACT = "advanced"
         mock_settings.ORCH_MULTI_QUERY_PRIMARY = True
         mock_settings.ORCH_MULTI_QUERY_MIN_ITEMS = 5
@@ -167,7 +167,7 @@ async def test_retrieve_advanced_refinement_cycle(retriever, mock_contract_clien
 
         # Mock build_deterministic_subqueries to return few items so step_back isn't sliced off
         with patch(
-            "app.agent.http_adapters.build_deterministic_subqueries",
+            "app.infrastructure.clients.http_adapters.build_deterministic_subqueries",
             return_value=[{"id": "s1", "query": "sub1"}],
         ):
             results = await retriever.retrieve_chunks(
@@ -187,7 +187,7 @@ async def test_retrieve_advanced_refinement_cycle(retriever, mock_contract_clien
 
 @pytest.mark.asyncio
 async def test_retrieve_advanced_fallback_to_hybrid(retriever, mock_contract_client):
-    with patch("app.agent.http_adapters.settings") as mock_settings:
+    with patch("app.infrastructure.clients.http_adapters.settings") as mock_settings:
         mock_settings.ORCH_RETRIEVAL_CONTRACT = "advanced"
         mock_settings.ORCH_MULTI_QUERY_PRIMARY = True
         mock_settings.ORCH_MULTI_QUERY_MIN_ITEMS = 5
@@ -219,7 +219,7 @@ async def test_retrieve_advanced_fallback_to_hybrid(retriever, mock_contract_cli
 
 @pytest.mark.asyncio
 async def test_retrieve_advanced_legacy_multihop_fallback(retriever, mock_contract_client):
-    with patch("app.agent.http_adapters.settings") as mock_settings:
+    with patch("app.infrastructure.clients.http_adapters.settings") as mock_settings:
         mock_settings.ORCH_RETRIEVAL_CONTRACT = "advanced"
         mock_settings.ORCH_MULTI_QUERY_PRIMARY = False  # Primary MQ disabled
         mock_settings.ORCH_MULTIHOP_FALLBACK = True
@@ -233,7 +233,7 @@ async def test_retrieve_advanced_legacy_multihop_fallback(retriever, mock_contra
             return_value={"items": [{"content": "h1", "metadata": {"row": {}}}]}
         )
 
-        with patch("app.agent.http_adapters.decide_multihop_fallback") as mock_decide:
+        with patch("app.infrastructure.clients.http_adapters.decide_multihop_fallback") as mock_decide:
             mock_decide.return_value = MagicMock(needs_fallback=True, reason="Legacy fallback")
 
             mock_contract_client.multi_query = AsyncMock(

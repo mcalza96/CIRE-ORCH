@@ -6,7 +6,7 @@ from typing import Any, Protocol
 
 import structlog
 
-from app.agent.models import (
+from app.agent.types.models import (
     AnswerDraft,
     ClarificationRequest,
     EvidenceItem,

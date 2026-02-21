@@ -5,7 +5,7 @@ from typing import Any
 import httpx
 import structlog
 
-from app.agent.interfaces import (
+from app.agent.types.interfaces import (
     EmbeddingProvider,
     ProviderAuthError,
     ProviderError,

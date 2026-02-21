@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.agent.models import AnswerDraft, RetrievalPlan, ToolResult
+from app.agent.types.models import AnswerDraft, RetrievalPlan, ToolResult
 from app.agent.tools.base import ToolRuntimeContext
 
 

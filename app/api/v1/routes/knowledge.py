@@ -12,13 +12,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.agent.adapters import LiteralEvidenceValidator
-from app.agent.application import HandleQuestionCommand, HandleQuestionUseCase
+from app.agent.formatters.adapters import LiteralEvidenceValidator
+from app.agent.engine import HandleQuestionCommand, HandleQuestionUseCase
 from app.agent.components import build_citation_bundle
 from app.agent.errors import ScopeValidationError
-from app.agent.grounded_answer_service import GroundedAnswerService
-from app.agent.http_adapters import RagEngineRetrieverAdapter
-from app.agent.answer_adapter import GroundedAnswerAdapter
+from app.agent.components.grounded_answer_service import GroundedAnswerService
+from app.infrastructure.clients.http_adapters import RagEngineRetrieverAdapter
+from app.agent.formatters.answer_adapter import GroundedAnswerAdapter
 from app.api.deps import UserContext, get_current_user
 from app.profiles.deps import resolve_agent_profile
 from app.profiles.loader import get_profile_loader

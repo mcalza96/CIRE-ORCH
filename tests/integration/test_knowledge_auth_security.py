@@ -4,8 +4,8 @@ from typing import Any
 import httpx
 from fastapi.testclient import TestClient
 
-from app.agent.application import HandleQuestionResult
-from app.agent.models import AnswerDraft, QueryIntent, RetrievalDiagnostics, RetrievalPlan, ValidationResult
+from app.agent.engine import HandleQuestionResult
+from app.agent.types.models import AnswerDraft, QueryIntent, RetrievalDiagnostics, RetrievalPlan, ValidationResult
 from app.api.deps import UserContext, get_current_user
 from app.api.server import app
 from app.api.v1.routes import knowledge as knowledge_routes

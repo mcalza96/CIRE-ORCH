@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.agent.models import AnswerDraft, EvidenceItem, RetrievalDiagnostics, RetrievalPlan
+from app.agent.types.models import AnswerDraft, EvidenceItem, RetrievalDiagnostics, RetrievalPlan
 from app.profiles.models import AgentProfile
 from app.infrastructure.config import settings
 from app.graph.universal.steps import aggregate_subqueries_node

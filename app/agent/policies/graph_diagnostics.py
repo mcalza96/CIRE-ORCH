@@ -1,7 +1,7 @@
 
 import re
 
-from app.agent.models import EvidenceItem
+from app.agent.types.models import EvidenceItem
 from app.agent.components.parsing import extract_row_standard
 
 def calculate_graph_retry_reason(trace: dict[str, object]) -> str:

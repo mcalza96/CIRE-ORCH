@@ -5,8 +5,8 @@ import re
 from datetime import datetime
 from typing import Any
 
-from app.agent.grounded_answer_service import GroundedAnswerService
-from app.agent.models import AnswerDraft, EvidenceItem, RetrievalPlan
+from app.agent.components.grounded_answer_service import GroundedAnswerService
+from app.agent.types.models import AnswerDraft, EvidenceItem, RetrievalPlan
 from app.profiles.models import AgentProfile
 from app.infrastructure.config import settings
 

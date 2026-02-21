@@ -1,4 +1,4 @@
-from app.agent.models import RetrievalPlan, QueryIntent, QueryMode
+from app.agent.types.models import RetrievalPlan, QueryIntent, QueryMode
 from app.profiles.models import AgentProfile
 
 

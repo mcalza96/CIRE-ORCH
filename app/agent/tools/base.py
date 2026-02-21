@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from app.agent.application import AnswerGeneratorPort, RetrieverPort, ValidatorPort
-from app.agent.models import ToolResult
+from app.agent.engine import AnswerGeneratorPort, RetrieverPort, ValidatorPort
+from app.agent.types.models import ToolResult
 
 
 @dataclass(frozen=True)

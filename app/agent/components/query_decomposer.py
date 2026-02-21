@@ -9,10 +9,10 @@ import structlog
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 
-from app.agent.interfaces import SubqueryPlanningContext, SubqueryPlanner
-from app.agent.retrieval_planner import build_deterministic_subqueries, extract_clause_refs
+from app.agent.types.interfaces import SubqueryPlanningContext, SubqueryPlanner
+from app.agent.retrieval.retrieval_planner import build_deterministic_subqueries, extract_clause_refs
 from app.infrastructure.config import settings
-from ..rag_schemas import SubQueryRequest
+from ..types.rag_schemas import SubQueryRequest
 
 
 logger = structlog.get_logger(__name__)

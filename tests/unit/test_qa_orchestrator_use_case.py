@@ -2,8 +2,8 @@ from dataclasses import dataclass
 
 import pytest
 
-from app.agent.application import HandleQuestionCommand, HandleQuestionUseCase
-from app.agent.models import AnswerDraft, EvidenceItem, RetrievalPlan, ValidationResult
+from app.agent.engine import HandleQuestionCommand, HandleQuestionUseCase
+from app.agent.types.models import AnswerDraft, EvidenceItem, RetrievalPlan, ValidationResult
 from app.profiles.models import AgentProfile, CapabilitiesPolicy
 
 

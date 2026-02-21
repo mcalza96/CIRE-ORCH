@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.agent.models import EvidenceItem, ToolResult
+from app.agent.types.models import EvidenceItem, ToolResult
 # ── Fix 2: Piping tests ──────────────────────────────────────────────
 
 from app.agent.tools.structural_extraction import StructuralExtractionTool

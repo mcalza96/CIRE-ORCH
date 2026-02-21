@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.agent.components.parsing import extract_row_standard
-from app.agent.models import EvidenceItem
+from app.agent.types.models import EvidenceItem
 
 
 @dataclass(frozen=True)

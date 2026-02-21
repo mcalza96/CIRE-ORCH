@@ -1,6 +1,6 @@
 import pytest
 
-from app.agent.grounded_answer_service import GroundedAnswerService
+from app.agent.components.grounded_answer_service import GroundedAnswerService
 from app.profiles.models import AgentProfile, ValidationPolicy
 
 

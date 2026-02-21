@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from app.agent.application import HandleQuestionUseCase, HandleQuestionCommand
-from app.agent.models import (
+from app.agent.engine import HandleQuestionUseCase, HandleQuestionCommand
+from app.agent.types.models import (
     RetrievalPlan,
     AnswerDraft,
     ValidationResult,
@@ -64,8 +64,8 @@ async def test_silent_correction_scope_mismatch_regenerates(use_case, mock_retri
     ])
     
     # Execute
-    with patch("app.agent.application.classify_intent", return_value=QueryIntent(mode="explicativa")), \
-         patch("app.agent.application.build_retrieval_plan", return_value=RetrievalPlan(mode="explicativa", chunk_k=5, chunk_fetch_k=20, summary_k=2, requested_standards=("ISO 9001",))):
+    with patch("app.agent.engine.classify_intent", return_value=QueryIntent(mode="explicativa")), \
+         patch("app.agent.engine.build_retrieval_plan", return_value=RetrievalPlan(mode="explicativa", chunk_k=5, chunk_fetch_k=20, summary_k=2, requested_standards=("ISO 9001",))):
         
         result = await use_case.execute(cmd)
         
@@ -102,10 +102,10 @@ async def test_silent_correction_literal_mismatch_boosts_recall(use_case, mock_r
     ])
     
     # Execute
-    with patch("app.agent.application.classify_intent", return_value=QueryIntent(mode="literal_lista")), \
-         patch("app.agent.application.build_retrieval_plan", return_value=RetrievalPlan(mode="literal_lista", chunk_k=5, chunk_fetch_k=20, summary_k=2)), \
-         patch("app.agent.application.settings.ORCH_MODE_AUTORETRY_ENABLED", False), \
-         patch("app.agent.application.settings.ORCH_MODE_HITL_ENABLED", False):
+    with patch("app.agent.engine.classify_intent", return_value=QueryIntent(mode="literal_lista")), \
+         patch("app.agent.engine.build_retrieval_plan", return_value=RetrievalPlan(mode="literal_lista", chunk_k=5, chunk_fetch_k=20, summary_k=2)), \
+         patch("app.agent.engine.settings.ORCH_MODE_AUTORETRY_ENABLED", False), \
+         patch("app.agent.engine.settings.ORCH_MODE_HITL_ENABLED", False):
         
         result = await use_case.execute(cmd)
         
@@ -136,8 +136,8 @@ async def test_silent_correction_missing_citations_regenerates_strict(use_case, 
         ValidationResult(accepted=True, issues=[])
     ])
     
-    with patch("app.agent.application.classify_intent", return_value=QueryIntent(mode="explicativa")), \
-         patch("app.agent.application.build_retrieval_plan", return_value=RetrievalPlan(mode="explicativa", chunk_k=5, chunk_fetch_k=20, summary_k=2)):
+    with patch("app.agent.engine.classify_intent", return_value=QueryIntent(mode="explicativa")), \
+         patch("app.agent.engine.build_retrieval_plan", return_value=RetrievalPlan(mode="explicativa", chunk_k=5, chunk_fetch_k=20, summary_k=2)):
          
         result = await use_case.execute(cmd)
         
@@ -161,11 +161,11 @@ async def test_silent_correction_persistent_failure(use_case, mock_retriever, mo
     # Fails both times
     mock_validator.validate = MagicMock(return_value=ValidationResult(accepted=False, issues=["Scope mismatch: answer mentions incorrect standard", "Persistence"]))
     
-    with patch("app.agent.application.classify_intent", return_value=QueryIntent(mode="explicativa")), \
-         patch("app.agent.application.build_retrieval_plan", return_value=RetrievalPlan(mode="explicativa", chunk_k=5, chunk_fetch_k=20, summary_k=2, requested_standards=("ISO 9001",))):
+    with patch("app.agent.engine.classify_intent", return_value=QueryIntent(mode="explicativa")), \
+         patch("app.agent.engine.build_retrieval_plan", return_value=RetrievalPlan(mode="explicativa", chunk_k=5, chunk_fetch_k=20, summary_k=2, requested_standards=("ISO 9001",))):
          
         # Mock detect_scope_candidates to return < 2 scopes so we don't bail to clarification immediately
-        with patch("app.agent.application.detect_scope_candidates", return_value=["ISO 9001"]):
+        with patch("app.agent.engine.detect_scope_candidates", return_value=["ISO 9001"]):
              # Trigger scope mismatch logic (Task F case 1) but ensuring it fails again
              result = await use_case.execute(cmd)
     

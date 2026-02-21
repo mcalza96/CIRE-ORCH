@@ -1,4 +1,4 @@
-from app.agent.retrieval_strategies import looks_structural_toc, reduce_structural_noise
+from app.agent.retrieval.retrieval_strategies import looks_structural_toc, reduce_structural_noise
 
 
 def _item(content: str, *, title: str = "", heading: str = "", source_type: str = "") -> dict:

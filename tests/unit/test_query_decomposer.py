@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass
 
 from app.agent.components.query_decomposer import HybridSubqueryPlanner, LLMSubqueryPlanner
-from app.agent.interfaces import SubqueryPlanningContext, SubqueryPlanner
+from app.agent.types.interfaces import SubqueryPlanningContext, SubqueryPlanner
 
 
 @dataclass

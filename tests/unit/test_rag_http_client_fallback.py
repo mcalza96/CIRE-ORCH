@@ -4,8 +4,8 @@ from typing import cast
 import httpx
 
 from app.agent import http_adapters as adapters_module
-from app.agent.http_adapters import RagEngineRetrieverAdapter
-from app.agent.models import RetrievalPlan
+from app.infrastructure.clients.http_adapters import RagEngineRetrieverAdapter
+from app.agent.types.models import RetrievalPlan
 from app.clients.backend_selector import RagBackendSelector
 
 

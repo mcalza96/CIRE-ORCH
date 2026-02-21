@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, NotRequired, TypedDict
 
-from app.agent.models import (
+from app.agent.types.models import (
     AnswerDraft,
     EvidenceItem,
     ReasoningPlan,

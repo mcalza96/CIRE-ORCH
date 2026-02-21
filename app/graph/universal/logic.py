@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from app.agent.error_codes import (
+from app.agent.errors import (
     RETRIEVAL_CODE_CLAUSE_MISSING,
     RETRIEVAL_CODE_GRAPH_FALLBACK_NO_MULTIHOP,
     RETRIEVAL_CODE_LOW_SCORE,
@@ -12,7 +12,7 @@ from app.agent.error_codes import (
     RETRIEVAL_CODE_TIMEOUT,
     RETRIEVAL_CODE_UPSTREAM_UNAVAILABLE,
 )
-from app.agent.models import RetrievalDiagnostics, ToolResult, EvidenceItem, RetrievalPlan
+from app.agent.types.models import RetrievalDiagnostics, ToolResult, EvidenceItem, RetrievalPlan
 from app.profiles.models import AgentProfile
 from app.graph.universal.state import UniversalState
 from app.graph.universal.utils import _non_negative_int

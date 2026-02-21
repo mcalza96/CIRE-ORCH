@@ -4,7 +4,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 
-from app.agent.models import EvidenceItem, RetrievalDiagnostics, RetrievalPlan, ToolResult
+from app.agent.types.models import EvidenceItem, RetrievalDiagnostics, RetrievalPlan, ToolResult
 from app.agent.tools.base import ToolRuntimeContext
 
 

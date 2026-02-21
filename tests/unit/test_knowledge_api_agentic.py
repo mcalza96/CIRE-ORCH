@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 from app.api.v1.routes.knowledge import router as knowledge_router
-from app.agent.application import HandleQuestionResult
-from app.agent.models import (
+from app.agent.engine import HandleQuestionResult
+from app.agent.types.models import (
     AnswerDraft,
     EvidenceItem,
     QueryIntent,

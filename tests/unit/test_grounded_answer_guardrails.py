@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from app.agent.http_adapters import GroundedAnswerAdapter
-from app.agent.models import RetrievalPlan, EvidenceItem, QueryMode
+from app.infrastructure.clients.http_adapters import GroundedAnswerAdapter
+from app.agent.types.models import RetrievalPlan, EvidenceItem, QueryMode
 from typing import cast
 
 

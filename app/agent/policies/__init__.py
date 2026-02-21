@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 from app.profiles.models import AgentProfile
-from app.agent.models import QueryIntent, RetrievalPlan
+from app.agent.types.models import QueryIntent, RetrievalPlan
 
 
 LITERAL_LIST_HINTS = ("lista", "enumera", "listado", "vinetas")

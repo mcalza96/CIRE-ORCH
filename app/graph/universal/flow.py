@@ -8,14 +8,14 @@ from typing import Any, cast
 import structlog
 from langgraph.graph import END, START, StateGraph
 
-from app.agent.application import (
+from app.agent.engine import (
     AnswerGeneratorPort,
     HandleQuestionCommand,
     HandleQuestionResult,
     RetrieverPort,
     ValidatorPort,
 )
-from app.agent.models import (
+from app.agent.types.models import (
     AnswerDraft,
     QueryIntent,
     RetrievalDiagnostics,
@@ -222,7 +222,7 @@ class UniversalReasoningOrchestrator:
 
         clarification_obj = None
         if isinstance(clarification_raw, dict):
-            from app.agent.models import ClarificationRequest
+            from app.agent.types.models import ClarificationRequest
 
             question = str(clarification_raw.get("question") or "").strip()
             options_raw = clarification_raw.get("options")

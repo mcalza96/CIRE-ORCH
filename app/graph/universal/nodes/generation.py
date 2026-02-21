@@ -5,7 +5,7 @@ from typing import Any, cast
 
 import structlog
 
-from app.agent.models import (
+from app.agent.types.models import (
     AnswerDraft,
     EvidenceItem,
     ReasoningStep,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
-from app.agent.models import AnswerDraft, ValidationResult
+from app.agent.types.models import AnswerDraft, ValidationResult
 from app.infrastructure.config import settings
 from app.graph.universal.state import UniversalState
 from app.graph.universal.logic import _count_section_markers

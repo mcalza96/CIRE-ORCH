@@ -8,27 +8,27 @@ from typing import Any, Callable, TypedDict
 import httpx
 import structlog
 
-from app.agent.error_codes import (
+from app.agent.errors import (
     RETRIEVAL_CODE_INVALID_RESPONSE,
     RETRIEVAL_CODE_TIMEOUT,
     RETRIEVAL_CODE_UPSTREAM_UNAVAILABLE,
 )
-from app.agent.interfaces import (
+from app.agent.types.interfaces import (
     EmbeddingProvider,
     RerankingProvider,
     SubqueryPlanningContext,
     SubqueryPlanner,
 )
-from app.agent.models import EvidenceItem, RetrievalDiagnostics, RetrievalPlan
+from app.agent.types.models import EvidenceItem, RetrievalDiagnostics, RetrievalPlan
 from app.profiles.models import AgentProfile, QueryModeConfig
-from app.agent.retrieval_planner import (
+from app.agent.retrieval.retrieval_planner import (
     mode_requires_literal_evidence,
     normalize_query_filters,
 )
 from app.infrastructure.config import settings
-from .rag_schemas import RetrievalPlanPayload
+from app.agent.types.rag_schemas import RetrievalPlanPayload
 from app.infrastructure.clients.rag_client import RagRetrievalContractClient
-from app.agent.retrieval_strategies import (
+from app.agent.retrieval.retrieval_strategies import (
     calculate_layer_stats,
     features_from_hybrid_trace,
 )

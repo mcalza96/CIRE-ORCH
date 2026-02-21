@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.agent.models import ReasoningPlan, ReasoningStep
+from app.agent.types.models import ReasoningPlan, ReasoningStep
 from app.agent.tools import resolve_allowed_tools
 from app.profiles.models import AgentProfile
 from app.infrastructure.config import settings
@@ -115,7 +115,7 @@ async def planner_node(
 
         plan_feedback = clarification_context.get("plan_feedback")
         if isinstance(plan_feedback, str) and plan_feedback.strip() and prior_interruptions > 0:
-            from app.agent.models import ToolCall
+            from app.agent.types.models import ToolCall
             from app.graph.universal.clarification_llm import rewrite_plan_with_feedback_llm
             from dataclasses import replace
             import json

@@ -6,7 +6,7 @@ from time import monotonic
 import httpx
 import structlog
 
-from app.agent.interfaces import EmbeddingProvider, RerankingProvider
+from app.agent.types.interfaces import EmbeddingProvider, RerankingProvider
 from app.infrastructure.config import settings
 from app.infrastructure.providers.cohere_adapter import CohereAdapter
 from app.infrastructure.providers.jina_adapter import JinaAdapter

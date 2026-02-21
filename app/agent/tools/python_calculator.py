@@ -5,7 +5,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any
 
-from app.agent.models import ToolResult
+from app.agent.types.models import ToolResult
 from app.agent.tools.base import ToolRuntimeContext
 from app.profiles.models import AgentProfile
 

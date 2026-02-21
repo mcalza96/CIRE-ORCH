@@ -5,7 +5,7 @@ import time
 
 import structlog
 
-from app.agent.models import ReasoningPlan, ReasoningStep, RetrievalDiagnostics, ToolResult
+from app.agent.types.models import ReasoningPlan, ReasoningStep, RetrievalDiagnostics, ToolResult
 from app.agent.tools import get_tool
 from app.profiles.models import AgentProfile
 from app.graph.universal.logic import _infer_expression_from_query

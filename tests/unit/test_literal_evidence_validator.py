@@ -1,5 +1,5 @@
-from app.agent.adapters import LiteralEvidenceValidator
-from app.agent.models import AnswerDraft, EvidenceItem, RetrievalPlan
+from app.agent.formatters.adapters import LiteralEvidenceValidator
+from app.agent.types.models import AnswerDraft, EvidenceItem, RetrievalPlan
 from app.infrastructure.config import settings
 
 

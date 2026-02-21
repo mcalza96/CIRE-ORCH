@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from app.agent.models import QueryIntent, ReasoningPlan, RetrievalPlan
+from app.agent.types.models import QueryIntent, ReasoningPlan, RetrievalPlan
 from app.agent.policies import detect_scope_candidates
 from app.profiles.models import AgentProfile, ModeInteractionPolicy
 

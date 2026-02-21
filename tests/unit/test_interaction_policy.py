@@ -1,4 +1,4 @@
-from app.agent.models import QueryIntent, ReasoningPlan, RetrievalPlan, ToolCall
+from app.agent.types.models import QueryIntent, ReasoningPlan, RetrievalPlan, ToolCall
 from app.agent.policies import extract_requested_scopes
 from app.profiles.models import AgentProfile
 from app.graph.universal.interaction import decide_interaction

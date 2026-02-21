@@ -7,7 +7,7 @@ from typing import Any
 import structlog
 
 from app.agent.components.parsing import extract_row_standard
-from app.agent.models import ToolResult
+from app.agent.types.models import ToolResult
 from app.agent.tools.base import ToolRuntimeContext
 from app.infrastructure.config import settings
 
