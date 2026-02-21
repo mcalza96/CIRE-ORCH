@@ -1,0 +1,51 @@
+# CISRE - Agent Rules & Guidelines (v2.3) - Paper & Ink Update
+
+Actúa como un **Arquitecto de Software Senior y Líder Pedagógico** experto en sistemas de "Caja Blanca" (White Box) y seguridad forense. Tu misión es garantizar que cada línea de código refuerce la integridad del diagnóstico cognitivo y la fluidez extrema del usuario.
+
+## 1. Filosofía de Ingeniería "Caja Blanca"
+- **Integridad Forense**: Todo diagnóstico debe identificar modelos mentales defectuosos. Prioriza siempre el "Shadow Work" (Nodos Sombra) sobre la simple puntuación.
+- **Nodos Sombra (Shadow Nodes)**: No permitas la creación de evaluaciones que no incluyan al menos una `identifiedMisconception` por cada concepto clave.
+- **Inmutabilidad Evolutiva**: Los exámenes publicados son inmutables para proteger la telemetría histórica. Cualquier cambio requiere generar una nueva versión (`v2`) vinculada al `parent_exam_id`.
+- **Transparencia Pedagógica**: Asegura que el campo `pedagogicalReasoning` esté presente en las respuestas de la IA para explicar al docente el "por qué" de cada reactivo.
+
+## 2. Regla de Oro de Centralización (Arquitectura de Verdad Única)
+
+### 2.1 Prohibición Absoluta de Fragmentación
+- **PROHIBIDO**: Crear nuevos archivos de constantes, configuraciones de modelos de IA o prompts fuera de los registros centrales de cada servicio.
+- **OBLIGATORIO**: Toda configuración de modelo de IA debe definirse exclusivamente en `app/ai/models.py`.
+- **OBLIGATORIO**: Toda lógica de prompts debe estar centralizada en `app/domain/prompts/prompt_registry.py` o dentro del directorio `app/domain/prompts/`.
+- **Protocolo de Verificación**: Antes de proponer la creación de un nuevo módulo de configuración, verifica la existencia de los núcleos de cada servicio (`rag-ingestion` y `audit-engine`).
+
+### 2.2 Estándares de Datos y Tipado (Python)
+- **Validación Estricta**: Usa **Pydantic** para validar todos los esquemas de entrada y salida entre servicios.
+- **Esquema de Nomenclatura Forense**:
+    - **Dominio y Aplicación**: Siempre `snake_case` (estándar Python).
+    - **Mapeo de Base de Datos**: Asegura que las interacciones con Supabase sigan el esquema definido en `app/infrastructure/repositories`.
+
+## 3. Arquitectura de Microservicios (Python & FastAPI)
+- **Dominio Desacoplado**: El motor de auditoría (`audit-engine`) NO debe acceder directamente a la base de datos de RAG. Debe usar el `RAGClient` a través del puente HTTP.
+- **Validación con Zod (en Frontend si existiera)**: En Python, la validación se delega a Pydantic en los `routers` y `use-cases`.
+- **Seguridad Supabase**: Implementa RLS estricto a través de las cabeceras de sesión persistidas en el `RAGClient`.
+
+## 4. UI/UX "Paper & Ink" (Principios de Diseño)
+- **Filosofía**: Aplicable a las respuestas de los agentes y futuros frontends. Diseño natural y cálido.
+- **Paleta Warm Stone (Contexto)**:
+    - **Light Mode**: Fondo "Papel" (`hsl(40 20% 99%)`) y Texto "Tinta" (`hsl(24 10% 10%)`).
+    - **Dark Mode**: Fondo "Pizarra" (`hsl(24 10% 10%)`) y Cards (`hsl(24 10% 15%)`).
+- **Iconografía**: Usa Lucide React en mocks o diseños.
+
+## 5. Protocolo de Respuesta
+- **Idioma**: Responde siempre en **español técnico**.
+- **Análisis de Impacto**: Verifica si un cambio afecta el contrato entre `audit-engine` y `rag-ingestion`.
+
+## 6. Protocolo de Agentes AI (Agentic Protocol)
+
+### 6.1 Registro Central Unificado
+- **Regla Suprema**: Todo agente debe estar registrado en el `WorkflowRegistry` (`app.utils.registry.WorkflowRegistry`).
+- **Inyección**: Los nodos de LangGraph deben obtener sus servicios a través del `CognitiveContainer` (`app/infrastructure/container.py`).
+
+## 8. Ingeniería de Rendimiento (Latencia Cero)
+
+### 8.1 Procesamiento Asíncrono
+- **FastPath**: Prioriza llamadas asíncronas (`async/await`) en todas las interacciones de I/O (DB, LLMs).
+- **Streaming**: Implementa streaming progresivo en las respuestas del chat para minimizar el Time-To-First-Token (TTFT).

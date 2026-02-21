@@ -1,0 +1,273 @@
+profile_id: base
+version: 1.0.0
+status: active
+
+meta:
+  id: base_v1
+  description: "Perfil base agnostico para preguntas con evidencia"
+  owner: "orchestrator-core"
+
+identity:
+  role: "Asistente de investigacion y sintesis documental"
+  tone: "Pedagogico, analitico y basado en evidencia"
+  style_guide:
+    - "Usa listas planas para hallazgos concretos."
+    - "Indica explicitamente cuando una afirmacion es inferencia."
+
+domain_entities:
+  - evidencia
+  - fuente
+  - requisito
+
+synthesis:
+  system_persona: >-
+    Eres un asistente de investigacion documental. Tu objetivo es ayudar al usuario
+    a comprender, sintetizar y conectar informacion del contexto recuperado.
+    Cuando pidan resumenes amplios, organiza por temas y explica conexiones sin
+    inventar contenido.
+  citation_format: C#/R#
+  citation_schema_version: v1
+  citation_required_fields: [id, standard, clause_id, quote]
+  citation_render_template: "{id} | {standard} | clausula {clause_id} | \"{snippet}\""
+  citation_sort_policy: completeness_then_score
+  citation_noise_filters: [indice, prologo, "traduccion oficial", "official translation"]
+  citation_repair_enabled: true
+  min_structured_citation_ratio: 0.5
+  strict_subject_label: Afirmacion
+  strict_reference_label: Referencia
+  identity_role_prefix: Rol operativo
+  identity_tone_prefix: Tono
+  strict_system_prompt_template: >-
+    Responde SOLO con evidencia del CONTEXTO. Cada afirmacion clave debe incluir
+    al menos una cita con marcadores exactos con el formato '{citation_format}'
+    tal como aparecen en el CONTEXTO. PROHIBIDO GENERAR HIPOTESIS O INFERENCIAS.
+    SI LA EVIDENCIA NO ES LITERAL, DEJA LA SECCION VACIA. Si no hay evidencia suficiente,
+    dilo explicitamente e indica la brecha.
+  interpretive_system_prompt_template: >-
+    Responde solo con evidencia del CONTEXTO. Puedes conectar evidencias entre
+    fuentes, pero cada afirmacion relevante debe incluir al menos una referencia
+    con formato '{citation_format}' y no debes inventar contenido.
+  strict_style_template: |-
+    FORMATO:
+    1) Para cada afirmacion clave: {strict_subject_label} | Cita literal breve | {strict_reference_label}.
+    2) No inventes referencias ni texto fuente.
+  interpretive_style_template: |-
+    Estructura recomendada:
+    - Hallazgo principal respaldado por evidencia.
+    - Implicaciones operativas y tecnicas.
+    - Riesgos o vacios de evidencia detectados.
+    - Integracion entre fuentes y conclusion.
+    Incluye referencias ({citation_format}) al final de cada punto.
+  user_prompt_template: |-
+    PREGUNTA:
+    {query}
+
+    CONTEXTO:
+    {context}
+
+    {style}
+  synthesis_rules:
+    - Cada afirmacion relevante debe tener soporte en el contexto recuperado.
+    - Si no existe evidencia suficiente, dilo explicitamente.
+    - No inventes fuentes ni requisitos.
+  strict_style:
+    - "Para cada afirmacion: requisito | cita breve | fuente."
+    - "Si falta evidencia: No encontrado explicitamente en el contexto recuperado."
+  interpretive_style:
+    - Puedes conectar evidencias separadas, pero marca cuando sea inferencia.
+    - Incluye referencias al final de cada punto.
+  response_contracts:
+    study_guide:
+      - Resumen de Alto Nivel
+      - Conceptos Clave (Glosario)
+      - Conexiones y Temas Principales
+      - Preguntas Frecuentes (FAQ) inferidas
+    structured_summary:
+      - Sintesis Ejecutiva
+      - Puntos Principales en Vinetas
+      - Conclusiones
+
+router:
+  literal_list_hints: [entradas, salidas, lista, enumera, listado]
+  literal_normative_hints: [clausula, obligatorio, exacto, literal, "que exige"]
+  comparative_hints: [compar, difer, vs, ambas, respecto]
+  interpretive_hints: [implica, impacto, analice, interaccion, por que]
+  conflict_markers: [conflicto, confidencial, denuncia, represalia]
+  evidence_markers: [evidencia, trazabilidad, verificar, registros]
+  scope_hints: {}
+  scope_patterns: []
+  reference_patterns:
+    - "\\b\\d+(?:\\.\\d+)+\\b"
+  complexity_patterns:
+    - "\\b(?:analiza|relacion|relación|impact|compara|calcula|calcular|extrae|extraer|formula)\\b"
+  extraction_patterns:
+    - "\\b(?:extrae|extraer|estructura|json|tabla|reactivo|insumo|cantidad|bom)\\b"
+  calculation_patterns:
+    - "\\b(?:calcula|calcular|cuanto|cuánto|formula|lote|muestras)\\b"
+
+clarification_rules: []
+
+interaction_policy:
+  enabled: true
+  max_interruptions_per_turn: 1
+  approval_timeout_s: 20
+  fallback_on_timeout: execute_conservative
+  thresholds:
+    l2_ambiguity: 0.35
+    l3_subqueries: 6
+    l3_latency_s: 15
+    l3_cost_tokens: 12000
+    low_coverage: 0.5
+  mode_overrides:
+    explanatory_response:
+      require_plan_approval: false
+      risk_level: low
+      required_slots: []
+    cross_scope_analysis:
+      require_plan_approval: false
+      risk_level: medium
+      required_slots: [scope, objective]
+    comprehensive_synthesis:
+      require_plan_approval: true
+      risk_level: high
+      required_slots: [scope, objective]
+
+scope_resolution:
+  canonical_scopes: []
+  aliases: {}
+  fuzzy_enabled: true
+  min_confidence_autoresolve: 0.85
+  min_confidence_clarify: 0.60
+
+query_modes:
+  default_mode: explanatory_response
+  modes:
+    literal_list_extract:
+      require_literal_evidence: true
+      allow_inference: false
+      retrieval_profile: literal_list_extract
+      tool_hints: [semantic_retrieval, structural_extraction, citation_validator]
+      execution_plan: [semantic_retrieval, structural_extraction, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 6, clause_focus: true, scope_focus: true, light_llm_enabled: false }
+    literal_clause_check:
+      require_literal_evidence: true
+      allow_inference: false
+      retrieval_profile: literal_clause_check
+      tool_hints: [semantic_retrieval, citation_validator]
+      execution_plan: [semantic_retrieval, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 1 }
+      decomposition_policy: { max_subqueries: 8, clause_focus: true, scope_focus: true, light_llm_enabled: false }
+    cross_scope_analysis:
+      require_literal_evidence: false
+      allow_inference: true
+      retrieval_profile: cross_scope_analysis
+      tool_hints: [semantic_retrieval, logical_comparison, citation_validator]
+      execution_plan: [semantic_retrieval, logical_comparison, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: true, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 10, clause_focus: true, scope_focus: true, light_llm_enabled: false }
+    scope_clarification:
+      require_literal_evidence: true
+      allow_inference: false
+      retrieval_profile: scope_clarification
+      tool_hints: [citation_validator]
+      execution_plan: [citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 2, clause_focus: false, scope_focus: true, light_llm_enabled: false }
+    explanatory_response:
+      require_literal_evidence: false
+      allow_inference: true
+      retrieval_profile: explanatory_response
+      tool_hints: [semantic_retrieval, citation_validator]
+      execution_plan: [semantic_retrieval, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 6, clause_focus: true, scope_focus: true, light_llm_enabled: false }
+    comprehensive_synthesis:
+      require_literal_evidence: false
+      allow_inference: true
+      retrieval_profile: comprehensive_synthesis
+      tool_hints: [semantic_retrieval, structural_extraction, citation_validator]
+      execution_plan: [semantic_retrieval, structural_extraction, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 8, clause_focus: false, scope_focus: true, light_llm_enabled: true }
+      response_contract: study_guide
+  intent_rules:
+    - id: base_comprehensive_synthesis
+      mode: comprehensive_synthesis
+      any_keywords: [resumen, resume, sintetiza, sintesis, explicame el documento, guia de estudio, ideas principales, conceptos principales]
+      any_patterns:
+        - "\\bresum(?:e|en|ir)\\b"
+        - "\\bgu[ií]a de estudio\\b"
+        - "\\bconceptos principales\\b"
+    - id: base_literal_list
+      mode: literal_list_extract
+      any_keywords: [lista, enumera, listado, vinetas]
+    - id: base_literal_clause
+      mode: literal_clause_check
+      any_keywords: [clausula, literal, exacto, textualmente, cita, que exige]
+      any_patterns:
+        - "\\b\\d+(?:\\.\\d+)+\\b"
+    - id: base_cross_scope
+      mode: cross_scope_analysis
+      any_markers: ["__mode__=cross_scope_analysis"]
+      any_keywords: [vs, entre, respecto, impacto]
+      any_patterns:
+        - "\\bcompar(?:a|ar|aci[oó]n|ativo|ativa|ativos|ativas)?\\b"
+        - "\\bdifer(?:encia|encias|ente|entes|ir|iere|ieren)\\b"
+    - id: base_scope_ambiguity
+      mode: scope_clarification
+      any_markers: ["__mode__=scope_clarification"]
+
+retrieval:
+  min_score: 0.40
+  search_hints: []
+  by_mode:
+    literal_list_extract:
+      chunk_k: 45
+      chunk_fetch_k: 220
+      summary_k: 3
+      require_literal_evidence: true
+    literal_clause_check:
+      chunk_k: 45
+      chunk_fetch_k: 220
+      summary_k: 3
+      require_literal_evidence: true
+    cross_scope_analysis:
+      chunk_k: 35
+      chunk_fetch_k: 140
+      summary_k: 5
+      require_literal_evidence: false
+    scope_clarification:
+      chunk_k: 0
+      chunk_fetch_k: 0
+      summary_k: 0
+      require_literal_evidence: true
+    explanatory_response:
+      chunk_k: 30
+      chunk_fetch_k: 120
+      summary_k: 5
+      require_literal_evidence: false
+    comprehensive_synthesis:
+      chunk_k: 45
+      chunk_fetch_k: 220
+      summary_k: 8
+      require_literal_evidence: false
+
+capabilities:
+  reasoning_level: high
+  allowed_tools:
+    - semantic_retrieval
+    - structural_extraction
+    - logical_comparison
+    - citation_validator
+  reasoning_budget:
+    max_steps: 5
+    max_reflections: 2
+  tool_policies:
+    python_calculator:
+      enabled: false
+
+validation:
+  require_citations: true
+  forbidden_concepts: []
+  fallback_message: "No tengo informacion suficiente en el contexto para responder."

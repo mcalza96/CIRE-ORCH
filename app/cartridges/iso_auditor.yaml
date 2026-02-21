@@ -1,0 +1,483 @@
+profile_id: iso_auditor
+extends: base
+version: 1.0.0
+status: active
+
+meta:
+  id: iso_auditor_v1
+  description: "Auditoria trinorma con trazabilidad estricta"
+  owner: "qa-architecture"
+
+identity:
+  role: "Auditor lider trinorma (ISO 9001/14001/45001)"
+  tone: "Formal, esceptico y verificable"
+  style_guide:
+    - "Cada afirmacion debe incluir clausula y fuente."
+    - "Si no hay evidencia suficiente, declarar insuficiencia."
+
+domain_entities:
+  - ISO 9001
+  - ISO 14001
+  - ISO 45001
+  - NC
+  - accion correctiva
+
+synthesis:
+  system_persona: >-
+    Eres un consultor ejecutivo experto en normas ISO. Tu objetivo es entregar insights de alto valor
+    para la toma de decisiones, no solo listar datos. Usa un tono directo, visual y orientado a la accion.
+  grounded_inference_min_citations: 2
+  unsupported_claim_label: Hipotesis
+  confidence_scale: [alta, media, baja]
+  default_response_contract:
+    - Resumen Ejecutivo
+    - Tabla de Hallazgos y Alineacion
+    - Analisis de Brechas e Impacto
+    - Hoja de Ruta Sugerida
+    - Apendice Tecnico
+  response_contracts:
+    literal:
+      - Resumen Ejecutivo
+      - Tabla de Hallazgos y Alineacion
+      - Apendice Tecnico
+    grounded_inference:
+      - Resumen Ejecutivo
+      - Tabla de Hallazgos y Alineacion
+      - Analisis de Brechas e Impacto
+      - Hoja de Ruta Sugerida
+      - Apendice Tecnico
+  min_structured_citation_ratio: 0.7
+  strict_subject_label: Componente Critico
+  strict_reference_label: Fuente (C#/R#)
+  synthesis_rules:
+    - Prioriza el valor para el negocio y el riesgo operativo sobre la literalidad ciega.
+    - Usa tablas markdown para comparar hallazgos.
+    - Usa emojis con sobriedad para destacar estados (✅, ⚠️, ❌).
+    - Interpreta clausulas 0.x como Introduccion y Contexto Estrategico.
+    - Si falta informacion, conecta la brecha con un Riesgo de Negocio tangible.
+  strict_style:
+    - "Usa tablas para presentar evidencia literal."
+  interpretive_style:
+    - "Estructura la respuesta como un Dashboard Ejecutivo."
+    - "Resumen Ejecutivo: Estado de Alineacion, Riesgo Operativo, Brecha Principal."
+    - "Tabla de Hallazgos: Componente | Estado | Respaldo | Observacion."
+    - "Action Plan: Pasos numerados y priorizados."
+
+router:
+  literal_list_hints:
+    - entradas
+    - salidas
+    - lista
+    - exclusivas
+    - enumera
+    - listado
+    - vinetas
+  literal_normative_hints:
+    - clausula
+    - documento obligatorio
+    - obligatorio
+    - exacto
+    - literal
+    - textualmente
+    - verbatim
+    - transcribe
+    - cita
+    - citas
+    - c#/r#
+    - que exige
+  comparative_hints: [compar, difer, vs, ambas, respecto]
+  interpretive_hints:
+    - obliga
+    - implica
+    - impacto
+    - impacta
+    - impide
+    - analice
+    - interaccion
+    - reevalu
+    - re-evalu
+    - ciclo de vida
+    - perspectiva
+    - gestion del cambio
+    - validacion
+    - por que
+    - basado
+  conflict_markers:
+    - conflicto
+    - represalia
+    - confidencial
+    - denuncia
+    - anonim
+    - proteccion de datos
+    - rrhh
+    - se niega
+  evidence_markers:
+    - evidencia
+    - trazabilidad
+    - verificar
+    - registros
+    - informacion documentada
+  scope_hints:
+    ISO 9001: [calidad, cliente, producto, servicio]
+    ISO 14001: [ambient, legal, cumplimiento, aspecto ambiental]
+    ISO 45001: [seguridad, salud, sst, riesgo laboral, trabajador]
+  scope_patterns:
+    - label: ISO 9001
+      regex: "\\biso\\s*[-:]?\\s*9001\\b|\\b9001\\b"
+    - label: ISO 14001
+      regex: "\\biso\\s*[-:]?\\s*14001\\b|\\b14001\\b"
+    - label: ISO 45001
+      regex: "\\biso\\s*[-:]?\\s*45001\\b|\\b45001\\b"
+  reference_patterns:
+    - "\\b\\d+(?:\\.\\d+)+\\b"
+    - "\\bcl(?:a|á)usula\\s*\\d+(?:\\.\\d+)+\\b"
+
+
+query_modes:
+  default_mode: explanatory_audit
+  modes:
+    literal_cross_scope_check:
+      require_literal_evidence: true
+      allow_inference: false
+      retrieval_profile: literal_cross_scope_check
+      tool_hints: [semantic_retrieval, logical_comparison, citation_validator]
+      execution_plan: [semantic_retrieval, logical_comparison, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: true, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 12, clause_focus: true, scope_focus: true, light_llm_enabled: true }
+    literal_list_extract:
+      require_literal_evidence: true
+      allow_inference: false
+      retrieval_profile: literal_list_extract
+      tool_hints: [semantic_retrieval, structural_extraction, citation_validator]
+      execution_plan: [semantic_retrieval, structural_extraction, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 1 }
+      decomposition_policy: { max_subqueries: 8, clause_focus: true, scope_focus: true, light_llm_enabled: false }
+    literal_clause_check:
+      require_literal_evidence: true
+      allow_inference: false
+      retrieval_profile: literal_clause_check
+      tool_hints: [semantic_retrieval, citation_validator]
+      execution_plan: [semantic_retrieval, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 1 }
+      decomposition_policy: { max_subqueries: 10, clause_focus: true, scope_focus: true, light_llm_enabled: true }
+    cross_standard_analysis:
+      require_literal_evidence: false
+      allow_inference: true
+      retrieval_profile: cross_standard_analysis
+      tool_hints: [semantic_retrieval, logical_comparison, citation_validator]
+      execution_plan: [semantic_retrieval, logical_comparison, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: true, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 12, clause_focus: true, scope_focus: true, light_llm_enabled: true }
+    explanatory_audit:
+      require_literal_evidence: false
+      allow_inference: true
+      retrieval_profile: explanatory_audit
+      tool_hints: [semantic_retrieval, citation_validator]
+      execution_plan: [semantic_retrieval, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 8, clause_focus: true, scope_focus: true, light_llm_enabled: false }
+      response_contract: grounded_inference
+    grounded_inference:
+      require_literal_evidence: false
+      allow_inference: true
+      retrieval_profile: explanatory_audit
+      tool_hints: [semantic_retrieval, logical_comparison, expectation_coverage, citation_validator]
+      execution_plan: [semantic_retrieval, logical_comparison, expectation_coverage, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 10, clause_focus: true, scope_focus: true, light_llm_enabled: true }
+      response_contract: grounded_inference
+    gap_analysis:
+      require_literal_evidence: false
+      allow_inference: true
+      retrieval_profile: cross_standard_analysis
+      tool_hints: [semantic_retrieval, expectation_coverage, citation_validator]
+      execution_plan: [semantic_retrieval, expectation_coverage, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 12, clause_focus: true, scope_focus: true, light_llm_enabled: true }
+      response_contract: grounded_inference
+    scope_ambiguity:
+      require_literal_evidence: true
+      allow_inference: false
+      retrieval_profile: scope_ambiguity
+      tool_hints: [citation_validator]
+      execution_plan: [citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 2, clause_focus: false, scope_focus: true, light_llm_enabled: false }
+  intent_rules:
+    - id: iso_ambiguous_scope
+      mode: scope_ambiguity
+      any_markers: ["__mode__=scope_ambiguity"]
+    - id: iso_literal_triscope
+      mode: literal_cross_scope_check
+      any_keywords: [textualmente, literal, c#/r#, cita, citas, que exige]
+      all_patterns:
+        - "\\biso\\s*[-:]?\\s*9001\\b"
+        - "\\biso\\s*[-:]?\\s*14001\\b"
+        - "\\biso\\s*[-:]?\\s*45001\\b"
+    - id: iso_literal_list
+      mode: literal_list_extract
+      any_keywords: [entradas, salidas, lista, enumera, listado, vinetas]
+    - id: iso_literal_clause
+      mode: literal_clause_check
+      any_keywords: [clausula, documento obligatorio, obligatorio, exacto, literal, textualmente, verbatim, transcribe, cita, citas, c#/r#, que exige]
+      any_patterns:
+        - "\\bcl(?:a|á)usula\\s*\\d+(?:\\.\\d+)+\\b"
+    - id: iso_comparative
+      mode: cross_standard_analysis
+      any_keywords: [compar, difer, vs, ambas, respecto, impacto, impacta, interaccion]
+      any_patterns:
+        - "\\biso\\s*[-:]?\\s*9001\\b"
+        - "\\biso\\s*[-:]?\\s*14001\\b"
+    - id: iso_gap_analysis
+      mode: gap_analysis
+      any_keywords: [brecha, brechas, gap, faltante, ausencia, no encuentro, evidencia faltante]
+    - id: iso_grounded_inference
+      mode: grounded_inference
+      any_keywords: [implica, riesgo, riesgo potencial, recomienda, recomendacion, inferencia]
+clarification_rules:
+  - rule_id: denunciante_vs_trazabilidad
+    min_scope_count: 2
+    all_markers: [conflicto]
+    any_markers: [denuncia, confidencial, represalia, trazabilidad]
+    question_template: >-
+      Detecte conflicto entre objetivos en un escenario multi-scope ({scopes}).
+      ¿Priorizo proteccion del denunciante, forense de trazabilidad, o balanceado?
+    options:
+      - Proteccion al denunciante
+      - Forense de trazabilidad
+      - Balanceado
+  - rule_id: cobertura_trinorma_completa
+    min_scope_count: 3
+    any_markers: [textualmente, literal, c#/r#, que exige, qué exige, trazabilidad]
+    question_template: >-
+      Detecte una consulta literal trinorma ({scopes}). ¿Deseas exigir cobertura completa
+      ISO 9001/14001/45001 o aceptar respuesta parcial?
+    options:
+      - Cobertura completa
+      - Respuesta parcial
+
+retrieval:
+  min_score: 0.30
+  search_hints:
+    - term: epp
+      expand_to:
+        - equipo de proteccion personal
+        - proteccion personal
+    - term: denunciante
+      expand_to:
+        - canal de denuncia
+        - confidencialidad
+    - term: no conformidad
+      expand_to:
+        - accion correctiva
+        - hallazgo
+    - term: informacion documentada
+      expand_to:
+        - "7.5"
+        - "7.5.1"
+        - "7.5.2"
+        - "7.5.3"
+        - control documental
+        - creacion y actualizacion
+        - control de la informacion documentada
+        - retencion
+        - actualizacion
+        - disponibilidad
+        - distribucion acceso recuperacion almacenamiento preservacion
+    - term: gestión documental
+      expand_to:
+        - "7.5"
+        - 7.5.2 creacion y actualizacion
+        - 7.5.3 control de la informacion documentada
+        - versionado trazabilidad cambios
+        - retencion y disposicion
+    - term: gestion documental
+      expand_to:
+        - "7.5"
+        - 7.5.2 creacion y actualizacion
+        - 7.5.3 control de la informacion documentada
+        - versionado trazabilidad cambios
+        - retencion y disposicion
+    - term: sistemas de gestion documental
+      expand_to:
+        - informacion documentada
+        - "7.5"
+        - 7.5.1 generalidades
+        - 7.5.2 creacion y actualizacion
+        - 7.5.3 control de la informacion documentada
+    - term: comunicacion documentada
+      expand_to:
+        - comunicacion interna
+        - comunicacion externa
+        - evidencia de comunicacion
+    - term: participacion y consulta
+      expand_to:
+        - trabajadores
+        - consulta
+        - participacion
+        - sst
+    - term: introduccion
+      expand_to:
+        - objeto y campo de aplicacion
+        - principios de gestion de la calidad
+        - enfoque a procesos
+        - ciclo phva
+        - pensamiento basado en riesgos
+    - term: introducción
+      expand_to:
+        - objeto y campo de aplicación
+        - principios de gestión de la calidad
+        - enfoque a procesos
+        - ciclo phva
+        - pensamiento basado en riesgos
+    - term: politica de gestion
+      expand_to:
+        - política de la calidad
+        - política ambiental
+        - política de sst
+        - compromiso de la política
+    - term: política de gestión
+      expand_to:
+        - política de la calidad
+        - política ambiental
+        - política de sst
+        - compromiso de la política
+    - term: politica
+      expand_to:
+        - política de la calidad
+        - política ambiental
+        - política de la seguridad y salud en el trabajo
+        - debe establecer la política
+        - debe comunicar la política
+        - debe mantener la política
+    - term: politica de calidad
+      expand_to:
+        - 5.2 politica de la calidad
+        - comunicada, entendida y aplicada
+    - term: política ambiental
+      expand_to:
+        - 5.2 política ambiental
+        - protección del medio ambiente
+    - term: politica de sst
+      expand_to:
+        - 5.2 política de la seguridad y salud en el trabajo
+        - compromiso de eliminar peligros
+  by_mode:
+    literal_cross_scope_check:
+      chunk_k: 60
+      chunk_fetch_k: 340
+      summary_k: 3
+      require_literal_evidence: true
+    literal_list_extract:
+      chunk_k: 45
+      chunk_fetch_k: 220
+      summary_k: 3
+      require_literal_evidence: true
+    literal_clause_check:
+      chunk_k: 55
+      chunk_fetch_k: 300
+      summary_k: 3
+      require_literal_evidence: true
+    cross_standard_analysis:
+      chunk_k: 35
+      chunk_fetch_k: 140
+      summary_k: 5
+      require_literal_evidence: false
+    scope_ambiguity:
+      chunk_k: 0
+      chunk_fetch_k: 0
+      summary_k: 0
+      require_literal_evidence: true
+    explanatory_audit:
+      chunk_k: 30
+      chunk_fetch_k: 120
+      summary_k: 5
+      require_literal_evidence: false
+
+capabilities:
+  reasoning_level: high
+  allowed_tools:
+    - semantic_retrieval
+    - logical_comparison
+    - structural_extraction
+    - expectation_coverage
+    - citation_validator
+  tool_policies:
+    python_calculator:
+      enabled: false
+
+validation:
+  require_structured_sections: true
+  required_sections:
+    - Hechos citados
+    - Inferencias
+    - Brechas
+    - Recomendaciones
+    - Confianza y supuestos
+  min_citations_per_inference: 2
+  block_strong_claims_without_evidence: true
+  strong_claim_markers:
+    - riesgo critico
+    - no conformidad mayor
+    - incumplimiento
+    - sancion
+    - multa
+  forbidden_concepts:
+    - sueldos
+    - estrategia comercial
+  fallback_message: >-
+    No encuentro evidencia suficiente para responder con trazabilidad auditora.
+
+expectations:
+  - id: iso9001_9_2_programa_auditoria
+    description: Debe existir evidencia de programa de auditoria interna planificado
+    scopes: [ISO 9001]
+    clause_refs: ["9.2"]
+    applies_to_modes: [gap_analysis, grounded_inference, explanatory_audit]
+    required_evidence_markers:
+      - programa de auditoria
+      - plan de auditoria
+      - criterios de auditoria
+    optional_evidence_markers:
+      - informe de auditoria
+      - resultados de auditoria
+    missing_risk: Riesgo de no demostrar eficacia del sistema de auditoria interna
+    severity: high
+  - id: iso9001_9_3_revision_direccion
+    description: Debe existir evidencia de revision por la direccion con entradas y salidas
+    scopes: [ISO 9001]
+    clause_refs: ["9.3"]
+    applies_to_modes: [gap_analysis, grounded_inference]
+    required_evidence_markers:
+      - revision por la direccion
+      - entradas de la revision
+      - salidas de la revision
+    optional_evidence_markers:
+      - decisiones y acciones
+    missing_risk: Riesgo de no cerrar el ciclo PHVA a nivel directivo
+    severity: high
+  - id: iso14001_6_1_2_aspectos
+    description: Debe existir metodologia para identificar aspectos ambientales y sus impactos
+    scopes: [ISO 14001]
+    clause_refs: ["6.1.2"]
+    applies_to_modes: [gap_analysis, grounded_inference]
+    required_evidence_markers:
+      - aspectos ambientales
+      - impactos ambientales
+      - criterios de significancia
+    missing_risk: Riesgo de controles ambientales incompletos o mal priorizados
+    severity: high
+  - id: iso45001_5_4_participacion
+    description: Debe existir evidencia de participacion y consulta de trabajadores en SST
+    scopes: [ISO 45001]
+    clause_refs: ["5.4"]
+    applies_to_modes: [gap_analysis, grounded_inference]
+    required_evidence_markers:
+      - participacion
+      - consulta
+      - trabajadores
+    optional_evidence_markers:
+      - comite paritario
+      - actas
+    missing_risk: Riesgo de decisiones SST no validadas por quienes ejecutan el trabajo
+    severity: high

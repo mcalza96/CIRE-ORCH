@@ -1,0 +1,693 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import os
+import re
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from statistics import quantiles
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import httpx
+
+
+DEFAULT_DATASET = Path(__file__).with_name("iso_auditor_benchmark.json")
+DEFAULT_REPORTS_DIR = Path(__file__).with_name("reports")
+CITATION_RE = re.compile(r"\b[CR]\d+\b", flags=re.IGNORECASE)
+CLAUSE_REF_RE = re.compile(r"\b\d+(?:\.\d+)+\b")
+NON_WORD_RE = re.compile(r"[^a-z0-9\.\s]+")
+
+
+@dataclass(frozen=True)
+class CaseResult:
+    case_id: str
+    category: str
+    expected_mode: str
+    mode: str
+    final_mode: str
+    has_citation_marker: bool
+    citation_sufficiency_ok: bool
+    coverage_ok: bool
+    coverage_strict_ok: bool
+    coverage_partial_honest_ok: bool
+    semantic_recall_ok: bool
+    semantic_recall_score: float
+    clause_recall_ok: bool
+    clause_recall_score: float
+    hallucination_guard_ok: bool
+    literal_obedience_ok: bool
+    literal_mode_retained: bool
+    answerable: bool
+    false_positive_partial: bool
+    latency_ms: float
+    status_code: int
+    error: str | None
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _extract_latency_ms(payload: dict[str, Any]) -> float:
+    retrieval_plan = payload.get("retrieval_plan")
+    if isinstance(retrieval_plan, dict):
+        timings = retrieval_plan.get("timings_ms")
+        if isinstance(timings, dict):
+            for key in ("total", "hybrid", "multi_query_primary", "multi_query_fallback"):
+                if key in timings:
+                    return _safe_float(timings.get(key), 0.0)
+    return 0.0
+
+
+def _normalize_text(text: str) -> str:
+    lowered = str(text or "").lower()
+    no_accents = (
+        lowered.replace("á", "a")
+        .replace("é", "e")
+        .replace("í", "i")
+        .replace("ó", "o")
+        .replace("ú", "u")
+        .replace("ñ", "n")
+    )
+    cleaned = NON_WORD_RE.sub(" ", no_accents)
+    return " ".join(cleaned.split())
+
+
+def _contains_semantic_phrase(answer_norm: str, phrase: str) -> bool:
+    phrase_norm = _normalize_text(phrase)
+    if not phrase_norm:
+        return True
+    if phrase_norm in answer_norm:
+        return True
+    tokens = [tok for tok in phrase_norm.split() if len(tok) > 2]
+    if not tokens:
+        return True
+    matched = sum(1 for tok in tokens if tok in answer_norm)
+    return matched >= max(1, int(len(tokens) * 0.6))
+
+
+def _contains_forbidden_claim(answer_norm: str, phrase: str) -> bool:
+    phrase_norm = _normalize_text(phrase)
+    if not phrase_norm:
+        return False
+    return phrase_norm in answer_norm
+
+
+def _semantic_recall(
+    answer: str, must_include: list[str], min_hits: int | None
+) -> tuple[bool, float, int]:
+    expected = [str(item).strip() for item in must_include if str(item).strip()]
+    if not expected:
+        return True, 100.0, 0
+    answer_norm = _normalize_text(answer)
+    hits = sum(1 for phrase in expected if _contains_semantic_phrase(answer_norm, phrase))
+    threshold = min_hits if isinstance(min_hits, int) and min_hits > 0 else len(expected)
+    score = round((hits / max(1, len(expected))) * 100.0, 2)
+    return hits >= threshold, score, hits
+
+
+def _clause_recall(
+    answer: str, expected_clauses: list[str], min_hits: int | None
+) -> tuple[bool, float, int]:
+    expected = [str(item).strip() for item in expected_clauses if str(item).strip()]
+    if not expected:
+        return True, 100.0, 0
+    answer_refs = set(CLAUSE_REF_RE.findall(str(answer or "")))
+    hits = 0
+    for clause in expected:
+        if any(ref == clause or ref.startswith(f"{clause}.") for ref in answer_refs):
+            hits += 1
+    threshold = min_hits if isinstance(min_hits, int) and min_hits > 0 else len(expected)
+    score = round((hits / max(1, len(expected))) * 100.0, 2)
+    return hits >= threshold, score, hits
+
+
+def _citation_sufficiency(answer: str, citations: list[Any], min_cites: int) -> bool:
+    marker_count = len(set(CITATION_RE.findall(str(answer or ""))))
+    citation_count = len([str(item).strip() for item in citations if str(item).strip()])
+    return max(marker_count, citation_count) >= max(0, int(min_cites))
+
+
+def _mode_retained(category: str, final_mode: str, expected_mode: str) -> bool:
+    if category != "literal":
+        return True
+    final_norm = str(final_mode or "").strip().lower()
+    expected_norm = str(expected_mode or "").strip().lower()
+    return final_norm.startswith("literal") or final_norm == expected_norm
+
+
+def _coverage_ok(
+    expected_standards: list[str],
+    missing_scopes: list[str],
+    answer: str,
+) -> bool:
+    if not expected_standards:
+        return True
+    missing = {str(item).strip().upper() for item in missing_scopes if str(item).strip()}
+    expected = [str(item).strip().upper() for item in expected_standards if str(item).strip()]
+    if any(item in missing for item in expected):
+        return False
+
+    blob = str(answer or "").upper()
+    for scope in expected:
+        numeric = "".join(ch for ch in scope if ch.isdigit())
+        if scope in blob:
+            continue
+        if numeric and numeric in blob:
+            continue
+        return False
+    return True
+
+
+def _covered_scope_count(
+    expected_standards: list[str],
+    missing_scopes: list[str],
+    answer: str,
+) -> int:
+    expected = [str(item).strip().upper() for item in expected_standards if str(item).strip()]
+    if not expected:
+        return 0
+    missing = {str(item).strip().upper() for item in missing_scopes if str(item).strip()}
+    blob = str(answer or "").upper()
+    covered = 0
+    for scope in expected:
+        numeric = "".join(ch for ch in scope if ch.isdigit())
+        in_answer = scope in blob or (bool(numeric) and numeric in blob)
+        if in_answer and scope not in missing:
+            covered += 1
+    return covered
+
+
+def _evaluate_case(case: dict[str, Any], status_code: int, payload: dict[str, Any]) -> CaseResult:
+    category = str(case.get("category") or "").strip().lower()
+    expected_mode = str(case.get("expected_mode") or "").strip()
+    expected_standards = [
+        str(item).strip() for item in (case.get("expected_standards") or []) if str(item).strip()
+    ]
+    require_citations = bool(case.get("require_citations", True))
+    require_full_coverage = bool(case.get("require_full_coverage", False))
+    min_covered_standards = int(case.get("min_covered_standards", 0) or 0)
+    min_covered_refs = int(case.get("min_covered_refs", 0) or 0)
+    expected_clauses = [
+        str(item).strip() for item in (case.get("expected_clauses") or []) if str(item).strip()
+    ]
+    must_include = [
+        str(item).strip() for item in (case.get("must_include") or []) if str(item).strip()
+    ]
+    must_not_claim = [
+        str(item).strip() for item in (case.get("must_not_claim") or []) if str(item).strip()
+    ]
+    must_cite_min = int(case.get("must_cite_min", 1 if require_citations else 0) or 0)
+    literal_required = bool(case.get("literal_required", category == "literal"))
+    allowed_partial = bool(case.get("allowed_partial", not require_full_coverage))
+    semantic_min_hits = int(case.get("must_include_min", 0) or 0)
+    clause_min_hits = int(case.get("expected_clauses_min", 0) or 0)
+
+    if status_code != 200:
+        return CaseResult(
+            case_id=str(case.get("id") or ""),
+            category=category,
+            expected_mode=expected_mode,
+            mode="",
+            final_mode="",
+            has_citation_marker=False,
+            citation_sufficiency_ok=False,
+            coverage_ok=False,
+            coverage_strict_ok=False,
+            coverage_partial_honest_ok=False,
+            semantic_recall_ok=False,
+            semantic_recall_score=0.0,
+            clause_recall_ok=False,
+            clause_recall_score=0.0,
+            hallucination_guard_ok=False,
+            literal_obedience_ok=False,
+            literal_mode_retained=False,
+            answerable=False,
+            false_positive_partial=False,
+            latency_ms=0.0,
+            status_code=status_code,
+            error=f"http_{status_code}",
+        )
+
+    answer = str(payload.get("answer") or "")
+    mode = str(payload.get("mode") or "").strip()
+    retrieval_plan_raw = payload.get("retrieval_plan")
+    retrieval_plan: dict[str, Any] = (
+        retrieval_plan_raw if isinstance(retrieval_plan_raw, dict) else {}
+    )
+    final_mode = str(retrieval_plan.get("final_mode") or mode).strip()
+    missing_scopes_raw = retrieval_plan.get("missing_scopes")
+    missing_scopes: list[str] = (
+        [str(item).strip() for item in missing_scopes_raw if str(item).strip()]
+        if isinstance(missing_scopes_raw, list)
+        else []
+    )
+    citations_raw = payload.get("citations")
+    citations: list[Any] = citations_raw if isinstance(citations_raw, list) else []
+    context_chunks = (
+        payload.get("context_chunks") if isinstance(payload.get("context_chunks"), list) else []
+    )
+    validation_raw = payload.get("validation")
+    validation: dict[str, Any] = validation_raw if isinstance(validation_raw, dict) else {}
+    accepted = bool(validation.get("accepted", True))
+
+    has_citation_marker = bool(citations) or bool(CITATION_RE.search(answer))
+    if not require_citations:
+        has_citation_marker = True
+    citation_sufficiency_ok = _citation_sufficiency(answer, citations, must_cite_min)
+
+    coverage_strict_ok = _coverage_ok(expected_standards, list(missing_scopes), answer)
+    coverage_ok = coverage_strict_ok
+    covered_scope_count = _covered_scope_count(expected_standards, list(missing_scopes), answer)
+    if min_covered_standards > 0:
+        coverage_ok = covered_scope_count >= min_covered_standards
+
+    if min_covered_refs > 0:
+        query_refs = sorted(set(CLAUSE_REF_RE.findall(str(case.get("query") or ""))))
+        answer_refs = set(CLAUSE_REF_RE.findall(answer))
+        covered_refs = sum(
+            1 for ref in query_refs if any(r == ref or r.startswith(f"{ref}.") for r in answer_refs)
+        )
+        coverage_ok = coverage_ok and covered_refs >= min_covered_refs
+    lower_answer = str(answer or "").lower()
+    declares_gaps = "no encontrado explicitamente" in lower_answer
+    semantic_recall_ok, semantic_recall_score, semantic_hits = _semantic_recall(
+        answer,
+        must_include,
+        semantic_min_hits if semantic_min_hits > 0 else None,
+    )
+    clause_recall_ok, clause_recall_score, clause_hits = _clause_recall(
+        answer,
+        expected_clauses,
+        clause_min_hits if clause_min_hits > 0 else None,
+    )
+    answer_norm = _normalize_text(answer)
+    hallucination_guard_ok = not any(
+        _contains_forbidden_claim(answer_norm, phrase) for phrase in must_not_claim
+    )
+    literal_obedience_ok = (not literal_required) or str(final_mode or "").lower().startswith(
+        "literal"
+    )
+    semantic_or_clause_ok = semantic_recall_ok and clause_recall_ok
+    partial_semantic_ok = bool(
+        allowed_partial
+        and (semantic_hits > 0 or clause_hits > 0 or covered_scope_count > 0)
+        and declares_gaps
+    )
+    coverage_partial_honest_ok = bool(
+        (coverage_ok and semantic_or_clause_ok) or partial_semantic_ok
+    )
+    literal_mode_retained = _mode_retained(category, final_mode, expected_mode)
+    answerable = bool(
+        accepted and context_chunks and has_citation_marker and citation_sufficiency_ok
+    )
+    false_positive_partial = bool(
+        require_full_coverage and accepted and (not coverage_ok or not has_citation_marker)
+    )
+
+    return CaseResult(
+        case_id=str(case.get("id") or ""),
+        category=category,
+        expected_mode=expected_mode,
+        mode=mode,
+        final_mode=final_mode,
+        has_citation_marker=has_citation_marker,
+        citation_sufficiency_ok=citation_sufficiency_ok,
+        coverage_ok=coverage_ok,
+        coverage_strict_ok=coverage_strict_ok,
+        coverage_partial_honest_ok=coverage_partial_honest_ok,
+        semantic_recall_ok=semantic_recall_ok,
+        semantic_recall_score=semantic_recall_score,
+        clause_recall_ok=clause_recall_ok,
+        clause_recall_score=clause_recall_score,
+        hallucination_guard_ok=hallucination_guard_ok,
+        literal_obedience_ok=literal_obedience_ok,
+        literal_mode_retained=literal_mode_retained,
+        answerable=answerable,
+        false_positive_partial=false_positive_partial,
+        latency_ms=_extract_latency_ms(payload),
+        status_code=status_code,
+        error=None,
+    )
+
+
+def _rate(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return round((numerator / denominator) * 100.0, 2)
+
+
+def _p95(values: list[float]) -> float:
+    positives = [float(v) for v in values if float(v) > 0.0]
+    if not positives:
+        return 0.0
+    if len(positives) == 1:
+        return positives[0]
+    return round(float(quantiles(positives, n=100, method="inclusive")[94]), 2)
+
+
+async def _run_case(
+    client: "httpx.AsyncClient",
+    *,
+    base_url: str,
+    tenant_id: str,
+    collection_id: str | None,
+    case: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    payload = {
+        "query": str(case.get("query") or "").strip(),
+        "tenant_id": tenant_id,
+        "collection_id": collection_id,
+    }
+    response = await client.post(f"{base_url.rstrip('/')}/api/v1/knowledge/answer", json=payload)
+    body: dict[str, Any] = {}
+    try:
+        raw = response.json()
+        body = raw if isinstance(raw, dict) else {"raw": raw}
+    except Exception:
+        body = {"raw_text": response.text[:2000]}
+    return response.status_code, body
+
+
+async def main() -> int:
+    parser = argparse.ArgumentParser(description="Runs iso_auditor benchmark against ORCH API.")
+    parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
+    parser.add_argument("--base-url", default=os.getenv("ORCH_BASE_URL", "http://localhost:8001"))
+    parser.add_argument("--tenant-id", default=os.getenv("ORCH_BENCH_TENANT_ID", ""))
+    parser.add_argument("--collection-id", default=os.getenv("ORCH_BENCH_COLLECTION_ID"))
+    parser.add_argument("--access-token", default=os.getenv("AUTH_BEARER_TOKEN", ""))
+    parser.add_argument("--timeout-seconds", type=float, default=45.0)
+    parser.add_argument("--max-cases", type=int, default=0)
+    parser.add_argument("--variant-label", default=os.getenv("ORCH_BENCH_VARIANT", "baseline"))
+    parser.add_argument("--fail-on-thresholds", action="store_true")
+    parser.add_argument(
+        "--threshold-citation-marker-rate",
+        type=float,
+        default=float(os.getenv("ORCH_BENCH_THRESHOLD_CITATION", 98.0)),
+    )
+    parser.add_argument(
+        "--threshold-standard-coverage-rate",
+        type=float,
+        default=float(os.getenv("ORCH_BENCH_THRESHOLD_COVERAGE", 90.0)),
+    )
+    parser.add_argument(
+        "--threshold-literal-mode-retention-rate",
+        type=float,
+        default=float(os.getenv("ORCH_BENCH_THRESHOLD_LITERAL", 95.0)),
+    )
+    parser.add_argument(
+        "--threshold-answerable-rate",
+        type=float,
+        default=float(os.getenv("ORCH_BENCH_THRESHOLD_ANSWERABLE", 90.0)),
+    )
+    parser.add_argument(
+        "--threshold-false-positive-partial-rate-max",
+        type=float,
+        default=float(os.getenv("ORCH_BENCH_THRESHOLD_FALSE_POSITIVE_MAX", 10.0)),
+    )
+    parser.add_argument(
+        "--threshold-citation-sufficiency-rate",
+        type=float,
+        default=float(os.getenv("ORCH_BENCH_THRESHOLD_CITATION_SUFF", 95.0)),
+    )
+    parser.add_argument(
+        "--threshold-semantic-recall-rate",
+        type=float,
+        default=float(os.getenv("ORCH_BENCH_THRESHOLD_SEMANTIC", 85.0)),
+    )
+    parser.add_argument(
+        "--threshold-clause-recall-rate",
+        type=float,
+        default=float(os.getenv("ORCH_BENCH_THRESHOLD_CLAUSE", 80.0)),
+    )
+    parser.add_argument(
+        "--threshold-hallucination-guard-rate",
+        type=float,
+        default=float(os.getenv("ORCH_BENCH_THRESHOLD_HALLUCINATION_GUARD", 99.0)),
+    )
+    parser.add_argument(
+        "--threshold-partial-honesty-rate",
+        type=float,
+        default=float(os.getenv("ORCH_BENCH_THRESHOLD_PARTIAL_HONESTY", 90.0)),
+    )
+    parser.add_argument(
+        "--threshold-literal-obedience-rate",
+        type=float,
+        default=float(os.getenv("ORCH_BENCH_THRESHOLD_LITERAL_OBEDIENCE", 90.0)),
+    )
+    args = parser.parse_args()
+
+    try:
+        import httpx
+    except ModuleNotFoundError as exc:  # pragma: no cover - runtime dependency guard
+        raise SystemExit(
+            "Missing dependency 'httpx'. Run with project venv (e.g. ./venv/bin/python)."
+        ) from exc
+
+    if not args.tenant_id.strip():
+        raise SystemExit("Missing --tenant-id (or ORCH_BENCH_TENANT_ID).")
+
+    raw = json.loads(args.dataset.read_text(encoding="utf-8"))
+    cases_raw = raw.get("cases") if isinstance(raw, dict) else None
+    if not isinstance(cases_raw, list) or not cases_raw:
+        raise SystemExit(f"Dataset without cases: {args.dataset}")
+
+    cases = [item for item in cases_raw if isinstance(item, dict)]
+    if args.max_cases > 0:
+        cases = cases[: args.max_cases]
+
+    headers: dict[str, str] = {}
+    token = str(args.access_token or "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    timeout = httpx.Timeout(args.timeout_seconds, connect=min(10.0, args.timeout_seconds))
+    results: list[CaseResult] = []
+    raw_rows: list[dict[str, Any]] = []
+
+    async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
+        for case in cases:
+            status_code, payload = await _run_case(
+                client,
+                base_url=args.base_url,
+                tenant_id=args.tenant_id.strip(),
+                collection_id=(str(args.collection_id).strip() if args.collection_id else None),
+                case=case,
+            )
+            evaluated = _evaluate_case(case, status_code, payload)
+            results.append(evaluated)
+            raw_rows.append(
+                {
+                    "id": evaluated.case_id,
+                    "category": evaluated.category,
+                    "query": str(case.get("query") or ""),
+                    "expected_standards": [
+                        str(item).strip()
+                        for item in (case.get("expected_standards") or [])
+                        if str(item).strip()
+                    ],
+                    "require_full_coverage": bool(case.get("require_full_coverage", False)),
+                    "min_covered_standards": int(case.get("min_covered_standards", 0) or 0),
+                    "min_covered_refs": int(case.get("min_covered_refs", 0) or 0),
+                    "status_code": evaluated.status_code,
+                    "mode": evaluated.mode,
+                    "final_mode": evaluated.final_mode,
+                    "expected_clauses": [
+                        str(item).strip()
+                        for item in (case.get("expected_clauses") or [])
+                        if str(item).strip()
+                    ],
+                    "must_include": [
+                        str(item).strip()
+                        for item in (case.get("must_include") or [])
+                        if str(item).strip()
+                    ],
+                    "must_not_claim": [
+                        str(item).strip()
+                        for item in (case.get("must_not_claim") or [])
+                        if str(item).strip()
+                    ],
+                    "must_cite_min": int(
+                        case.get(
+                            "must_cite_min", 1 if bool(case.get("require_citations", True)) else 0
+                        )
+                        or 0
+                    ),
+                    "allowed_partial": bool(
+                        case.get(
+                            "allowed_partial", not bool(case.get("require_full_coverage", False))
+                        )
+                    ),
+                    "literal_required": bool(
+                        case.get(
+                            "literal_required",
+                            str(case.get("category") or "").strip().lower() == "literal",
+                        )
+                    ),
+                    "has_citation_marker": evaluated.has_citation_marker,
+                    "citation_sufficiency_ok": evaluated.citation_sufficiency_ok,
+                    "coverage_ok": evaluated.coverage_ok,
+                    "coverage_strict_ok": evaluated.coverage_strict_ok,
+                    "coverage_partial_honest_ok": evaluated.coverage_partial_honest_ok,
+                    "semantic_recall_ok": evaluated.semantic_recall_ok,
+                    "semantic_recall_score": evaluated.semantic_recall_score,
+                    "clause_recall_ok": evaluated.clause_recall_ok,
+                    "clause_recall_score": evaluated.clause_recall_score,
+                    "hallucination_guard_ok": evaluated.hallucination_guard_ok,
+                    "literal_obedience_ok": evaluated.literal_obedience_ok,
+                    "literal_mode_retained": evaluated.literal_mode_retained,
+                    "answerable": evaluated.answerable,
+                    "false_positive_partial": evaluated.false_positive_partial,
+                    "latency_ms": evaluated.latency_ms,
+                    "error": evaluated.error,
+                    "validation_accepted": (
+                        bool(payload.get("validation", {}).get("accepted", True))
+                        if isinstance(payload.get("validation"), dict)
+                        else None
+                    ),
+                    "validation_issues": (
+                        [str(item) for item in payload.get("validation", {}).get("issues", [])]
+                        if isinstance(payload.get("validation"), dict)
+                        and isinstance(payload.get("validation", {}).get("issues"), list)
+                        else []
+                    ),
+                }
+            )
+
+    total = len(results)
+    literal_rows = [r for r in results if r.category == "literal"]
+    coverage_rows = [r for r in results if r.expected_mode and r.coverage_ok is not None]
+    require_full = [c for c in cases if bool(c.get("require_full_coverage", False))]
+    require_full_ids = {str(item.get("id") or "") for item in require_full}
+    require_full_results = [r for r in results if r.case_id in require_full_ids]
+
+    citation_marker_rate = _rate(sum(r.has_citation_marker for r in results), total)
+    standard_coverage_rate = _rate(sum(r.coverage_ok for r in coverage_rows), len(coverage_rows))
+    coverage_strict_rate = _rate(
+        sum(r.coverage_strict_ok for r in coverage_rows), len(coverage_rows)
+    )
+    coverage_partial_honest_rate = _rate(
+        sum(r.coverage_partial_honest_ok for r in coverage_rows), len(coverage_rows)
+    )
+    literal_mode_retention_rate = _rate(
+        sum(r.literal_mode_retained for r in literal_rows), len(literal_rows)
+    )
+    answerable_rate = _rate(sum(r.answerable for r in results), total)
+    citation_sufficiency_rate = _rate(sum(r.citation_sufficiency_ok for r in results), total)
+    semantic_recall_rate = _rate(sum(r.semantic_recall_ok for r in results), total)
+    clause_recall_rate = _rate(sum(r.clause_recall_ok for r in results), total)
+    hallucination_guard_rate = _rate(sum(r.hallucination_guard_ok for r in results), total)
+    literal_required_rows = [
+        r
+        for r, case in zip(results, cases, strict=False)
+        if bool(
+            case.get(
+                "literal_required", str(case.get("category") or "").strip().lower() == "literal"
+            )
+        )
+    ]
+    literal_obedience_rate = _rate(
+        sum(r.literal_obedience_ok for r in literal_required_rows),
+        len(literal_required_rows),
+    )
+    false_positive_partial_rate = _rate(
+        sum(r.false_positive_partial for r in require_full_results),
+        len(require_full_results),
+    )
+
+    thresholds = {
+        "citation_marker_rate": float(args.threshold_citation_marker_rate),
+        "standard_coverage_rate": float(args.threshold_standard_coverage_rate),
+        "literal_mode_retention_rate": float(args.threshold_literal_mode_retention_rate),
+        "answerable_rate": float(args.threshold_answerable_rate),
+        "false_positive_partial_rate_max": float(args.threshold_false_positive_partial_rate_max),
+        "citation_sufficiency_rate": float(args.threshold_citation_sufficiency_rate),
+        "semantic_recall_rate": float(args.threshold_semantic_recall_rate),
+        "clause_recall_rate": float(args.threshold_clause_recall_rate),
+        "hallucination_guard_rate": float(args.threshold_hallucination_guard_rate),
+        "partial_honesty_rate": float(args.threshold_partial_honesty_rate),
+        "literal_obedience_rate": float(args.threshold_literal_obedience_rate),
+    }
+    checks = {
+        "citation_marker_rate": citation_marker_rate >= thresholds["citation_marker_rate"],
+        "standard_coverage_rate": standard_coverage_rate >= thresholds["standard_coverage_rate"],
+        "literal_mode_retention_rate": literal_mode_retention_rate
+        >= thresholds["literal_mode_retention_rate"],
+        "answerable_rate": answerable_rate >= thresholds["answerable_rate"],
+        "false_positive_partial_rate": false_positive_partial_rate
+        <= thresholds["false_positive_partial_rate_max"],
+        "citation_sufficiency_rate": citation_sufficiency_rate
+        >= thresholds["citation_sufficiency_rate"],
+        "semantic_recall_rate": semantic_recall_rate >= thresholds["semantic_recall_rate"],
+        "clause_recall_rate": clause_recall_rate >= thresholds["clause_recall_rate"],
+        "hallucination_guard_rate": hallucination_guard_rate
+        >= thresholds["hallucination_guard_rate"],
+        "partial_honesty_rate": coverage_partial_honest_rate >= thresholds["partial_honesty_rate"],
+        "literal_obedience_rate": literal_obedience_rate >= thresholds["literal_obedience_rate"],
+    }
+
+    issue_counts: dict[str, int] = {}
+    for row in raw_rows:
+        for issue in row.get("validation_issues", []) or []:
+            key = str(issue).strip()
+            if not key:
+                continue
+            issue_counts[key] = issue_counts.get(key, 0) + 1
+
+    report = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "variant_label": args.variant_label,
+        "dataset": str(args.dataset),
+        "base_url": args.base_url,
+        "tenant_id": args.tenant_id,
+        "collection_id": args.collection_id,
+        "total_cases": total,
+        "metrics": {
+            "citation_marker_rate": citation_marker_rate,
+            "standard_coverage_rate": standard_coverage_rate,
+            "coverage_strict_rate": coverage_strict_rate,
+            "coverage_partial_honest_rate": coverage_partial_honest_rate,
+            "literal_mode_retention_rate": literal_mode_retention_rate,
+            "answerable_rate": answerable_rate,
+            "citation_sufficiency_rate": citation_sufficiency_rate,
+            "semantic_recall_rate": semantic_recall_rate,
+            "clause_recall_rate": clause_recall_rate,
+            "hallucination_guard_rate": hallucination_guard_rate,
+            "literal_obedience_rate": literal_obedience_rate,
+            "false_positive_partial_rate": false_positive_partial_rate,
+            "latency_p95_ms": _p95([row.latency_ms for row in results]),
+        },
+        "thresholds": thresholds,
+        "checks": checks,
+        "validation_issue_counts": issue_counts,
+        "failed_cases": [row for row in raw_rows if row["status_code"] != 200],
+        "cases": raw_rows,
+    }
+
+    DEFAULT_REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    out_path = DEFAULT_REPORTS_DIR / f"iso_auditor_benchmark_{args.variant_label}_{stamp}.json"
+    out_path.write_text(json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8")
+
+    print(
+        json.dumps(
+            {"report": str(out_path), "metrics": report["metrics"], "checks": checks},
+            ensure_ascii=True,
+        )
+    )
+
+    if args.fail_on_thresholds and not all(checks.values()):
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(asyncio.run(main()))
