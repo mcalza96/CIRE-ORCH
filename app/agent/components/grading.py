@@ -31,8 +31,6 @@ def looks_relevant_retrieval(
             for scope in requested:
                 if scope in row_standard or row_standard in scope:
                     matched.add(scope)
-        if len(requested) >= 2 and len(matched) < 2:
-            return False, "scope_mismatch"
         if not matched:
             return False, "scope_mismatch"
 

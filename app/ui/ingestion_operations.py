@@ -154,11 +154,31 @@ def _collect_files_from_args(args: argparse.Namespace) -> list[str]:
     return files_to_upload
 
 
-def _resolve_source_standard(args: argparse.Namespace) -> str:
+import re
+
+def _resolve_source_standard(args: argparse.Namespace, filepath: str) -> str:
     if args.non_interactive:
         return ""
-    ans = prompt("📝 Norma o estandar fuente (ej. ISO 9001) [Enter para ignorar/adivinar]: ")
-    return ans.strip().upper()
+    filename = os.path.basename(filepath)
+    guess = ""
+    iso_match = re.search(r"ISO[-_ ]?(\d+)", filename, re.IGNORECASE)
+    if iso_match:
+        guess = f"ISO {iso_match.group(1)}"
+
+    while True:
+        prompt_text = f"📝 Norma principal de '{filename}'"
+        if guess:
+            prompt_text += f" [Enter para usar '{guess}']: "
+        else:
+            prompt_text += " [Obligatorio, ej. ISO 9001]: "
+            
+        ans = prompt(prompt_text).strip().upper()
+        
+        if ans:
+            return ans
+        if not ans and guess:
+            return guess.upper()
+        print("⚠️ Esta etiqueta es obligatoria para cruzar datos en el RAG. Por favor, especifícala.")
 
 
 async def _upload_files_to_batch(
@@ -166,13 +186,17 @@ async def _upload_files_to_batch(
     client: AsyncCireRagClient,
     batch_id: str,
     files_to_upload: list[str],
-    source_standard: str,
+    args: argparse.Namespace,
 ) -> None:
     for file_path in files_to_upload:
-        print(f"📤 Subiendo {os.path.basename(file_path)}...")
+        print(f"\n📤 Preparando {os.path.basename(file_path)}...")
+        source_standard = _resolve_source_standard(args, file_path)
+        
         file_meta: dict[str, Any] = {}
         if source_standard:
             file_meta["source_standard"] = source_standard
+            
+        print(f"   Subiendo pilar con etiqueta: {source_standard or 'Sin etiqueta'}")
         await client.upload_file_to_batch(
             batch_id,
             file_path,
@@ -204,12 +228,11 @@ async def _run_ingest_operation(*, client: AsyncCireRagClient, runtime: Ingestio
         raise RuntimeError(f"create_ingestion_batch no devolvio id/batch_id. Respuesta: {batch}")
     print(f"✅ Batch creado: {batch_id}")
 
-    source_standard = _resolve_source_standard(runtime.args)
     await _upload_files_to_batch(
         client=client,
         batch_id=batch_id,
         files_to_upload=files_to_upload,
-        source_standard=source_standard,
+        args=runtime.args,
     )
 
     print("🔗 Sellando batch...")

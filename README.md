@@ -8,6 +8,9 @@ Flujo soportado:
 
 `cliente -> orchestrator -> RAG engine externo (HTTP) -> respuesta orquestada`
 
+### Documentación E2E
+- **Flujo de Orquestación y LangGraph: [docs/e2e.md](docs/e2e.md)**
+
 ### Inicio rapido
 
 ```bash
@@ -216,15 +219,15 @@ New chat flags:
 - `--doctor`: runs auth/tenant/collection/retrieval diagnostics and exits
 - `--non-interactive`: fails if user prompts are required
 
-### Project layout
+### Documentación Central
+- **[E2E Flow & LangGraph](docs/e2e.md)**: Detalles sobre el motor de orquestación.
+- **[Documentation Hub](docs/README.md)**: Índice de guías técnicas.
 
-- `app/api/server.py`: FastAPI server
-- `app/api/v1/routes/knowledge.py`: main endpoint `/api/v1/knowledge/answer`
-- `app/agent/*`: policies, validation, and use case logic
-- `orch_cli.py`: unified CLI dispatcher (`chat` / `ingest`)
-- `app/chat_cli_runtime.py`: `chat` subcommand runtime
-- `tests/unit/*qa_orchestrator*`: orchestrator unit tests
-
+### Verificación E2E
+Para validar el sistema completo de forma automatizada:
+```bash
+venv/bin/python -m pytest tests/test_orch_e2e_flow.py
+```
 ### Development commands
 
 ```bash

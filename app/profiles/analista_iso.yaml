@@ -1,0 +1,322 @@
+profile_id: analista_iso
+extends: base
+version: 1.0.0
+status: active
+
+meta:
+  id: analista_iso_v1
+  description: "Analista trinorma ISO 9001/14001/45001 basado en perfil base"
+  owner: "qa-architecture"
+
+identity:
+  role: "Consultor ejecutivo trinorma (ISO 9001/14001/45001)"
+  tone: "Directo, analitico y orientado a la accion"
+  style_guide:
+    - "Cada afirmacion debe incluir clausula y fuente."
+    - "Usa tablas para comparar hallazgos entre normas."
+    - "Si no hay evidencia, indica la brecha y su riesgo de negocio."
+
+domain_entities:
+  - ISO 9001
+  - ISO 14001
+  - ISO 45001
+  - no conformidad
+  - accion correctiva
+  - informacion documentada
+
+synthesis:
+  system_persona: >-
+    Eres un consultor ejecutivo experto en normas ISO. Tu objetivo es entregar insights de alto valor
+    para la toma de decisiones, no solo listar datos. Usa un tono directo, visual y orientado a la accion.
+    REGLA 1: Cada afirmación de tu respuesta DEBE terminar con la cita exacta del fragmento utilizando su ID completo en el formato [UUID].
+    REGLA 2: Si NINGUNO de los fragmentos provistos contiene información relevante, tu respuesta DEBE ser ÚNICAMENTE: "No hay evidencia para responder esta pregunta."
+    Sin embargo, si los fragmentos cubren PARCIALMENTE la consulta (por ejemplo, evidencia de algunas normas pero no todas), DEBES responder con la evidencia disponible, indicando explícitamente qué normas o aspectos no tienen cobertura.
+    REGLA 3: BAJO NINGUNA CIRCUNSTANCIA crees secciones de "Referencias" o listas de UUIDs sueltos. Los UUIDs solo existen dentro de [UUID] al final de una afirmación.
+  citation_format: bracket_id
+  citation_schema_version: v2
+  citation_required_fields: [id]
+  citation_render_template: "[{id}]"
+  citation_sort_policy: score_only
+  citation_noise_filters: []
+  citation_repair_enabled: true
+  grounded_inference_min_citations: 2
+  unsupported_claim_label: Hipotesis
+  min_structured_citation_ratio: 0.7
+  synthesis_rules:
+    - Prioriza el valor para el negocio y el riesgo operativo sobre la literalidad ciega.
+    - Usa tablas markdown para comparar hallazgos entre normas.
+    - Usa emojis con sobriedad para destacar estados (✅, ⚠️, ❌).
+    - Si falta informacion, conecta la brecha con un Riesgo de Negocio tangible.
+
+router:
+  literal_list_hints: [entradas, salidas, lista, enumera, listado, exclusivas, vinetas]
+  literal_normative_hints: [clausula, obligatorio, exacto, literal, textualmente, verbatim, transcribe, cita, citas, "que exige"]
+  comparative_hints: [compar, difer, vs, ambas, respecto]
+  interpretive_hints:
+    - implica
+    - impacto
+    - impacta
+    - analice
+    - interaccion
+    - por que
+    - perspectiva
+    - gestion del cambio
+    - ciclo de vida
+  conflict_markers: [conflicto, confidencial, denuncia, represalia, anonim]
+  evidence_markers: [evidencia, trazabilidad, verificar, registros, informacion documentada]
+  scope_hints:
+    ISO 9001: [calidad, cliente, producto, servicio]
+    ISO 14001: [ambient, legal, cumplimiento, aspecto ambiental]
+    ISO 45001: [seguridad, salud, sst, riesgo laboral, trabajador]
+  scope_patterns:
+    - label: ISO 9001
+      regex: "(?:(?:iso|norma|la|estandar|estándar)\\s*[-:]?\\s*)?9001\\b"
+    - label: ISO 14001
+      regex: "(?:(?:iso|norma|la|estandar|estándar)\\s*[-:]?\\s*)?14001\\b"
+    - label: ISO 45001
+      regex: "(?:(?:iso|norma|la|estandar|estándar)\\s*[-:]?\\s*)?45001\\b"
+  reference_patterns:
+    - "\\b\\d+(?:\\.\\d+)+\\b"
+    - "\\bcl(?:a|á)usula\\s*\\d+(?:\\.\\d+)+\\b"
+  complexity_patterns:
+    - "\\b(?:analiza|relacion|relación|impact|compara|calcula|calcular|extrae|extraer|formula)\\b"
+  extraction_patterns:
+    - "\\b(extrae|extraer|estructura|json|tabla|introduccion|capítulo|cláusula|objeto|campo de aplicación)\\b"
+  calculation_patterns:
+    - "\\b(?:calcula|calcular|cuanto|cuánto|formula|lote|muestras)\\b"
+
+clarification_rules:
+  - rule_id: cobertura_trinorma_completa
+    min_scope_count: 3
+    any_markers: [textualmente, literal, "que exige", "qué exige", trazabilidad]
+    question_template: >-
+      Detecte una consulta literal trinorma ({scopes}). ¿Deseas exigir cobertura completa
+      ISO 9001/14001/45001 o aceptar respuesta parcial?
+    options:
+      - Cobertura completa
+      - Respuesta parcial
+
+interaction_policy:
+  enabled: true
+  max_interruptions_per_turn: 1
+  approval_timeout_s: 20
+  fallback_on_timeout: execute_conservative
+  thresholds:
+    l2_ambiguity: 0.35
+    l3_subqueries: 6
+    l3_latency_s: 15
+    l3_cost_tokens: 12000
+    low_coverage: 0.5
+  mode_overrides:
+    explanatory_response:
+      require_plan_approval: false
+      risk_level: low
+      required_slots: []
+    cross_scope_analysis:
+      require_plan_approval: false
+      risk_level: medium
+      required_slots: [scope, objective]
+    comprehensive_synthesis:
+      require_plan_approval: true
+      risk_level: high
+      required_slots: [scope, objective]
+
+scope_resolution:
+  canonical_scopes: [ISO 9001, ISO 14001, ISO 45001]
+  aliases:
+    ISO 9001: [calidad, "9001", "iso9001", "norma 9001"]
+    ISO 14001: [ambiental, "14001", "iso14001", "norma 14001"]
+    ISO 45001: [sst, seguridad, "45001", "iso45001", "norma 45001"]
+  fuzzy_enabled: true
+  min_confidence_autoresolve: 0.85
+  min_confidence_clarify: 0.60
+
+query_modes:
+  default_mode: explanatory_response
+  modes:
+    literal_list_extract:
+      require_literal_evidence: true
+      allow_inference: false
+      retrieval_profile: literal_list_extract
+      tool_hints: [semantic_retrieval, structural_extraction, citation_validator]
+      execution_plan: [semantic_retrieval, structural_extraction, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 8, clause_focus: true, scope_focus: true, light_llm_enabled: false }
+    literal_clause_check:
+      require_literal_evidence: true
+      allow_inference: false
+      retrieval_profile: literal_clause_check
+      tool_hints: [semantic_retrieval, citation_validator]
+      execution_plan: [semantic_retrieval, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 1 }
+      decomposition_policy: { max_subqueries: 10, clause_focus: true, scope_focus: true, light_llm_enabled: false }
+    cross_scope_analysis:
+      require_literal_evidence: false
+      allow_inference: true
+      retrieval_profile: cross_scope_analysis
+      tool_hints: [semantic_retrieval, logical_comparison, citation_validator]
+      execution_plan: [semantic_retrieval, logical_comparison, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: true, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 12, clause_focus: true, scope_focus: true, light_llm_enabled: false }
+    scope_clarification:
+      require_literal_evidence: true
+      allow_inference: false
+      retrieval_profile: scope_clarification
+      tool_hints: [citation_validator]
+      execution_plan: [citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 2, clause_focus: false, scope_focus: true, light_llm_enabled: false }
+    explanatory_response:
+      require_literal_evidence: false
+      allow_inference: true
+      retrieval_profile: explanatory_response
+      tool_hints: [semantic_retrieval, citation_validator]
+      execution_plan: [semantic_retrieval, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 8, clause_focus: true, scope_focus: true, light_llm_enabled: false }
+    comprehensive_synthesis:
+      require_literal_evidence: false
+      allow_inference: true
+      retrieval_profile: comprehensive_synthesis
+      tool_hints: [semantic_retrieval, structural_extraction, citation_validator]
+      execution_plan: [semantic_retrieval, structural_extraction, citation_validator]
+      coverage_requirements: { require_all_requested_scopes: false, min_clause_refs: 0 }
+      decomposition_policy: { max_subqueries: 8, clause_focus: false, scope_focus: true, light_llm_enabled: true }
+      response_contract: study_guide
+  intent_rules:
+    - id: iso_comprehensive_synthesis
+      mode: comprehensive_synthesis
+      any_keywords: [resumen, resume, sintetiza, sintesis, explicame el documento, guia de estudio, ideas principales, conceptos principales]
+      any_patterns:
+        - "\\bresum(?:e|en|ir)\\b"
+        - "\\bgu[ií]a de estudio\\b"
+        - "\\bconceptos principales\\b"
+    - id: iso_literal_list
+      mode: literal_list_extract
+      any_keywords: [entradas, salidas, lista, enumera, listado, exclusivas, vinetas]
+    - id: iso_literal_clause
+      mode: literal_clause_check
+      any_keywords: [clausula, literal, exacto, textualmente, cita, "que exige"]
+      any_patterns:
+        - "\\bcl(?:a|á)usula\\s*\\d+(?:\\.\\d+)+\\b"
+    - id: iso_cross_scope
+      mode: cross_scope_analysis
+      any_keywords: [vs, entre, respecto, impacto, difer]
+      any_patterns:
+        - "\\bcompar(?:a|ar|aci[oó]n|ativo|ativa)\\b"
+        - "\\bdifer(?:encia|encias|ente|entes)\\b"
+    - id: iso_scope_ambiguity
+      mode: scope_clarification
+      any_markers: ["__mode__=scope_clarification"]
+
+retrieval:
+  min_score: 0.30
+  search_hints:
+    - term: epp
+      expand_to:
+        - equipo de proteccion personal
+        - proteccion personal
+    - term: no conformidad
+      expand_to:
+        - accion correctiva
+        - hallazgo
+    - term: informacion documentada
+      expand_to:
+        - "7.5"
+        - control documental
+        - creacion y actualizacion
+        - control de la informacion documentada
+    - term: gestion documental
+      expand_to:
+        - "7.5"
+        - 7.5.2 creacion y actualizacion
+        - 7.5.3 control de la informacion documentada
+    - term: gestión documental
+      expand_to:
+        - "7.5"
+        - 7.5.2 creacion y actualizacion
+        - 7.5.3 control de la informacion documentada
+    - term: introduccion
+      expand_to:
+        - objeto y campo de aplicacion
+        - principios de gestion de la calidad
+        - enfoque a procesos
+        - ciclo phva
+        - pensamiento basado en riesgos
+    - term: introducción
+      expand_to:
+        - objeto y campo de aplicación
+        - principios de gestión de la calidad
+        - enfoque a procesos
+        - ciclo phva
+        - pensamiento basado en riesgos
+    - term: politica
+      expand_to:
+        - política de la calidad
+        - política ambiental
+        - política de la seguridad y salud en el trabajo
+    - term: participacion y consulta
+      expand_to:
+        - trabajadores
+        - consulta
+        - participacion
+        - sst
+  by_mode:
+    literal_list_extract:
+      chunk_k: 50
+      chunk_fetch_k: 220
+      summary_k: 3
+      require_literal_evidence: true
+    literal_clause_check:
+      chunk_k: 55
+      chunk_fetch_k: 300
+      summary_k: 3
+      require_literal_evidence: true
+    cross_scope_analysis:
+      chunk_k: 40
+      chunk_fetch_k: 140
+      summary_k: 5
+      require_literal_evidence: false
+    scope_clarification:
+      chunk_k: 0
+      chunk_fetch_k: 0
+      summary_k: 0
+      require_literal_evidence: true
+    explanatory_response:
+      chunk_k: 35
+      chunk_fetch_k: 120
+      summary_k: 5
+      require_literal_evidence: false
+    comprehensive_synthesis:
+      chunk_k: 60
+      chunk_fetch_k: 220
+      summary_k: 3
+      require_literal_evidence: false
+
+capabilities:
+  reasoning_level: high
+  allowed_tools:
+    - semantic_retrieval
+    - structural_extraction
+    - logical_comparison
+    - expectation_coverage
+    - citation_validator
+  reasoning_budget:
+    max_steps: 5
+    max_reflections: 2
+  tool_policies:
+    python_calculator:
+      enabled: false
+
+validation:
+  require_citations: true
+  min_citations_per_inference: 2
+  block_strong_claims_without_evidence: true
+  strong_claim_markers:
+    - riesgo critico
+    - no conformidad mayor
+    - incumplimiento
+  forbidden_concepts:
+    - sueldos
+    - estrategia comercial
+  fallback_message: "No tengo informacion suficiente en el contexto para responder con trazabilidad."

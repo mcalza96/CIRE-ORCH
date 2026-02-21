@@ -123,11 +123,11 @@ router:
     ISO 45001: [seguridad, salud, sst, riesgo laboral, trabajador]
   scope_patterns:
     - label: ISO 9001
-      regex: "\\biso\\s*[-:]?\\s*9001\\b|\\b9001\\b"
+      regex: "(?:(?:iso|norma|la|estandar|estándar)\\s*[-:]?\\s*)?9001\\b"
     - label: ISO 14001
-      regex: "\\biso\\s*[-:]?\\s*14001\\b|\\b14001\\b"
+      regex: "(?:(?:iso|norma|la|estandar|estándar)\\s*[-:]?\\s*)?14001\\b"
     - label: ISO 45001
-      regex: "\\biso\\s*[-:]?\\s*45001\\b|\\b45001\\b"
+      regex: "(?:(?:iso|norma|la|estandar|estándar)\\s*[-:]?\\s*)?45001\\b"
   reference_patterns:
     - "\\b\\d+(?:\\.\\d+)+\\b"
     - "\\bcl(?:a|á)usula\\s*\\d+(?:\\.\\d+)+\\b"

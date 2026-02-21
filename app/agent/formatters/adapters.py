@@ -471,8 +471,8 @@ class LiteralEvidenceValidator:
                             matched_clause_refs.add(ref)
 
             if total_with_scope > 0 and mismatched > 0:
-                _add_scope_guardrail(
-                    "Scope mismatch detected: evidence includes sources outside requested standard scope."
+                warnings.append(
+                    "Warning: Scope mismatch detected: evidence includes sources outside requested standard scope."
                 )
 
             if len(requested_upper) >= 2:
@@ -480,8 +480,8 @@ class LiteralEvidenceValidator:
                     scope for scope in requested_upper if scope not in covered_requested
                 )
                 if missing_scope_coverage:
-                    _add_scope_guardrail(
-                        "Scope mismatch detected: missing evidence coverage for requested standards: "
+                    warnings.append(
+                        "Warning: Scope mismatch detected: missing evidence coverage for requested standards: "
                         + ", ".join(missing_scope_coverage)
                     )
 

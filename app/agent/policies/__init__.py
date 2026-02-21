@@ -324,6 +324,11 @@ def _best_scope_from_token(
 def extract_requested_scopes(query: str, profile: AgentProfile | None = None) -> tuple[str, ...]:
     """Extract standard names/codes from query using profile patterns or generic fallback."""
     text = (query or "").strip()
+    
+    # Strip UUIDs and citation markers to prevent them from being detected as scopes
+    text = re.sub(r"\b[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}\b", "", text)
+    text = re.sub(r"[\[\uff3b\u3010][a-fA-F0-9\-]{8,}[\]\uff3d\u3011]", "", text)
+    
     lower_text = text.lower()
     found: set[str] = set()
     ordered: list[str] = []
