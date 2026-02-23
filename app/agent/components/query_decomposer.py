@@ -156,18 +156,24 @@ class LLMSubqueryPlanner(SubqueryPlanner):
         )
 
         system = (
-            "You are a retrieval subquery planner. "
-            'Return JSON only with {"subqueries": [...]}. No extra text.'
+            "You are a strict Vector Search Subquery Planner for a RAG system.\n"
+            "Your GOAL is to translate the user query into purely semantic search phrases.\n"
+            "CRITICAL RULES:\n"
+            "1. STRIP ALL logical instructions, exclusions (e.g., 'exclude shared'), comparisons, or output formatting (e.g., 'table', 'enumera').\n"
+            "2. Each subquery 'query' string must contain ONLY the core concepts to match against document text.\n"
+            "3. Use the 'filters' object to target specific standards and clauses.\n"
+            'Return JSON only with {"subqueries": [{"id": "...", "query": "core concept only", "filters": {}}]}. No extra text.'
         )
         if context.profile is not None and getattr(context.profile.query_modes, "planner_instructions", None):
             instructions = context.profile.query_modes.planner_instructions.strip()
             if instructions:
-                system += f"\n\n{instructions}"
+                system += f"\n\nAdditional Instructions: {instructions}"
+        
         user = (
-            f"Query: {context.query}\n"
+            f"Original Query: {context.query}\n"
             f"Requested standards: {', '.join(context.requested_standards) if context.requested_standards else '(none)'}\n"
             f"Max subqueries: {context.max_queries}\n"
-            "Constraints: each subquery item must contain id, query, optional filters."
+            "Constraints: each subquery item must contain id, query (pure semantic phrase), and optional filters. NEVER include logical exclusions in the query text."
         )
 
         try:
@@ -219,6 +225,15 @@ class HybridSubqueryPlanner(SubqueryPlanner):
             "interaccion",
             "interacción",
             "por que",
+            # Logical / Exclusion Tokens
+            "exclu",
+            "sin ",
+            "no incluy",
+            "nica", # unica o única
+            "exclusiva",
+            "idéntic",
+            "identic",
+            "compartid",
         )
         if len(context.requested_standards) >= 2:
             return True
@@ -246,12 +261,38 @@ class HybridSubqueryPlanner(SubqueryPlanner):
 
         merged: list[dict[str, Any]] = []
         seen: set[str] = set()
-        for item in [*deterministic, *llm_subqueries]:
+        
+        # Priority 1: High quality LLM subqueries
+        llm_standards: set[str] = set()
+        for item in llm_subqueries:
             if not isinstance(item, dict):
                 continue
             key = str(item.get("id") or "").strip() or str(item.get("query") or "").strip()
             if not key or key in seen:
                 continue
+            seen.add(key)
+            merged.append(item)
+            
+            # Track which standards the LLM successfully covered
+            from app.agent.components.query_decomposer import _extract_scope_filters
+            for scope in _extract_scope_filters(item):
+                llm_standards.add(scope)
+
+        # Priority 2: Fallback deterministic queries ONLY for missing scopes
+        for item in deterministic:
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get("id") or "").strip() or str(item.get("query") or "").strip()
+            if not key or key in seen:
+                continue
+                
+            from app.agent.components.query_decomposer import _extract_scope_filters
+            item_scopes = _extract_scope_filters(item)
+            
+            # If the LLM already built a clean query for this standard, discard the noisy deterministic one
+            if item_scopes and all(s in llm_standards for s in item_scopes):
+                continue
+                
             seen.add(key)
             merged.append(item)
 
