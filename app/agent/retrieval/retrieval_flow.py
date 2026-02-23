@@ -92,13 +92,23 @@ class RetrievalFlow:
         plan: RetrievalPlan,
         validated_filters: dict[str, Any] | None,
     ) -> RetrievalExecutionContext:
-        filters = normalize_query_filters(validated_filters)
-        if filters is None:
-            filters = normalize_query_filters(
-                {"source_standards": list(plan.requested_standards)}
-                if plan.requested_standards
-                else None
-            )
+        filters = normalize_query_filters(validated_filters) or {}
+        
+        plan_standards = [str(s).strip() for s in plan.requested_standards] if plan.requested_standards else []
+        if plan_standards:
+            existing = []
+            if "source_standard" in filters:
+                existing.append(str(filters.pop("source_standard")).strip())
+            if "source_standards" in filters:
+                existing.extend([str(s).strip() for s in filters.pop("source_standards") if str(s).strip()])
+                
+            merged = list(dict.fromkeys([*existing, *plan_standards]))
+            if len(merged) > 1:
+                filters["source_standards"] = merged
+            elif len(merged) == 1:
+                filters["source_standard"] = merged[0]
+                
+        filters = normalize_query_filters(filters)
 
         resolved_query = str(query or "").strip()
         mode_cfg = self._mode_config(plan.mode)

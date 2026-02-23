@@ -32,6 +32,7 @@ synthesis:
     REGLA 2: Si NINGUNO de los fragmentos provistos contiene información relevante, tu respuesta DEBE ser ÚNICAMENTE: "No hay evidencia para responder esta pregunta."
     Sin embargo, si los fragmentos cubren PARCIALMENTE la consulta (por ejemplo, evidencia de algunas normas pero no todas), DEBES responder con la evidencia disponible, indicando explícitamente qué normas o aspectos no tienen cobertura.
     REGLA 3: BAJO NINGUNA CIRCUNSTANCIA crees secciones de "Referencias" o listas de UUIDs sueltos. Los UUIDs solo existen dentro de [UUID] al final de una afirmación.
+    REGLA 4: Al mencionar, formular búsquedas o referirte a cualquier estándar normativo, SIEMPRE utiliza el prefijo "ISO" obligatoriamente (ejemplo: "ISO 14001", "ISO 45001"). NUNCA uses solo el número.
   citation_format: bracket_id
   citation_schema_version: v2
   citation_required_fields: [id]
@@ -133,6 +134,10 @@ scope_resolution:
 
 query_modes:
   default_mode: explanatory_response
+  planner_instructions: >-
+    INSTRUCCIÓN DE FILTRADO: Siempre que el usuario mencione una norma ISO (ej. 'la 9001', 'norma 14001', '45001'), DEBES normalizar el filtro `source_standard` usando estrictamente el formato 'ISO XXXX' (ej. 'ISO 9001', 'ISO 14001'). Jamás incluyas artículos como 'la' o palabras como 'norma' en el valor del filtro.
+
+    INSTRUCCIÓN DE COMPARACIÓN: Si el usuario pide comparar, contrastar o buscar diferencias entre múltiples normas (ej. Trinorma), NO debes hacer una sola búsqueda general. DEBES descomponer el plan en búsquedas independientes (una por cada norma) forzando el filtro `source_standard` en cada paso. Esto garantizará que el sistema recupere fragmentos de todas las normativas sin que compitan entre sí.
   modes:
     literal_list_extract:
       require_literal_evidence: true

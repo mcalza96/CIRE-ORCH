@@ -52,6 +52,7 @@ class QueryModeConfig(BaseModel):
 
 class QueryModesPolicy(BaseModel):
     default_mode: str = "default"
+    planner_instructions: str = ""
     modes: dict[str, QueryModeConfig] = Field(default_factory=dict)
     intent_rules: list[IntentRule] = Field(default_factory=list)
 

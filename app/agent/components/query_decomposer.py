@@ -159,6 +159,10 @@ class LLMSubqueryPlanner(SubqueryPlanner):
             "You are a retrieval subquery planner. "
             'Return JSON only with {"subqueries": [...]}. No extra text.'
         )
+        if context.profile is not None and getattr(context.profile.query_modes, "planner_instructions", None):
+            instructions = context.profile.query_modes.planner_instructions.strip()
+            if instructions:
+                system += f"\n\n{instructions}"
         user = (
             f"Query: {context.query}\n"
             f"Requested standards: {', '.join(context.requested_standards) if context.requested_standards else '(none)'}\n"
