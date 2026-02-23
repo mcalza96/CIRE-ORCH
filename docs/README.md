@@ -8,6 +8,7 @@ Documentación canónica del repositorio **orchestrator-only**.
 - Arquitectura: `architecture.md`
 - Operación: `operations.md`
 - Guía de desarrollo: `developer-guide.md`
+- Auditoría modular de flujo ORCH: `retrieval_audit_modules.md`
 
 ## Operación rápida
 

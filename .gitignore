@@ -34,6 +34,7 @@ __pycache__/
 env/
 .env/
 *venv*/
+*tools*/
 .*venv/
 pip-log.txt
 pip-delete-this-directory.txt
